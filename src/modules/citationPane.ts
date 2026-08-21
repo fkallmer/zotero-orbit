@@ -238,10 +238,17 @@ function renderCounts(doc: Document, body: HTMLElement, item: Zotero.Item, recor
   }
 
   if (record?.fwci !== null && record?.fwci !== undefined) {
-    body.append(row(doc, getString('pane-label-fwci'), record.fwci.toFixed(2)))
+    body.append(row(doc, getString('pane-label-fwci'), record.fwci.toFixed(2), getString('pane-hint-fwci')))
   }
   if (record?.percentile) {
-    body.append(row(doc, getString('pane-label-percentile'), `${record.percentile.min}–${record.percentile.max}%`))
+    body.append(
+      row(
+        doc,
+        getString('pane-label-percentile'),
+        `${record.percentile.min}–${record.percentile.max}%`,
+        getString('pane-hint-percentile'),
+      ),
+    )
   }
 }
 
@@ -301,16 +308,34 @@ function renderJournal(
   body.append(heading(doc, getString('pane-heading-journal')))
   if (record.sourceName) body.append(row(doc, getString('pane-label-journal'), record.sourceName))
   if (journal?.twoYearMeanCitedness !== null && journal?.twoYearMeanCitedness !== undefined) {
-    body.append(row(doc, getString('pane-label-mean-citedness'), journal.twoYearMeanCitedness.toFixed(2)))
+    body.append(
+      row(
+        doc,
+        getString('pane-label-mean-citedness'),
+        journal.twoYearMeanCitedness.toFixed(2),
+        getString('pane-hint-mean-citedness'),
+      ),
+    )
   }
   if (journal?.hIndex !== null && journal?.hIndex !== undefined) {
-    body.append(row(doc, getString('pane-label-h-index'), journal.hIndex.toLocaleString()))
+    body.append(
+      row(doc, getString('pane-label-h-index'), journal.hIndex.toLocaleString(), getString('pane-hint-h-index')),
+    )
   }
   if (journal?.i10Index !== null && journal?.i10Index !== undefined) {
-    body.append(row(doc, getString('pane-label-i10-index'), journal.i10Index.toLocaleString()))
+    body.append(
+      row(doc, getString('pane-label-i10-index'), journal.i10Index.toLocaleString(), getString('pane-hint-i10-index')),
+    )
   }
   const inDoaj = journal?.isInDoaj ?? record.sourceIsInDoaj
-  body.append(row(doc, getString('pane-label-doaj'), getString(inDoaj ? 'pane-value-yes' : 'pane-value-no')))
+  body.append(
+    row(
+      doc,
+      getString('pane-label-doaj'),
+      getString(inDoaj ? 'pane-value-yes' : 'pane-value-no'),
+      getString('pane-hint-doaj'),
+    ),
+  )
   if (journal?.apcUsd !== null && journal?.apcUsd !== undefined && !record.apc) {
     body.append(
       row(doc, getString('pane-label-apc'), `${journal.apcUsd.toLocaleString()} USD`, getString('pane-hint-apc')),
