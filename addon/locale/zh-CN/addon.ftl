@@ -26,6 +26,7 @@ auto-update-completed = 自动更新完成：{ $updated }/{ $total } 个项目�
 # Database display names
 database-crossref = Crossref
 database-inspire = INSPIRE
+database-openalex = OpenAlex
 database-semanticscholar = SemanticScholar
 
 # Semantic Scholar API key

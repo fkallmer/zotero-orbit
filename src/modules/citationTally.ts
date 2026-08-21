@@ -39,6 +39,7 @@ import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 const DEFAULT_RATE_LIMITS: Record<string, number> = {
   crossref: 1000,
   inspire: 1000,
+  openalex: 200,
 }
 
 const MAX_RATE_LIMIT_MULTIPLIER = 10
@@ -58,6 +59,12 @@ const USER_AGENT = `Citation-Tally/${version} (+https://github.com/daeh/zotero-c
 const REQUEST_HEADERS: Readonly<Record<string, string>> = { 'User-Agent': USER_AGENT }
 
 /**
+ * OpenAlex reads the contact from a `mailto` query parameter, not from the
+ * User-Agent, and only then routes the request into its polite pool.
+ */
+const OPENALEX_CONTACT = 'dev@daeh.info'
+
+/**
  * Floors on request spacing, in milliseconds.
  *
  * `rateLimits` is a user-editable JSON pref, so a value below the provider's
@@ -68,11 +75,16 @@ const REQUEST_HEADERS: Readonly<Record<string, string>> = { 'User-Agent': USER_A
 const MIN_RATE_LIMITS: Record<string, number> = {
   crossref: 1000,
   inspire: 350,
+  // OpenAlex documents 10 requests/second for the polite pool. Its responses
+  // also carry an x-ratelimit-remaining budget (1000 per window at the time of
+  // writing), so pacing matters even though the per-second ceiling is high.
+  openalex: 100,
 }
 
 /** Minimum backoff after a 429, per provider. */
 const MIN_BACKOFF_AFTER_429_MS: Record<string, number> = {
   inspire: 5000,
+  openalex: 5000,
 }
 
 /**
@@ -406,6 +418,7 @@ function getOperationName(key: string): string {
   const nameMap = {
     crossref: 'database-crossref',
     inspire: 'database-inspire',
+    openalex: 'database-openalex',
     semanticscholar: 'database-semanticscholar',
   } as const
   const fluentId = nameMap[key as keyof typeof nameMap]
@@ -416,6 +429,7 @@ function getOperationName(key: string): string {
 const databaseColorsDark: Record<string, string> = {
   crossref: '#1a73e8', // Blue
   inspire: '#0f9d58', // Green
+  openalex: '#f9ab00', // Amber
   semanticscholar: '#ea4335', // Red
 }
 
@@ -423,6 +437,7 @@ const databaseColorsDark: Record<string, string> = {
 const databaseColorsLight: Record<string, string> = {
   crossref: '#000000', // Black
   inspire: '#0f9d58', // Green
+  openalex: '#b06000', // Amber, darkened for contrast on white
   semanticscholar: '#cc0000', // Red
 }
 
@@ -978,6 +993,99 @@ class DBInterface {
   }
 
   /**
+   * Get citation count from OpenAlex with enhanced status information.
+   *
+   * OpenAlex has no arXiv identifier: its only usable id filters are `doi`,
+   * `ids.mag`, `ids.openalex`, `ids.pmcid` and `ids.pmid`. arXiv items are
+   * therefore looked up through the DOI arXiv itself mints,
+   * `10.48550/arxiv.<id>`, of which OpenAlex indexes ~1.9M. That resolves for
+   * preprints without a journal version; once a work is published, the
+   * publisher DOI is the one that carries the count, and the arXiv DOI may
+   * 404. Trying every identifier the item offers covers both directions.
+   *
+   * @param item Zotero item
+   * @returns LookupResult with count and status
+   */
+  static async getOpenAlexCountEnhanced(item: Zotero.Item): Promise<LookupResult> {
+    const identifiers = Helpers.getAllItemIdentifiers(item)
+    if (identifiers.length === 0) {
+      debugLog('Citation debug - No DOI or arXiv ID found for item:', item.id)
+      return { count: -1, status: 'no_identifier', message: 'No DOI or arXiv ID found' }
+    }
+
+    // Status precedence mirrors INSPIRE: a transient failure anywhere outranks
+    // a 404 elsewhere, so an outage is never persisted as "no citations".
+    let sawTransient = false
+    let sawApiError = false
+
+    for (const identifier of identifiers) {
+      const lookupDoi =
+        identifier.type === 'doi' ? identifier.id : `10.48550/arxiv.${stripArxivVersion(identifier.id)}`
+      debugLog(`Citation debug - Trying OpenAlex with DOI: ${lookupDoi} (from ${identifier.source})`)
+
+      await RateLimitManager.waitForRateLimit('openalex')
+
+      // `select` keeps the response to the one field we read; the full work
+      // record is tens of kilobytes. `mailto` is what puts the request into
+      // OpenAlex's polite pool -- the User-Agent alone does not.
+      const url =
+        `https://api.openalex.org/works/doi:${encodeIdentifierPath(lookupDoi)}` +
+        `?select=cited_by_count&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+
+      let response: Response
+      try {
+        response = await lookupFetch(url, { headers: REQUEST_HEADERS })
+      } catch (err) {
+        debugLog(`Citation debug - OpenAlex request failed for ${lookupDoi}:`, err)
+        sawTransient = true
+        continue
+      }
+
+      if (!response.ok) {
+        const status = classifyHttpStatus(response.status)
+        if (status === 'rate_limited') {
+          RateLimitManager.handleRateLimit('openalex')
+          return { count: -1, status: 'rate_limited', message: 'API rate limit exceeded' }
+        }
+        if (status === 'transient_error') sawTransient = true
+        else if (status === 'api_error') sawApiError = true
+        debugLog(`Citation debug - OpenAlex HTTP ${response.status} for ${lookupDoi} (${status})`)
+        continue
+      }
+
+      let body: unknown
+      try {
+        body = await response.json()
+      } catch (err) {
+        debugLog(`Citation debug - OpenAlex body parse failed for ${lookupDoi}:`, err)
+        sawTransient = true
+        continue
+      }
+
+      const raw = (body as Record<string, unknown> | null)?.cited_by_count
+      const count = parseCitationCount(raw)
+      if (count === null) {
+        debugLog(`Citation debug - No usable cited_by_count for ${lookupDoi}, trying next identifier`)
+        continue
+      }
+
+      debugLog(
+        `Citation debug - OpenAlex citation count: ${count} (via ${identifier.type} ${identifier.id} from ${identifier.source})`,
+      )
+      RateLimitManager.handleSuccess('openalex')
+      return { count, status: 'success' }
+    }
+
+    if (sawTransient) {
+      return { count: -1, status: 'transient_error', message: 'OpenAlex lookup failed for every identifier' }
+    }
+    if (sawApiError) {
+      return { count: -1, status: 'api_error', message: 'OpenAlex rejected every identifier' }
+    }
+    return { count: 0, status: 'not_found', message: 'No valid identifiers found in OpenAlex' }
+  }
+
+  /**
    * Get citation count from Semantic Scholar with enhanced status information
    * @param item Zotero item
    * @returns LookupResult with count and status
@@ -1170,6 +1278,8 @@ async function updateItem(
       if (operation === 'crossref') {
         result = await DBInterface.getCrossrefCountEnhanced(item)
         displayName = getOperationName(operation)
+      } else if (operation === 'openalex') {
+        result = await DBInterface.getOpenAlexCountEnhanced(item)
       } else if (operation === 'inspire') {
         result = await DBInterface.getInspireCountEnhanced(item)
         displayName = getOperationName(operation)

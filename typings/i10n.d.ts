@@ -12,6 +12,7 @@ export type FluentMessageId =
   | 'column-citations'
   | 'database-crossref'
   | 'database-inspire'
+  | 'database-openalex'
   | 'database-semanticscholar'
   | 'menuitem-retally-outdated-citations'
   | 'menuitem-update-citation-tallies'

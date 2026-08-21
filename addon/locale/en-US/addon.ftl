@@ -26,6 +26,7 @@ auto-update-completed = Auto update completed: { $updated }/{ $total } items upd
 # Database display names
 database-crossref = Crossref
 database-inspire = INSPIRE
+database-openalex = OpenAlex
 database-semanticscholar = SemanticScholar
 
 # Semantic Scholar API key

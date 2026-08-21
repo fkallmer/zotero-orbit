@@ -7,9 +7,11 @@ export default defineConfig({
   name: pkg.config.addonName,
   id: pkg.config.addonID,
   namespace: pkg.config.addonRef,
-  updateURL: `https://github.com/{{owner}}/{{repo}}/releases/download/release/${
-    pkg.version.includes('-') ? 'update-beta.json' : 'update.json'
-  }`,
+  // No updateURL while this fork has no release channel of its own. The
+  // template resolves {{owner}}/{{repo}} from the git remote, which still
+  // points at upstream -- leaving it in would let Zotero silently "update"
+  // this build back to daeh's release and drop the OpenAlex provider.
+  // Restore it once the fork publishes its own update.json.
   xpiDownloadLink: 'https://github.com/{{owner}}/{{repo}}/releases/download/v{{version}}/{{xpiName}}.xpi',
 
   build: {

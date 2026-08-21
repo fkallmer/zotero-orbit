@@ -11,7 +11,7 @@
   },
   "config": {
     "addonName": "Citation Tally",
-    "addonID": "dev@daeh.info",
+    "addonID": "citation-hybrid@fkallmer.dev",
     "addonRef": "citationtally",
     "addonInstance": "CitationTally",
     "prefsPrefix": "extensions.zotero.citationtally"

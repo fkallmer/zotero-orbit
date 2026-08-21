@@ -84,6 +84,7 @@ function getOperationName(key: string): string {
   const nameMap = {
     crossref: 'database-crossref',
     inspire: 'database-inspire',
+    openalex: 'database-openalex',
     semanticscholar: 'database-semanticscholar',
   } as const
   const fluentId = nameMap[key as keyof typeof nameMap]
@@ -187,6 +188,11 @@ function isCitationDataOutdated(item: Zotero.Item): [boolean, string] {
     }
     if (database === 'inspire') {
       // INSPIRE works with DOI, arXiv, and arXiv DOIs
+      return identifierType === 'doi' || identifierType === 'arxiv'
+    }
+    if (database === 'openalex') {
+      // OpenAlex has no arXiv id filter, but it indexes arXiv's own DOIs, so a
+      // bare arXiv id is still usable once rewritten to 10.48550/arxiv.<id>
       return identifierType === 'doi' || identifierType === 'arxiv'
     }
     return false
