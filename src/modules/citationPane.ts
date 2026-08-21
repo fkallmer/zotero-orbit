@@ -204,7 +204,7 @@ function renderCounts(doc: Document, body: HTMLElement, item: Zotero.Item, recor
   const stored = Core.getStoredCountsByDatabase(item)
   if (stored.length === 0 && record?.citedByCount === null) return
 
-  body.append(heading(doc, getString('pane-heading-citations')))
+  body.append(headingWithInfo(doc, getString('pane-heading-citations'), body))
   const colors = getDatabaseColors()
 
   for (const { database, count } of stored) {

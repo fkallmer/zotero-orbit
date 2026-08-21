@@ -77,8 +77,9 @@ pane-heading-funding = Funding
 
 # Explanations, shown by the info toggle. Precision matters more than brevity
 # here: several of these look like metrics they are not.
-pane-info-toggle =
-  .tooltiptext = Explain these values
+# Read with getString() and set as a title attribute by hand, so this one
+# needs a value -- unlike the header strings, which Fluent applies itself.
+pane-info-toggle = Explain these values
 pane-hint-fwci = Citations compared to other works of the same age and field. 1.0 is the field average, 2.0 is twice as cited as typical. Comparable across disciplines, unlike a raw count.
 pane-hint-percentile = Where this work sits among everything published that year. 90–99 means it is in the top tenth by citations.
 pane-hint-mean-citedness = OpenAlex's 2-year mean citedness for the journal: average citations to articles from the two preceding years. Comparable in spirit to a Journal Impact Factor, but computed from open data — not Clarivate's JIF, and not interchangeable with it.
