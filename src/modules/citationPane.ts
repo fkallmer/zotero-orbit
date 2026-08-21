@@ -307,7 +307,7 @@ export function registerCitationPane(): void {
     onItemChange: ({ item, setEnabled }) => {
       setEnabled(item?.isRegularItem() === true)
     },
-    onRender: ({ doc, body, item }) => {
+    onRender: ({ doc, body, item, setSectionSummary }) => {
       // Unconditional, like the registration line: without it a section that
       // never renders is indistinguishable from one that renders nothing.
       Zotero.debug(`Citation Tally: onRender for item ${item?.id ?? 'none'}`)
@@ -316,13 +316,22 @@ export function registerCitationPane(): void {
         // height and its most important content before any network call.
         renderInto(doc, body, item, { record: null, journal: null })
         body.append(el(doc, 'div', undefined, getString('pane-loading')))
+        // Shown in the collapsed header. Built-in sections call
+        // `setCount()`/`empty = false` on their section element; plugin
+        // sections get no such prop, so a summary is the only way to say
+        // anything at all while collapsed -- and the only proof from outside
+        // that the section is alive rather than broken.
+        const stored = Core.getStoredCountsByDatabase(item)
+        setSectionSummary(
+          stored.length > 0 ? stored.map((entry) => String(entry.count)).join(' / ') : getString('pane-loading'),
+        )
         Zotero.debug(`Citation Tally: onRender produced ${body.childNodes.length} nodes`)
       } catch (err) {
         Zotero.debug(`Citation Tally: onRender threw: ${String(err)}`)
         throw err
       }
     },
-    onAsyncRender: async ({ doc, body, item }) => {
+    onAsyncRender: async ({ doc, body, item, setSectionSummary }) => {
       const token = item.id
       inFlight.set(body, token)
       Zotero.debug(`Citation Tally: onAsyncRender for item ${token}`)
@@ -330,6 +339,10 @@ export function registerCitationPane(): void {
         const data = await loadData(item, false)
         if (inFlight.get(body) !== token) return
         renderInto(doc, body, item, data)
+        const summary = Core.getStoredCountsByDatabase(item)
+          .map((entry) => String(entry.count))
+          .join(' / ')
+        if (summary) setSectionSummary(summary)
         Zotero.debug(
           `Citation Tally: onAsyncRender produced ${body.childNodes.length} nodes, ` +
             `record ${data.record ? 'found' : 'missing'}`,
