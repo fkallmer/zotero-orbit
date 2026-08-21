@@ -291,14 +291,14 @@ export function registerCitationPane(): void {
   // previously selected item cannot paint over the current one.
   const inFlight = new WeakMap<HTMLElement, number>()
 
+  // Deliberately the shape both official examples use -- Zotero 7 for
+  // Developers and the plugin template this fork is built on -- and nothing
+  // more. The first attempt registered the richest option set available,
+  // including sectionButtons, and produced a header with no icon, no button
+  // and no twisty. Features go back in one at a time, each verified.
   registeredPaneID = Zotero.ItemPaneManager.registerSection({
     paneID: PANE_ID,
     pluginID: addon.data.config.addonID,
-    // Better Notes registers working sections and does this; we did not, and
-    // it is the only difference between the two calls. Without it the body div
-    // is built empty, and the section header rendered without its icon, its
-    // twisty or any way to expand.
-    bodyXHTML: '<html:div class="citationtally-body"></html:div>',
     header: {
       l10nID: getLocaleID('pane-header'),
       // Control test: a built-in icon, to separate 'my SVG or chrome path is
@@ -359,26 +359,6 @@ export function registerCitationPane(): void {
         renderInto(doc, body, item, { record: null, journal: null })
       }
     },
-    sectionButtons: [
-      {
-        type: 'citationtally-refresh',
-        icon: 'chrome://zotero/skin/16/universal/sync.svg',
-        l10nID: getLocaleID('pane-refresh'),
-        onClick: ({ doc, body, item }) => {
-          void (async () => {
-            const token = item.id
-            inFlight.set(body, token)
-            try {
-              const data = await loadData(item, true)
-              if (inFlight.get(body) !== token) return
-              renderInto(doc, body, item, data)
-            } catch (err) {
-              debugLog('Citation debug - Item pane refresh failed:', err)
-            }
-          })()
-        },
-      },
-    ],
   })
 
   // Unconditional: registerSection returns false on a rejected option set and
