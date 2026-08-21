@@ -14,6 +14,7 @@ import {
   maybeShowProactiveDegradedNotice,
   notifySemanticScholarUnavailable,
 } from './modules/degradedNotice'
+import { registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } from './modules/libraryIndex'
 import { registerPrefsScripts, validateApiKeyUI, validateDatabaseOrderUI } from './modules/preferenceScript'
 import {
   closeSemanticScholarWarning,
@@ -60,6 +61,10 @@ async function onStartup() {
   // -- menus, theme observers, per-window setup -- leaving the whole plugin
   // looking dead after a restart. Zotero.debug rather than the plugin's own
   // gated logger, so the outcome is recorded without the debug pref set.
+  // The DOI index the references block matches against; dropped whenever an
+  // item changes, so it can never answer from a stale library.
+  registerLibraryIndexNotifier()
+
   try {
     registerCitationPane()
   } catch (err) {
@@ -170,6 +175,7 @@ function onShutdown(): void {
     () => abortInFlightLookups(),
     () => UIRegistrar.unregisterNotifier(),
     () => unregisterCitationPane(),
+    () => unregisterLibraryIndexNotifier(),
     () => void flushCache(),
     () => shutdownSemanticScholarClient(),
     () => closeDegradedNotice(),

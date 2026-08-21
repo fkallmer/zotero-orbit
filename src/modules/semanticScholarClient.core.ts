@@ -18,7 +18,14 @@ import type { ItemIdentifier, LookupResult } from './citationTypes.ts'
 import type { AttemptAuthority, KeyRef, RejectionAttempt, RejectionDisposition } from './semanticScholarKeyState.ts'
 
 export const S2_PAPER_BASE = 'https://api.semanticscholar.org/graph/v1/paper'
-const S2_FIELDS = 'fields=citationCount'
+/**
+ * One request carries all of it. `references` comes back nested, up to 100
+ * entries, so the reference list costs no extra round trip -- unlike the
+ * `/references` edge endpoint, which also offers per-reference `isInfluential`
+ * but is not worth a second call against S2's rate limits.
+ */
+const S2_FIELDS =
+  'fields=citationCount,influentialCitationCount,referenceCount,references.title,references.externalIds,references.year'
 
 /** One confirming request after a first 403, on a budget of its own. */
 const AUTH_CORROBORATION_RETRIES = 1
@@ -97,6 +104,8 @@ export interface S2CoreDeps {
   parseRetryAfterMs: (headerValue: string, nowEpochMs: number) => number | null
   shutdownSignal: AbortSignal
   log: (msg: string) => void
+  /** Optional sink for the data beyond the count. See the success path. */
+  onDetails?: (identifier: string, details: S2Details) => void
   config?: Partial<S2CoreConfig>
 }
 
@@ -119,6 +128,66 @@ function fingerprint(key: string): string {
     h = Math.imul(h, 0x01000193)
   }
   return (h >>> 0).toString(16)
+}
+
+/** A work this paper cites, as far as Semantic Scholar resolved it. */
+export interface S2Reference {
+  title: string | null
+  doi: string | null
+  paperId: string | null
+  year: number | null
+}
+
+/** Everything the paper request yields beyond the count itself. */
+export interface S2Details {
+  citationCount: number
+  /**
+   * Citations Semantic Scholar judges the citing work actually built on,
+   * rather than mentioned in passing. At ten citations, one influential versus
+   * eight is the whole story.
+   */
+  influentialCitationCount: number | null
+  referenceCount: number | null
+  references: S2Reference[]
+}
+
+export function parseS2Details(bodyText: string): S2Details | null {
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(bodyText) as Record<string, unknown>
+  } catch {
+    return null
+  }
+  const count = parsed?.citationCount
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return null
+
+  const asInt = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+  const asText = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() !== '' ? value.trim() : null
+
+  const raw = Array.isArray(parsed.references) ? parsed.references : []
+  const references: S2Reference[] = []
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const ref = entry as Record<string, unknown>
+    const ids = (typeof ref.externalIds === 'object' && ref.externalIds !== null ? ref.externalIds : {}) as Record<
+      string,
+      unknown
+    >
+    const title = asText(ref.title)
+    const doi = asText(ids.DOI)
+    // A reference with neither a title nor a DOI cannot be shown or matched.
+    if (!title && !doi) continue
+    references.push({ title, doi, paperId: asText(ref.paperId), year: asInt(ref.year) })
+  }
+
+  return {
+    citationCount: count,
+    influentialCitationCount: asInt(parsed.influentialCitationCount),
+    referenceCount: asInt(parsed.referenceCount),
+    references,
+  }
 }
 
 function parseCitationCount(bodyText: string): number | null {
@@ -500,7 +569,14 @@ export class SemanticScholarClientCore {
         }
         if (status >= 200 && status < 300) {
           const count = parseCitationCount(result.bodyText)
-          if (count !== null) return { count, status: 'success' }
+          if (count !== null) {
+            // Handed out rather than returned: the caller wants a LookupResult,
+            // and the extras are only useful to the item pane. Keeping the core
+            // free of anywhere to put them keeps it free of Zotero.
+            const details = parseS2Details(result.bodyText)
+            if (details) this.deps.onDetails?.(ref.paperId, details)
+            return { count, status: 'success' }
+          }
           sawTransient = true // malformed 2xx is a protocol failure, not "not found"
           advance = true
           break

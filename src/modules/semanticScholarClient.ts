@@ -8,8 +8,10 @@ import { combineAbortSignals, createTimeoutSignal, interruptibleSleep } from '..
 import { normalizeApiKey } from '../utils/apiKey'
 import { getString } from '../utils/locale'
 import { getPref, setPref } from '../utils/prefs'
+import { writeCache } from '../utils/recordCache'
 import { parseRetryAfterMs } from '../utils/temporalParse'
 
+import { s2DetailsCacheKey } from './s2Details'
 import { S2_PAPER_BASE, SemanticScholarClientCore } from './semanticScholarClient.core'
 import {
   applyRejection,
@@ -96,6 +98,11 @@ class SemanticScholarClient {
     const deps: S2CoreDeps = {
       fetch: (url, init) => fetch(url, init),
       paperBaseUrl: S2_PAPER_BASE,
+      // The count path already paid for this data; caching it here is what
+      // lets the item pane show references without a request of its own.
+      onDetails: (identifier, details) => {
+        writeCache(s2DetailsCacheKey(identifier), details)
+      },
       userAgent: USER_AGENT,
       monotonicNow,
       nowEpochMs: () => Temporal.Now.instant().epochMilliseconds,

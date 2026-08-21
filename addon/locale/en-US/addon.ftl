@@ -85,3 +85,12 @@ pane-hint-h-index = The journal has published this many articles that each have 
 pane-hint-i10-index = How many articles in the journal have at least 10 citations each.
 pane-hint-doaj = Whether the journal is listed in the Directory of Open Access Journals, a vetted index of open access journals with reviewed editorial standards.
 pane-hint-apc = The article processing charge the publisher lists for open access. What was actually paid is shown when the record has it.
+
+pane-heading-references = References
+pane-label-references = Cited works
+pane-label-references-held = In your library
+pane-reference-in-library = Already in your library
+pane-references-more = and { $count } more
+pane-hint-references = Works this paper cites, as far as Semantic Scholar resolved them — consistently more than OpenAlex finds, and still fewer than the printed bibliography. Treat it as a floor, not a count.
+pane-label-influential = Influential citations
+pane-hint-influential = Citations where Semantic Scholar judges the citing work built on this one, rather than mentioning it in passing. At ten citations, one influential versus eight is the whole story.

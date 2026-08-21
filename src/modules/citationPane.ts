@@ -14,13 +14,17 @@
 import { getLocaleID, getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
 import { getPref } from '../utils/prefs'
+import { readCache } from '../utils/recordCache'
 
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
 import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationTally'
 import { buildScholarUrl } from './googleScholarClient.core.ts'
+import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchJournalMetrics, fetchScholarlyRecord } from './openAlexEnrichment'
+import { s2DetailsCacheKey } from './s2Details'
 
 import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
+import type { S2Details } from './semanticScholarClient.core'
 
 const PANE_ID = 'citationtally-pane'
 
@@ -39,6 +43,17 @@ let registeredPaneID: string | false = false
 interface PaneData {
   record: ScholarlyRecord | null
   journal: JournalMetrics | null
+  s2: S2Details | null
+  /** Normalized DOI -> item id, for the references the user already holds. */
+  inLibrary: Map<string, number>
+}
+
+/** How many references to list before collapsing the rest into a count. */
+const REFERENCES_SHOWN = 8
+
+/** The pane before anything has been fetched, and after a failure. */
+function emptyPaneData(): PaneData {
+  return { record: null, journal: null, s2: null, inLibrary: new Map() }
 }
 
 /**
@@ -200,7 +215,8 @@ function sourceUrl(database: string, item: Zotero.Item, record: ScholarlyRecord 
  * The colour swatch is a secondary cue: no five-colour palette separates every
  * pair for every form of colour vision, so identity never rests on it.
  */
-function renderCounts(doc: Document, body: HTMLElement, item: Zotero.Item, record: ScholarlyRecord | null): void {
+function renderCounts(doc: Document, body: HTMLElement, item: Zotero.Item, data: PaneData): void {
+  const record = data.record
   const stored = Core.getStoredCountsByDatabase(item)
   if (stored.length === 0 && record?.citedByCount === null) return
 
@@ -240,6 +256,19 @@ function renderCounts(doc: Document, body: HTMLElement, item: Zotero.Item, recor
   if (record?.fwci !== null && record?.fwci !== undefined) {
     body.append(row(doc, getString('pane-label-fwci'), record.fwci.toFixed(2), getString('pane-hint-fwci')))
   }
+  // Placed with the counts rather than in its own block: it qualifies the
+  // Semantic Scholar number directly above it.
+  if (data.s2?.influentialCitationCount !== null && data.s2?.influentialCitationCount !== undefined) {
+    body.append(
+      row(
+        doc,
+        getString('pane-label-influential'),
+        String(data.s2.influentialCitationCount),
+        getString('pane-hint-influential'),
+      ),
+    )
+  }
+
   if (record?.percentile) {
     body.append(
       row(
@@ -378,6 +407,77 @@ function renderAuthors(doc: Document, body: HTMLElement, record: ScholarlyRecord
   }
 }
 
+/**
+ * What this work cites, and which of it the user already has.
+ *
+ * Semantic Scholar rather than OpenAlex: measured across five papers it
+ * resolves consistently more references -- 74 against 58 on one -- because it
+ * parses reference lists publishers never deposited. About a fifth of what it
+ * finds carries no DOI, and those cannot be matched against a library keyed on
+ * DOI, so they are listed but not counted as held.
+ */
+function renderReferences(doc: Document, body: HTMLElement, data: PaneData): void {
+  const s2 = data.s2
+  if (!s2 || s2.references.length === 0) return
+
+  body.append(heading(doc, getString('pane-heading-references')))
+
+  const held = s2.references.filter((ref) => ref.doi && data.inLibrary.has(normalizeDoi(ref.doi)))
+  const total = s2.referenceCount ?? s2.references.length
+  body.append(
+    row(
+      doc,
+      getString('pane-label-references'),
+      String(total),
+      // S2's own count can exceed what it returns inline, and both undercount
+      // the printed bibliography. Saying so beats implying precision.
+      getString('pane-hint-references'),
+    ),
+  )
+  if (held.length > 0) {
+    body.append(row(doc, getString('pane-label-references-held'), String(held.length)))
+  }
+
+  // The ones in the library first: those are the ones worth clicking.
+  const ordered = [...held, ...s2.references.filter((ref) => !held.includes(ref))]
+  for (const ref of ordered.slice(0, REFERENCES_SHOWN)) {
+    const line = el(doc, 'div')
+    line.style.cssText = 'padding:1px 0;line-height:1.35'
+    const label = `${ref.title ?? ref.doi ?? ''}${ref.year ? ` (${ref.year})` : ''}`
+    const itemID = ref.doi ? data.inLibrary.get(normalizeDoi(ref.doi)) : undefined
+
+    if (itemID !== undefined) {
+      // Selecting rather than opening: the point is to land on it in the
+      // library, where everything else about it already is.
+      const jump = el(doc, 'a', undefined, label)
+      jump.style.cursor = 'pointer'
+      jump.addEventListener('click', (event) => {
+        event.preventDefault()
+        void Zotero.getActiveZoteroPane()?.selectItem(itemID)
+      })
+      line.append(jump)
+      const mark = el(doc, 'span', undefined, ' \u2713')
+      mark.style.opacity = '0.6'
+      mark.setAttribute('title', getString('pane-reference-in-library'))
+      line.append(mark)
+    } else if (ref.doi) {
+      line.append(link(doc, label, `https://doi.org/${ref.doi}`))
+    } else {
+      const plain = el(doc, 'span', undefined, label)
+      plain.style.opacity = '0.75'
+      line.append(plain)
+    }
+    body.append(line)
+  }
+
+  const rest = ordered.length - REFERENCES_SHOWN
+  if (rest > 0) {
+    const more = el(doc, 'div', undefined, getString('pane-references-more', { args: { count: rest } }))
+    more.style.cssText = 'opacity:.6;font-size:11px;padding:2px 0'
+    body.append(more)
+  }
+}
+
 function renderFunding(doc: Document, body: HTMLElement, record: ScholarlyRecord): void {
   if (record.funding.length === 0) return
   body.append(heading(doc, getString('pane-heading-funding')))
@@ -401,7 +501,7 @@ function renderInto(doc: Document, body: HTMLElement, item: Zotero.Item, data: P
     body.append(warning)
   }
 
-  renderCounts(doc, body, item, record)
+  renderCounts(doc, body, item, data)
 
   if (!record) {
     const empty = el(doc, 'div', undefined, getString('pane-no-openalex'))
@@ -414,16 +514,26 @@ function renderInto(doc: Document, body: HTMLElement, item: Zotero.Item, data: P
   renderOpenAccess(doc, body, record)
   renderJournal(doc, body, record, journal)
   renderAuthors(doc, body, record)
+  renderReferences(doc, body, data)
   renderFunding(doc, body, record)
 }
 
 async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
   const identifiers = Helpers.getAllItemIdentifiers(item)
-  if (identifiers.length === 0) return { record: null, journal: null }
+  if (identifiers.length === 0) return emptyPaneData()
 
   const record = await fetchScholarlyRecord(identifiers, { force })
   const journal = record?.sourceId ? await fetchJournalMetrics(record.sourceId, { force }) : null
-  return { record, journal }
+
+  // Written by the count path on its own lookup, so the pane pays nothing for
+  // it -- and finds nothing until that lookup has run at least once.
+  const s2 =
+    identifiers
+      .map((id) => readCache<S2Details>(s2DetailsCacheKey(`${id.type === 'doi' ? 'DOI' : 'ARXIV'}:${id.id}`)))
+      .find((found) => found !== null) ?? null
+
+  const inLibrary = s2 && s2.references.length > 0 ? await getDoiIndex(item.libraryID) : new Map<string, number>()
+  return { record, journal, s2, inLibrary }
 }
 
 export function registerCitationPane(): void {
@@ -456,7 +566,7 @@ export function registerCitationPane(): void {
       try {
         // Synchronous pass: show what is already stored, so the section has its
         // height and its most important content before any network call.
-        renderInto(doc, body, item, { record: null, journal: null })
+        renderInto(doc, body, item, emptyPaneData())
         body.append(el(doc, 'div', undefined, getString('pane-loading')))
         // Shown in the collapsed header. Built-in sections call
         // `setCount()`/`empty = false` on their section element; plugin
@@ -521,7 +631,7 @@ export function registerCitationPane(): void {
       } catch (err) {
         debugLog('Citation debug - Item pane render failed:', err)
         if (inFlight.get(body) !== token) return
-        renderInto(doc, body, item, { record: null, journal: null })
+        renderInto(doc, body, item, emptyPaneData())
       }
     },
   })
