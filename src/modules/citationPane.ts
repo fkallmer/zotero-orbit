@@ -21,7 +21,7 @@ import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
 import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationTally'
 import { buildScholarUrl } from './googleScholarClient.core.ts'
 import { getDoiIndex, normalizeDoi } from './libraryIndex'
-import { fetchJournalMetrics, fetchScholarlyRecord } from './openAlexEnrichment'
+import { fetchJournalMetrics, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
@@ -45,6 +45,8 @@ interface PaneData {
   record: ScholarlyRecord | null
   journal: JournalMetrics | null
   s2: S2Details | null
+  /** From Semantic Scholar when it has them, from OpenAlex when it does not. */
+  references: PaneReference[]
   /** Normalized DOI -> item id, for the references the user already holds. */
   inLibrary: Map<string, number>
 }
@@ -54,7 +56,7 @@ const REFERENCES_SHOWN = 8
 
 /** The pane before anything has been fetched, and after a failure. */
 function emptyPaneData(): PaneData {
-  return { record: null, journal: null, s2: null, inLibrary: new Map() }
+  return { record: null, journal: null, s2: null, references: [], inLibrary: new Map() }
 }
 
 /**
@@ -408,35 +410,40 @@ function renderAuthors(doc: Document, body: HTMLElement, record: ScholarlyRecord
   }
 }
 
+/** One reference, from whichever source resolved it. */
+interface PaneReference {
+  title: string | null
+  doi: string | null
+  year: number | null
+  citedByCount: number | null
+}
+
 /**
- * What this work cites, and which of it the user already has.
+ * What this work cites, which of it the user already has, and how heavily each
+ * cited work is itself cited.
  *
- * Semantic Scholar rather than OpenAlex: measured across five papers it
- * resolves consistently more references -- 74 against 58 on one -- because it
- * parses reference lists publishers never deposited. About a fifth of what it
- * finds carries no DOI, and those cannot be matched against a library keyed on
- * DOI, so they are listed but not counted as held.
+ * Semantic Scholar first: measured across five papers it resolves consistently
+ * more than OpenAlex. But publishers can tell it not to serve references
+ * through the API -- IOP does, and the response says so outright while the
+ * website shows them anyway -- so OpenAlex is the fallback, and for one such
+ * paper it returned all 17 where S2 returned none.
  */
 function renderReferences(doc: Document, body: HTMLElement, data: PaneData): void {
   const s2 = data.s2
-  if (!s2) return
+  const refs = data.references
+  const known = s2?.referenceCount ?? data.record?.referencedWorksCount ?? null
+
+  if (refs.length === 0 && known === null) return
 
   body.append(heading(doc, getString('pane-heading-references')))
 
-  // Semantic Scholar often knows how many references a work has without
-  // holding a record for any of them -- the count comes from publisher
-  // metadata, the records from parsing that never happened. Two papers from
-  // 2000 and 2001 report 47 and 4 references and resolve none of either.
-  // Hiding the block in that case makes "no data here" look exactly like "this
-  // feature is broken", which is the state this pane spent an evening in.
-  if (s2.references.length === 0) {
-    const known = s2.referenceCount ?? 0
+  if (refs.length === 0) {
     const note = el(
       doc,
       'div',
       undefined,
-      known > 0
-        ? getString('pane-references-unresolved', { args: { count: known } })
+      s2?.elidedByPublisher
+        ? getString('pane-references-elided', { args: { count: known ?? 0 } })
         : getString('pane-references-none'),
     )
     note.style.cssText = 'opacity:.7;line-height:1.35;padding:1px 0'
@@ -444,53 +451,61 @@ function renderReferences(doc: Document, body: HTMLElement, data: PaneData): voi
     return
   }
 
-  const held = s2.references.filter((ref) => ref.doi && data.inLibrary.has(normalizeDoi(ref.doi)))
-  const total = s2.referenceCount ?? s2.references.length
-  body.append(
-    row(
-      doc,
-      getString('pane-label-references'),
-      String(total),
-      // S2's own count can exceed what it returns inline, and both undercount
-      // the printed bibliography. Saying so beats implying precision.
-      getString('pane-hint-references'),
-    ),
+  const held = new Set<PaneReference>(
+    refs.filter((ref) => ref.doi !== null && data.inLibrary.has(normalizeDoi(ref.doi))),
   )
-  if (held.length > 0) {
-    body.append(row(doc, getString('pane-label-references-held'), String(held.length)))
-  }
+  body.append(
+    row(doc, getString('pane-label-references'), String(known ?? refs.length), getString('pane-hint-references')),
+  )
+  if (held.size > 0) body.append(row(doc, getString('pane-label-references-held'), String(held.size)))
 
-  // The ones in the library first: those are the ones worth clicking.
-  const ordered = [...held, ...s2.references.filter((ref) => !held.includes(ref))]
+  // Held first, then by how often each is cited: the ones worth opening rise
+  // to the top instead of arriving in whatever order the source listed them.
+  const ordered = [...refs].sort((a, b) => {
+    const heldDiff = Number(held.has(b)) - Number(held.has(a))
+    if (heldDiff !== 0) return heldDiff
+    return (b.citedByCount ?? -1) - (a.citedByCount ?? -1)
+  })
+
+  const list = el(doc, 'div')
+  list.style.cssText = 'margin-top:3px'
   for (const ref of ordered.slice(0, REFERENCES_SHOWN)) {
     const line = el(doc, 'div')
-    line.style.cssText = 'padding:1px 0;line-height:1.35'
+    line.style.cssText = 'display:flex;align-items:baseline;gap:6px;padding:1px 0;line-height:1.35'
+
+    const mark = el(doc, 'span', undefined, held.has(ref) ? '\u2713' : '')
+    mark.style.cssText = 'flex:none;width:9px;opacity:.65'
+    if (held.has(ref)) mark.setAttribute('title', getString('pane-reference-in-library'))
+
     const label = `${ref.title ?? ref.doi ?? ''}${ref.year ? ` (${ref.year})` : ''}`
     const itemID = ref.doi ? data.inLibrary.get(normalizeDoi(ref.doi)) : undefined
-
+    let name: HTMLElement
     if (itemID !== undefined) {
       // Selecting rather than opening: the point is to land on it in the
       // library, where everything else about it already is.
-      const jump = el(doc, 'a', undefined, label)
-      jump.style.cursor = 'pointer'
-      jump.addEventListener('click', (event) => {
+      name = el(doc, 'a', undefined, label)
+      name.style.cursor = 'pointer'
+      name.addEventListener('click', (event) => {
         event.preventDefault()
         void Zotero.getActiveZoteroPane()?.selectItem(itemID)
       })
-      line.append(jump)
-      const mark = el(doc, 'span', undefined, ' \u2713')
-      mark.style.opacity = '0.6'
-      mark.setAttribute('title', getString('pane-reference-in-library'))
-      line.append(mark)
     } else if (ref.doi) {
-      line.append(link(doc, label, `https://doi.org/${ref.doi}`))
+      name = link(doc, label, `https://doi.org/${ref.doi}`)
     } else {
-      const plain = el(doc, 'span', undefined, label)
-      plain.style.opacity = '0.75'
-      line.append(plain)
+      name = el(doc, 'span', undefined, label)
+      name.style.opacity = '0.75'
     }
-    body.append(line)
+    name.style.flex = '1'
+    name.style.minWidth = '0'
+
+    const count = el(doc, 'span', undefined, ref.citedByCount === null ? '' : ref.citedByCount.toLocaleString())
+    count.style.cssText = 'flex:none;opacity:.6;font-variant-numeric:tabular-nums'
+    if (ref.citedByCount !== null) count.setAttribute('title', getString('pane-reference-cited-by'))
+
+    line.append(mark, name, count)
+    list.append(line)
   }
+  body.append(list)
 
   const rest = ordered.length - REFERENCES_SHOWN
   if (rest > 0) {
@@ -558,8 +573,26 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
       .map((ref) => readCache<S2Details>(s2DetailsCacheKey(ref.paperId)))
       .find((found) => found !== null) ?? null
 
-  const inLibrary = s2 && s2.references.length > 0 ? await getDoiIndex(item.libraryID) : new Map<string, number>()
-  return { record, journal, s2, inLibrary }
+  // Semantic Scholar first, OpenAlex when it comes back empty -- which happens
+  // both when it genuinely has nothing and when a publisher has told it not to
+  // serve the list. Either way the fallback is the same.
+  let references: PaneReference[] = (s2?.references ?? []).map((ref) => ({
+    title: ref.title,
+    doi: ref.doi,
+    year: ref.year,
+    citedByCount: ref.citedByCount,
+  }))
+  if (references.length === 0 && record) {
+    references = (await fetchReferences(record, { force })).map((ref) => ({
+      title: ref.title,
+      doi: ref.doi,
+      year: ref.year,
+      citedByCount: ref.citedByCount,
+    }))
+  }
+
+  const inLibrary = references.length > 0 ? await getDoiIndex(item.libraryID) : new Map<string, number>()
+  return { record, journal, s2, references, inLibrary }
 }
 
 export function registerCitationPane(): void {

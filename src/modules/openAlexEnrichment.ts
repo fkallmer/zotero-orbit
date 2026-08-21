@@ -18,17 +18,20 @@ import { dropCache, readCache, writeCache } from '../utils/recordCache'
 import { lookupFetch, RateLimitManager, REQUEST_HEADERS } from './citationTally'
 import {
   buildSourceUrl,
+  buildWorksByIdUrl,
   buildWorkUrl,
+  normalizeReferences,
   normalizeSource,
   normalizeWork,
   OPENALEX_DATABASE,
   openAlexRecordCacheKey,
+  REFERENCE_CHUNK,
   toLookupDoi,
   WORK_FULL_SELECT,
 } from './openAlexClient.core.ts'
 
 import type { ItemIdentifier } from './citationTypes.ts'
-import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
+import type { JournalMetrics, ResolvedReference, ScholarlyRecord } from './openAlexClient.core.ts'
 
 /** Journals change far more slowly than works, and there are few of them. */
 const SOURCE_TTL_MS = 60 * 24 * 60 * 60 * 1000
@@ -124,4 +127,38 @@ export async function fetchJournalMetrics(
   const metrics = normalizeSource(await fetchJson(buildSourceUrl(sourceId)))
   if (metrics) writeCache(key, metrics)
   return metrics
+}
+
+/**
+ * Resolve a record's referenced works into something showable.
+ *
+ * The fallback for when Semantic Scholar has no reference list -- often because
+ * the publisher told it not to serve one. OpenAlex answered with all 17 for a
+ * paper S2 elides, each with its own citation count.
+ *
+ * One request per chunk of ids, not one per reference.
+ */
+export async function fetchReferences(
+  record: ScholarlyRecord,
+  options: { force?: boolean } = {},
+): Promise<ResolvedReference[]> {
+  if (record.referencedWorks.length === 0) return []
+
+  const key = `refs:${(record.openAlexId ?? '').toLowerCase()}`
+  if (options.force) dropCache(key)
+  else {
+    const cached = readCache<ResolvedReference[]>(key)
+    if (cached) return cached
+  }
+
+  const resolved: ResolvedReference[] = []
+  for (let at = 0; at < record.referencedWorks.length; at += REFERENCE_CHUNK) {
+    const chunk = record.referencedWorks.slice(at, at + REFERENCE_CHUNK)
+    const json = await fetchJson(buildWorksByIdUrl(chunk))
+    if (json === null) break // partial beats nothing, and the cache is skipped below
+    resolved.push(...normalizeReferences(json))
+  }
+
+  if (resolved.length > 0) writeCache(key, resolved)
+  return resolved
 }

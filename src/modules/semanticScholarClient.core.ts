@@ -25,7 +25,8 @@ export const S2_PAPER_BASE = 'https://api.semanticscholar.org/graph/v1/paper'
  * but is not worth a second call against S2's rate limits.
  */
 const S2_FIELDS =
-  'fields=citationCount,influentialCitationCount,referenceCount,references.title,references.externalIds,references.year'
+  'fields=citationCount,influentialCitationCount,referenceCount,openAccessPdf,' +
+  'references.title,references.externalIds,references.year,references.citationCount'
 
 /** One confirming request after a first 403, on a budget of its own. */
 const AUTH_CORROBORATION_RETRIES = 1
@@ -136,11 +137,20 @@ export interface S2Reference {
   doi: string | null
   paperId: string | null
   year: number | null
+  /** How often the cited work is itself cited. Sorts the list by weight. */
+  citedByCount: number | null
 }
 
 /** Everything the paper request yields beyond the count itself. */
 export interface S2Details {
   citationCount: number
+  /**
+   * Set when the publisher has told Semantic Scholar not to serve a field
+   * through the API. IOP does this for references: the count arrives, the list
+   * does not, and the website shows them anyway. Without this the pane cannot
+   * tell a suppressed list from a missing one.
+   */
+  elidedByPublisher: boolean
   /**
    * Citations Semantic Scholar judges the citing work actually built on,
    * rather than mentioned in passing. At ten citations, one influential versus
@@ -179,11 +189,22 @@ export function parseS2Details(bodyText: string): S2Details | null {
     const doi = asText(ids.DOI)
     // A reference with neither a title nor a DOI cannot be shown or matched.
     if (!title && !doi) continue
-    references.push({ title, doi, paperId: asText(ref.paperId), year: asInt(ref.year) })
+    references.push({
+      title,
+      doi,
+      paperId: asText(ref.paperId),
+      year: asInt(ref.year),
+      citedByCount: asInt(ref.citationCount),
+    })
   }
+
+  const disclaimer = (parsed.openAccessPdf as { disclaimer?: unknown } | null)?.disclaimer
+  const elidedByPublisher =
+    typeof disclaimer === 'string' && /elided by the publisher/i.test(disclaimer) && /references/i.test(disclaimer)
 
   return {
     citationCount: count,
+    elidedByPublisher,
     influentialCitationCount: asInt(parsed.influentialCitationCount),
     referenceCount: asInt(parsed.referenceCount),
     references,
