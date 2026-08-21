@@ -39,8 +39,16 @@ interface PaneData {
   journal: JournalMetrics | null
 }
 
+/**
+ * The item pane is a XUL document, where `createElement('div')` produces a
+ * *XUL* element named "div": present in the DOM, laid out by nothing, drawn
+ * never. The section rendered 28 nodes and showed a blank panel until this was
+ * namespaced explicitly.
+ */
+const XHTML_NS = 'http://www.w3.org/1999/xhtml'
+
 function el(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag)
+  const node = doc.createElementNS(XHTML_NS, tag) as HTMLElement
   if (className) node.className = className
   if (text !== undefined) node.textContent = text
   return node
