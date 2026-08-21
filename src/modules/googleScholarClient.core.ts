@@ -112,6 +112,66 @@ export function hasCitationResults(html: string): boolean {
 }
 
 /**
+ * Pull the title of the first result out of a Scholar page.
+ *
+ * Scholar wraps it in `<h3 class="gs_rt">`, usually around an `<a>`, and marks
+ * up query terms with `<b>`. Prefixes like `[BOOK]`, `[PDF]` or `[CITATION]`
+ * are Scholar's own annotations, not part of the title.
+ */
+export function extractResultTitle(html: string): string | null {
+  const match = /<h3[^>]*class="[^"]*\bgs_rt\b[^"]*"[^>]*>([\s\S]*?)<\/h3>/i.exec(html)
+  if (!match) return null
+  const text = match[1]
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/^\s*\[[A-Z]+\]\s*/, '')
+  const cleaned = text.replace(/\s+/g, ' ').trim()
+  return cleaned || null
+}
+
+/** Lowercase, strip punctuation and diacritics, collapse spaces. */
+function normalizeForCompare(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
+ * How well two titles agree, as the share of the item's words the result
+ * covers (0 to 1).
+ *
+ * Deliberately asymmetric. Scholar routinely returns a longer title than the
+ * one Zotero holds -- subtitles, series names, edition markers -- and that
+ * should not be penalised. The reverse, a result missing words the item has,
+ * is what signals a different work.
+ */
+export function titleSimilarity(itemTitle: string, resultTitle: string): number {
+  const itemWords = normalizeForCompare(itemTitle).split(' ').filter(Boolean)
+  const resultWords = new Set(normalizeForCompare(resultTitle).split(' ').filter(Boolean))
+  if (itemWords.length === 0) return 0
+  const covered = itemWords.filter((word) => resultWords.has(word)).length
+  return covered / itemWords.length
+}
+
+/**
+ * Minimum agreement before a Scholar hit is accepted as the same work.
+ *
+ * Scholar is asked for a quoted title and returns `num=1` results, so the top
+ * hit is usually right -- but when it is not, the count is silently attributed
+ * to the wrong paper. 0.8 tolerates a missing subtitle word or a stray
+ * edition marker while rejecting a merely related work.
+ */
+export const TITLE_MATCH_THRESHOLD = 0.8
+
+/**
  * Read the citation count out of a Scholar results page.
  *
  * Three outcomes, and the distinction matters to the caller:

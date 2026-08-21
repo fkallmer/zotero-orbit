@@ -3,10 +3,13 @@ import { describe, it } from 'node:test'
 
 import {
   buildScholarUrl,
+  extractResultTitle,
   hasCitationResults,
   hasRecaptcha,
   parseScholarCount,
   stripTitleMarkup,
+  TITLE_MATCH_THRESHOLD,
+  titleSimilarity,
 } from '../src/modules/googleScholarClient.core.ts'
 import { stripCitationLines } from '../src/utils/extraField.ts'
 
@@ -152,5 +155,66 @@ describe('legacy GSCC stamps', () => {
     const lines = ['Citation Key: chenMITNetGANEnhanced2024', 'PMID: 12345678', 'GSCC is mentioned in prose here']
     const { kept } = stripCitationLines(lines, ['Google Scholar'])
     assert.deepEqual(kept, lines)
+  })
+})
+
+describe('extractResultTitle', () => {
+  it('reads the title out of the result heading', () => {
+    const html = '<h3 class="gs_rt"><a href="/x">Attention is all you need</a></h3>'
+    assert.equal(extractResultTitle(html), 'Attention is all you need')
+  })
+
+  it('drops the query-term highlighting Scholar injects', () => {
+    const html = '<h3 class="gs_rt"><a><b>Magnetic</b> induction tomography</a></h3>'
+    assert.equal(extractResultTitle(html), 'Magnetic induction tomography')
+  })
+
+  it('drops Scholar’s own [BOOK] and [PDF] annotations', () => {
+    const html = '<h3 class="gs_rt"><span class="gs_ct1">[BOOK]</span><a>Mathematik für Ingenieure</a></h3>'
+    assert.equal(extractResultTitle(html), 'Mathematik für Ingenieure')
+  })
+
+  it('decodes entities', () => {
+    assert.equal(extractResultTitle('<h3 class="gs_rt"><a>Law &amp; Order</a></h3>'), 'Law & Order')
+  })
+
+  it('returns null when there is no result heading', () => {
+    assert.equal(extractResultTitle('<div id="gs_res_ccl_mid"></div>'), null)
+  })
+})
+
+describe('titleSimilarity', () => {
+  it('scores an exact match as 1', () => {
+    assert.equal(titleSimilarity('Attention is all you need', 'Attention is all you need'), 1)
+  })
+
+  it('ignores case, punctuation and diacritics', () => {
+    assert.equal(titleSimilarity('Mathematik für Ingenieure!', 'MATHEMATIK FUR INGENIEURE'), 1)
+  })
+
+  it('does not penalise a result that adds a subtitle', () => {
+    // Scholar routinely returns the fuller published title.
+    assert.equal(titleSimilarity('MITNet', 'MITNet: GAN Enhanced Magnetic Induction Tomography'), 1)
+  })
+
+  it('scores a genuinely different work below the threshold', () => {
+    const score = titleSimilarity(
+      'Deep Learning for Image Reconstruction in Electrical Tomography',
+      'Sparse regularisation methods for geophysical inversion',
+    )
+    assert.ok(score < TITLE_MATCH_THRESHOLD, `expected < ${TITLE_MATCH_THRESHOLD}, got ${score}`)
+  })
+
+  it('rejects a neighbouring volume of the same textbook', () => {
+    // The case that motivated this: same series, different work.
+    const score = titleSimilarity(
+      'Mathematik für Ingenieure und Naturwissenschaftler Band 2 Differentialgleichungen',
+      'Mathematik für Ingenieure und Naturwissenschaftler',
+    )
+    assert.ok(score < TITLE_MATCH_THRESHOLD, `expected < ${TITLE_MATCH_THRESHOLD}, got ${score}`)
+  })
+
+  it('scores an empty item title as 0 rather than dividing by zero', () => {
+    assert.equal(titleSimilarity('', 'anything'), 0)
   })
 })

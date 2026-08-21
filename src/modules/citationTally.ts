@@ -29,7 +29,15 @@ import { getPref, setPref } from '../utils/prefs'
 
 import { effectiveDatabases, semanticScholarUnavailableResult } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
-import { buildScholarUrl, GOOGLE_SCHOLAR_DATABASE, hasRecaptcha, parseScholarCount } from './googleScholarClient.core'
+import {
+  buildScholarUrl,
+  extractResultTitle,
+  GOOGLE_SCHOLAR_DATABASE,
+  hasRecaptcha,
+  parseScholarCount,
+  TITLE_MATCH_THRESHOLD,
+  titleSimilarity,
+} from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
 import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
 
@@ -149,6 +157,8 @@ class RateLimitManager {
   private static multipliers: Record<string, number> = {}
   /** Earliest monotonic time the next request to each service may depart. */
   private static nextAvailable: Record<string, number | undefined> = {}
+  /** Spacing derived from a provider-reported budget; see `noteBudget`. */
+  private static budgetFloors: Record<string, number> = {}
 
   static getDelay(database: string): number {
     const baseLimits = getPref('rateLimits')
@@ -169,7 +179,8 @@ class RateLimitManager {
     // A user-set `rateLimits` value below the provider's documented limit is
     // clamped, not honored.
     const floor = MIN_RATE_LIMITS[database] ?? 0
-    return Math.max(baseDelay * multiplier, floor)
+    const budgetFloor = this.budgetFloors[database] ?? 0
+    return Math.max(baseDelay * multiplier, floor, budgetFloor)
   }
 
   static handleRateLimit(database: string): void {
@@ -187,6 +198,54 @@ class RateLimitManager {
     }
 
     ztoolkit.log(`Rate limit detected for ${database}: increasing multiplier to ${newMultiplier.toFixed(1)}x`)
+  }
+
+  /**
+   * Pace against a provider-reported request budget.
+   *
+   * OpenAlex returns `x-ratelimit-remaining` and `x-ratelimit-reset` (seconds)
+   * on every response. Ignoring them means running full speed into a 429 and
+   * only then backing off. Spreading what is left over the time until reset
+   * keeps a large library scan inside the budget instead.
+   *
+   * Only ever slows down: the computed spacing is applied as a floor, never as
+   * permission to go faster than the configured limit.
+   */
+  static noteBudget(database: string, response: Response): void {
+    const remainingHeader = response.headers.get('x-ratelimit-remaining')
+    const resetHeader = response.headers.get('x-ratelimit-reset')
+    if (remainingHeader === null || resetHeader === null) return
+
+    const remaining = Number.parseInt(remainingHeader, 10)
+    const resetSeconds = Number.parseInt(resetHeader, 10)
+    if (!Number.isFinite(remaining) || !Number.isFinite(resetSeconds) || resetSeconds <= 0) return
+
+    if (remaining <= 0) {
+      // Budget spent. Nothing to do but wait out the window.
+      const now = performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
+      const current = this.nextAvailable[database] ?? now
+      this.nextAvailable[database] = Math.max(current, now + resetSeconds * 1000)
+      ztoolkit.log(`Budget exhausted for ${database}: pausing ${resetSeconds}s until reset`)
+      return
+    }
+
+    // Only step in once the budget is genuinely tight; above that the
+    // configured spacing already governs.
+    const fairShareMs = (resetSeconds * 1000) / remaining
+    // Compare against the configured spacing without the budget floor folded
+    // in, or each call would ratchet against its own previous result.
+    const previousFloor = this.budgetFloors[database]
+    delete this.budgetFloors[database]
+    const configured = this.getDelay(database)
+    if (previousFloor !== undefined) this.budgetFloors[database] = previousFloor
+    if (fairShareMs > configured) {
+      this.budgetFloors[database] = fairShareMs
+      ztoolkit.log(
+        `Budget pacing for ${database}: ${remaining} left before reset, spacing to ${Math.round(fairShareMs)}ms`,
+      )
+    } else {
+      delete this.budgetFloors[database]
+    }
   }
 
   static handleSuccess(database: string): void {
@@ -1052,6 +1111,8 @@ class DBInterface {
         continue
       }
 
+      RateLimitManager.noteBudget('openalex', response)
+
       if (!response.ok) {
         const status = classifyHttpStatus(response.status)
         if (status === 'rate_limited') {
@@ -1191,7 +1252,32 @@ class DBInterface {
       return { count: 0, status: 'not_found', message: 'No matching Google Scholar result' }
     }
 
-    debugLog(`Citation debug - Google Scholar citation count: ${count}`)
+    // Scholar always answers with *something*. Without checking what came back,
+    // an unrelated paper's count gets written to this item and nothing ever
+    // flags it. Three near-identical textbook titles in one library returned
+    // 626, 2 and 0 citations; at most one of those was right.
+    const searchedTitle = parseMarkup(rawTitle)
+    const resultTitle = extractResultTitle(html)
+    if (!resultTitle) {
+      debugLog('Citation debug - Google Scholar result carries no readable title')
+      return { count: 0, status: 'not_found', message: 'Google Scholar result had no readable title' }
+    }
+    const similarity = titleSimilarity(searchedTitle, resultTitle)
+    if (similarity < TITLE_MATCH_THRESHOLD) {
+      debugLog(
+        `Citation debug - Google Scholar hit rejected (${similarity.toFixed(2)} < ${TITLE_MATCH_THRESHOLD}): ` +
+          `wanted "${searchedTitle}", got "${resultTitle}"`,
+      )
+      // Authoritative for this title: the top hit is not this work, and
+      // repeating the same query will not change that.
+      return {
+        count: 0,
+        status: 'not_found',
+        message: `Google Scholar returned a different work ("${resultTitle}")`,
+      }
+    }
+
+    debugLog(`Citation debug - Google Scholar citation count: ${count} (title match ${similarity.toFixed(2)})`)
     RateLimitManager.handleSuccess(GOOGLE_SCHOLAR_DATABASE)
     return { count, status: 'success' }
   }
