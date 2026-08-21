@@ -135,16 +135,22 @@ function renderChart(doc: Document, body: HTMLElement, record: ScholarlyRecord):
 
   body.append(heading(doc, getString('pane-heading-history')))
   const colors = getDatabaseColors()
-  const wrap = el(doc, 'div')
-  // The SVG is generated as a string by a DOM-free module so it can be unit
-  // tested; parsing it back is the cost of that.
-  wrap.innerHTML = renderChartSvg(
+  const markup = renderChartSvg(
     model,
     { series: colors.openalex ?? 'currentColor', muted: 'currentColor' },
     `${PANE_ID}-${model.firstYear}-${model.lastYear}`,
   )
-  const svg = wrap.firstElementChild
-  if (svg) body.append(svg)
+
+  // Parsed and imported rather than assigned to innerHTML. Zotero sanitizes
+  // innerHTML and strips `xmlns` along with `role`; without the namespace the
+  // element lands in the HTML namespace and is never drawn as SVG at all.
+  const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml')
+  const root = parsed.documentElement
+  if (!root || root.nodeName === 'parsererror') {
+    debugLog('Citation debug - Chart SVG did not parse')
+    return
+  }
+  body.append(doc.importNode(root, true))
 }
 
 function renderOpenAccess(doc: Document, body: HTMLElement, record: ScholarlyRecord): void {
