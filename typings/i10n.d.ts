@@ -55,6 +55,8 @@ export type FluentMessageId =
   | 'pane-no-openalex'
   | 'pane-reference-in-library'
   | 'pane-references-more'
+  | 'pane-references-none'
+  | 'pane-references-unresolved'
   | 'pane-refresh'
   | 'pane-refresh-failed'
   | 'pane-refreshing'

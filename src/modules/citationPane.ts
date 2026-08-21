@@ -419,9 +419,30 @@ function renderAuthors(doc: Document, body: HTMLElement, record: ScholarlyRecord
  */
 function renderReferences(doc: Document, body: HTMLElement, data: PaneData): void {
   const s2 = data.s2
-  if (!s2 || s2.references.length === 0) return
+  if (!s2) return
 
   body.append(heading(doc, getString('pane-heading-references')))
+
+  // Semantic Scholar often knows how many references a work has without
+  // holding a record for any of them -- the count comes from publisher
+  // metadata, the records from parsing that never happened. Two papers from
+  // 2000 and 2001 report 47 and 4 references and resolve none of either.
+  // Hiding the block in that case makes "no data here" look exactly like "this
+  // feature is broken", which is the state this pane spent an evening in.
+  if (s2.references.length === 0) {
+    const known = s2.referenceCount ?? 0
+    const note = el(
+      doc,
+      'div',
+      undefined,
+      known > 0
+        ? getString('pane-references-unresolved', { args: { count: known } })
+        : getString('pane-references-none'),
+    )
+    note.style.cssText = 'opacity:.7;line-height:1.35;padding:1px 0'
+    body.append(note)
+    return
+  }
 
   const held = s2.references.filter((ref) => ref.doi && data.inLibrary.has(normalizeDoi(ref.doi)))
   const total = s2.referenceCount ?? s2.references.length

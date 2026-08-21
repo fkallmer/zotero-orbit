@@ -96,3 +96,5 @@ pane-label-influential = Influential citations
 pane-hint-influential = Citations where Semantic Scholar judges the citing work built on this one, rather than mentioning it in passing. At ten citations, one influential versus eight is the whole story.
 
 column-fwci = Field-weighted impact
+pane-references-unresolved = Semantic Scholar counts { $count } references for this work but holds no record of them — common for older papers, where the count comes from publisher metadata and the reference list was never parsed.
+pane-references-none = Semantic Scholar lists no references for this work.
