@@ -37,3 +37,32 @@ semantic-scholar-unavailable = Semantic Scholar 不可用，已被关闭。其�
 # Column and tooltip
 column-citations = 引用
 tooltip-citation-tallies = { $displayName }：{ $count }
+
+# Item pane section
+pane-header = Citation Details
+pane-sidenav = Citation Details
+pane-refresh =
+  .label = Refresh from OpenAlex
+pane-loading = Loading OpenAlex data...
+pane-no-openalex = No OpenAlex record for this item. Works without a DOI or arXiv ID cannot be looked up there.
+pane-retracted = This work has been retracted.
+pane-heading-citations = Citations
+pane-divergence-note = The sources disagree substantially. Databases that index by DOI cannot see books, chapters or non-English work, where Google Scholar often can.
+pane-label-fwci = Field-weighted impact
+pane-label-percentile = Percentile
+pane-heading-history = Citations per year
+pane-heading-access = Open Access
+pane-label-oa-status = Status
+pane-link-fulltext = Open full text
+pane-label-apc = Publication charge
+pane-heading-journal = Journal
+pane-label-journal = Name
+pane-label-mean-citedness = 2-year mean citedness
+pane-label-h-index = h-index
+pane-label-i10-index = i10-index
+pane-label-doaj = In DOAJ
+pane-value-yes = yes
+pane-value-no = no
+pane-heading-authors = Authors
+pane-heading-institutions = Institutions
+pane-heading-funding = Funding

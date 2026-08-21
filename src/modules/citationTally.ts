@@ -39,6 +39,7 @@ import {
   titleSimilarity,
 } from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
+import { buildWorkUrl, OPENALEX_DATABASE, toLookupDoi, WORK_COUNT_SELECT } from './openAlexClient.core'
 import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
 
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
@@ -69,12 +70,6 @@ const USER_AGENT = `Citation-Tally/${version} (+https://github.com/daeh/zotero-c
 
 /** Headers every provider request sends. */
 const REQUEST_HEADERS: Readonly<Record<string, string>> = { 'User-Agent': USER_AGENT }
-
-/**
- * OpenAlex reads the contact from a `mailto` query parameter, not from the
- * User-Agent, and only then routes the request into its polite pool.
- */
-const OPENALEX_CONTACT = 'dev@daeh.info'
 
 /**
  * Floors on request spacing, in milliseconds.
@@ -482,7 +477,7 @@ function cancelMonthlyCleanup() {
 }
 
 // Operation display names (lazy-loaded to avoid startup issues)
-function getOperationName(key: string): string {
+export function getOperationName(key: string): string {
   const nameMap = {
     crossref: 'database-crossref',
     googlescholar: 'database-googlescholar',
@@ -494,23 +489,47 @@ function getOperationName(key: string): string {
   return fluentId ? getString(fluentId) : key
 }
 
-// Database colors for dark theme (default)
+/**
+ * Database colors, dark theme.
+ *
+ * Not chosen by eye. The previous set failed the `dataviz` validator: in light
+ * mode Semantic Scholar's red and OpenAlex's amber sat at CVD deltaE 3.2
+ * (deutan) and 12.7 for normal vision -- below the floor of 15, so even
+ * full-colour readers could not reliably separate them -- and Crossref's black
+ * had no chroma, reading as grey. These are stepped from that skill's
+ * reference ramps and pass every check in both modes on the adjacent pairlist.
+ *
+ * No five-colour set passes the *all-pairs* list, the reference palette
+ * included. Two things make that acceptable here: DATABASE_DISPLAY_ORDER fixes
+ * the on-screen adjacency to the one that was validated, and every source is
+ * always rendered with its name. Colour is a secondary cue, never the sole
+ * carrier of identity.
+ */
 const databaseColorsDark: Record<string, string> = {
-  crossref: '#1a73e8', // Blue
-  googlescholar: '#a142f4', // Purple
-  inspire: '#0f9d58', // Green
-  openalex: '#f9ab00', // Amber
-  semanticscholar: '#ea4335', // Red
+  crossref: '#3987e5', // Blue
+  inspire: '#199e70', // Aqua
+  openalex: '#c98500', // Yellow
+  googlescholar: '#9085e9', // Violet
+  semanticscholar: '#e66767', // Red
 }
 
-// Database colors for light theme (higher contrast)
+/** Database colors, light theme. Separately stepped -- see the dark set above. */
 const databaseColorsLight: Record<string, string> = {
-  crossref: '#000000', // Black
-  googlescholar: '#7627bb', // Purple, darkened for contrast on white
-  inspire: '#0f9d58', // Green
-  openalex: '#b06000', // Amber, darkened for contrast on white
-  semanticscholar: '#cc0000', // Red
+  crossref: '#2a78d6', // Blue
+  inspire: '#1baf7a', // Aqua
+  openalex: '#eda100', // Yellow
+  googlescholar: '#4a3aa7', // Violet
+  semanticscholar: '#e34948', // Red
 }
+
+/**
+ * The order sources are drawn in, everywhere the plugin shows more than one.
+ *
+ * Fixed on purpose: the palette above was validated for *these* neighbours.
+ * `databaseOrder` is a user preference and governs which sources are queried
+ * and in what sequence, but not how they are painted next to each other.
+ */
+export const DATABASE_DISPLAY_ORDER = ['crossref', 'inspire', 'openalex', 'googlescholar', 'semanticscholar'] as const
 
 /**
  * Detect if Zotero is using a light color scheme
@@ -856,6 +875,35 @@ class Core {
   }
 
   /**
+   * Stored counts keyed by database, in DATABASE_DISPLAY_ORDER.
+   *
+   * `getCitationCountForColumn` answers the same question for the column, but
+   * it follows the user's `databaseOrder` and flattens everything to display
+   * strings. The item pane needs the values and a fixed order -- fixed because
+   * the palette was validated for those neighbours.
+   */
+  static getStoredCountsByDatabase(item: Zotero.Item): { database: string; count: number }[] {
+    const extra = item.getField('extra')
+    if (!extra) return []
+    const lines = extra.split('\n')
+
+    const found: { database: string; count: number }[] = []
+    for (const database of DATABASE_DISPLAY_ORDER) {
+      const safeTag = escapeRegExp(getOperationName(database))
+      const withDate = new RegExp(`^Citations: *(\\d+) *\\(${safeTag}\\) *\\[\\d{4}-\\d{1,2}-\\d{1,2}\\]`, 'i')
+      const withoutDate = new RegExp(`^Citations: *(\\d+) *\\(${safeTag}\\)`, 'i')
+      for (const line of lines) {
+        const match = withDate.exec(line) ?? withoutDate.exec(line)
+        if (match?.[1]) {
+          found.push({ database, count: Number.parseInt(match[1], 10) })
+          break
+        }
+      }
+    }
+    return found
+  }
+
+  /**
    * Extract citation count from Extra field
    * @param item Zotero item
    * @param tag Citation source tag
@@ -1090,17 +1138,14 @@ class DBInterface {
     let sawApiError = false
 
     for (const identifier of identifiers) {
-      const lookupDoi = identifier.type === 'doi' ? identifier.id : `10.48550/arxiv.${stripArxivVersion(identifier.id)}`
+      const lookupDoi = toLookupDoi(identifier)
       debugLog(`Citation debug - Trying OpenAlex with DOI: ${lookupDoi} (from ${identifier.source})`)
 
-      await RateLimitManager.waitForRateLimit('openalex')
+      await RateLimitManager.waitForRateLimit(OPENALEX_DATABASE)
 
-      // `select` keeps the response to the one field we read; the full work
-      // record is tens of kilobytes. `mailto` is what puts the request into
-      // OpenAlex's polite pool -- the User-Agent alone does not.
-      const url =
-        `https://api.openalex.org/works/doi:${encodeIdentifierPath(lookupDoi)}` +
-        `?select=cited_by_count&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+      // Only the one field this path reads. The full record is tens of
+      // kilobytes and is fetched separately, by the item pane, on demand.
+      const url = buildWorkUrl(lookupDoi, WORK_COUNT_SELECT)
 
       let response: Response
       try {
@@ -1111,12 +1156,12 @@ class DBInterface {
         continue
       }
 
-      RateLimitManager.noteBudget('openalex', response)
+      RateLimitManager.noteBudget(OPENALEX_DATABASE, response)
 
       if (!response.ok) {
         const status = classifyHttpStatus(response.status)
         if (status === 'rate_limited') {
-          RateLimitManager.handleRateLimit('openalex')
+          RateLimitManager.handleRateLimit(OPENALEX_DATABASE)
           return { count: -1, status: 'rate_limited', message: 'API rate limit exceeded' }
         }
         if (status === 'transient_error') sawTransient = true
@@ -1144,7 +1189,7 @@ class DBInterface {
       debugLog(
         `Citation debug - OpenAlex citation count: ${count} (via ${identifier.type} ${identifier.id} from ${identifier.source})`,
       )
-      RateLimitManager.handleSuccess('openalex')
+      RateLimitManager.handleSuccess(OPENALEX_DATABASE)
       return { count, status: 'success' }
     }
 
@@ -1475,7 +1520,7 @@ async function updateItem(
       if (operation === 'crossref') {
         result = await DBInterface.getCrossrefCountEnhanced(item)
         displayName = getOperationName(operation)
-      } else if (operation === 'openalex') {
+      } else if (operation === OPENALEX_DATABASE) {
         result = await DBInterface.getOpenAlexCountEnhanced(item)
         displayName = getOperationName(operation)
       } else if (operation === GOOGLE_SCHOLAR_DATABASE) {
@@ -1729,7 +1774,14 @@ class UX {
 }
 
 // Export functions needed by autoupdate module
+export { getDatabaseColors }
 export {
+  // The item pane reuses the provider plumbing rather than opening a second,
+  // separately paced channel to OpenAlex.
+  lookupFetch,
+  RateLimitManager,
+  REQUEST_HEADERS,
+  REQUEST_TIMEOUT_MS,
   DBInterface,
   Core,
   Helpers,

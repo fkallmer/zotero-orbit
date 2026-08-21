@@ -1,4 +1,5 @@
 import { cancelAutomaticUpdate, startAutomaticUpdate } from './modules/citationAutoupdate'
+import { registerCitationPane, unregisterCitationPane } from './modules/citationPane'
 import {
   abortInFlightLookups,
   BasicRegistrar,
@@ -22,6 +23,7 @@ import {
   shutdownSemanticScholarClient,
 } from './modules/semanticScholarClient'
 import { getString, initLocale } from './utils/locale'
+import { flushCache, loadCache } from './utils/recordCache'
 
 async function onStartup() {
   await Promise.all([Zotero.initializationPromise, Zotero.unlockPromise, Zotero.uiReadyPromise])
@@ -45,6 +47,10 @@ async function onStartup() {
 
   // Register custom column for citation counts
   UIRegistrar.registerCitationColumn()
+  registerCitationPane()
+  // The cache only feeds the item pane, so a slow read must not hold up
+  // startup; the pane's first async render awaits it anyway.
+  void loadCache()
 
   // Process-wide registrations. These used to live in onMainWindowLoad, which
   // runs once per main window, so a second window re-registered the menus and
@@ -149,6 +155,8 @@ function onShutdown(): void {
     // could otherwise outlive the plugin.
     () => abortInFlightLookups(),
     () => UIRegistrar.unregisterNotifier(),
+    () => unregisterCitationPane(),
+    () => void flushCache(),
     () => shutdownSemanticScholarClient(),
     () => closeDegradedNotice(),
     () => ztoolkit.unregisterAll(),

@@ -1,0 +1,19 @@
+{
+  "id": "https://openalex.org/S189694085",
+  "display_name": "IEEE Sensors Journal",
+  "issn_l": "1530-437X",
+  "is_in_doaj": false,
+  "is_oa": false,
+  "apc_usd": 2645,
+  "apc_prices": [
+    {
+      "price": 2645,
+      "currency": "USD"
+    }
+  ],
+  "summary_stats": {
+    "2yr_mean_citedness": 4.183415387585674,
+    "h_index": 202,
+    "i10_index": 15525
+  }
+}
