@@ -13,9 +13,11 @@
 
 import { getLocaleID, getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
+import { getPref } from '../utils/prefs'
 
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
 import { Core, getDatabaseColors, getOperationName, Helpers } from './citationTally'
+import { buildScholarUrl } from './googleScholarClient.core.ts'
 import { fetchJournalMetrics, fetchScholarlyRecord } from './openAlexEnrichment'
 
 import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
@@ -89,6 +91,48 @@ function link(doc: Document, text: string, url: string): HTMLElement {
 }
 
 /**
+ * Where a given source shows this work, or null if it cannot be addressed.
+ *
+ * Each link goes to that provider's own page for the paper rather than to a
+ * generic resolver: the point of showing four numbers side by side is being
+ * able to go and see where each one comes from.
+ */
+function sourceUrl(database: string, item: Zotero.Item, record: ScholarlyRecord | null): string | null {
+  const doi = Helpers.getAllItemIdentifiers(item).find((id) => id.type === 'doi')?.id ?? null
+
+  switch (database) {
+    case 'openalex':
+      // The record carries its own canonical URL; the DOI form is the fallback
+      // for when the pane has counts but no record yet.
+      return record?.openAlexId ?? (doi ? `https://openalex.org/works/doi:${encodeURIComponent(doi)}` : null)
+    case 'crossref':
+      return doi ? `https://search.crossref.org/search/works?q=${encodeURIComponent(doi)}&from_ui=yes` : null
+    case 'semanticscholar':
+      return doi ? `https://www.semanticscholar.org/paper/${doi}` : null
+    case 'inspire':
+      return doi ? `https://inspirehep.net/literature?q=${encodeURIComponent(doi)}` : null
+    case 'googlescholar': {
+      // The same query the provider ran, so the page shows the hit the count
+      // was read from rather than a fresh guess.
+      const title = item.getField('title')
+      if (!title) return null
+      try {
+        return buildScholarUrl({
+          endpoint: getPref('googleScholarEndpoint') || 'https://scholar.google.com',
+          title,
+          authors: (item.getCreators() || []).map((creator) => creator.lastName).filter(Boolean),
+          matchAuthors: true,
+        })
+      } catch {
+        return null
+      }
+    }
+    default:
+      return null
+  }
+}
+
+/**
  * The counts the plugin already stored, plus a note when they disagree.
  *
  * Sources are drawn in DATABASE_DISPLAY_ORDER and always carry their name.
@@ -111,7 +155,10 @@ function renderCounts(doc: Document, body: HTMLElement, item: Zotero.Item, recor
 
     const swatch = el(doc, 'span')
     swatch.style.cssText = `width:8px;height:8px;border-radius:2px;flex:none;background:${colors[database] ?? 'currentColor'}`
-    const name = el(doc, 'span', undefined, getOperationName(database))
+    const url = sourceUrl(database, item, record)
+    const name = url
+      ? link(doc, getOperationName(database), url)
+      : el(doc, 'span', undefined, getOperationName(database))
     name.style.flex = '1'
     const value = el(doc, 'span', undefined, count.toLocaleString())
 

@@ -61,7 +61,29 @@ describe('renderChartSvg', () => {
 
   it('draws one column per year, gaps included', () => {
     const svg = renderChartSvg(model, theme, 't1')
-    assert.equal(svg.match(/<rect /g)?.length, 5) // 4 columns + the hatch tile
+    // Bars carry a corner radius; the hatch tile and the hover targets do not.
+    assert.equal(svg.match(/<rect [^>]*rx="2"/g)?.length, 4)
+  })
+
+  it('gives the running total its own plot rather than a second y-axis', () => {
+    // Overlaying a running total on a second scale would put the crossing
+    // point wherever the scales happened to fall. Two baselines, two maxima.
+    const svg = renderChartSvg(model, theme, 't1b')
+    assert.equal(svg.match(/<line [^>]*stroke-width="1"/g)?.length, 4) // two ticks per plot
+    assert.ok(svg.includes('<path d="M')) // the cumulative line
+  })
+
+  it('labels zero and the maximum on both plots', () => {
+    const svg = renderChartSvg(model, theme, 't1c')
+    assert.ok(svg.includes('>40</text>')) // busiest single year
+    assert.ok(svg.includes('>53</text>')) // running total
+    assert.equal(svg.match(/>0<\/text>/g)?.length, 2) // one baseline each
+  })
+
+  it('offers a hover target per year on the running total', () => {
+    const svg = renderChartSvg(model, theme, 't1d')
+    assert.ok(svg.includes('<title>2025: 50 total</title>'))
+    assert.equal(svg.match(/fill="transparent"/g)?.length, 4)
   })
 
   it('fills the partial year with the hatch, not the flat colour', () => {
@@ -82,11 +104,10 @@ describe('renderChartSvg', () => {
     assert.ok(svg.includes('<title>2024: 0</title>'))
   })
 
-  it('labels only the endpoints and the peak', () => {
+  it('labels only the endpoint years', () => {
     const svg = renderChartSvg(model, theme, 't5')
     assert.ok(svg.includes('>2023</text>'))
     assert.ok(svg.includes('>2026</text>'))
-    assert.ok(svg.includes('>40</text>'))
     // No label for the years in between.
     assert.ok(!svg.includes('>2024</text>'))
   })
@@ -96,10 +117,10 @@ describe('renderChartSvg', () => {
     assert.ok(renderChartSvg(model, theme, 'b').includes('id="b-hatch"'))
   })
 
-  it('carries a text alternative', () => {
+  it('carries a text alternative naming both plots', () => {
     const svg = renderChartSvg(model, theme, 't6')
     assert.ok(svg.includes('role="img"'))
-    assert.ok(/aria-label="Citations per year, 2023 to 2026, 53 total"/.test(svg))
+    assert.ok(/aria-label="Citations per year and running total, 2023 to 2026, 53 in all/.test(svg))
   })
 
   it('produces well-formed markup for a single-column-dominant series', () => {
@@ -108,7 +129,32 @@ describe('renderChartSvg', () => {
     assert.ok(svg.startsWith('<svg'))
     assert.ok(svg.endsWith('</svg>'))
     assert.ok(!svg.includes('NaN'))
-    // The peak label is grouped for readability, not dumped raw.
-    assert.ok(svg.includes('>100,000</text>'))
+    // Five-plus digits would crowd the 28px axis gutter, so they are compacted.
+    assert.ok(svg.includes('>100k</text>'))
+  })
+})
+
+describe('cumulative values', () => {
+  it('accumulates across the series', () => {
+    const model = buildChartModel(series([2020, 5], [2021, 3], [2022, 12]), 2026)
+    assert.deepEqual(
+      model?.bars.map((bar) => bar.cumulative),
+      [5, 8, 20],
+    )
+    assert.equal(model?.total, 20)
+  })
+
+  it('carries the filled years through a gap unchanged', () => {
+    // A zero year must not reset or interrupt the running total.
+    const model = buildChartModel(series([2020, 4], [2021, 0], [2022, 6]), 2026)
+    assert.deepEqual(
+      model?.bars.map((bar) => bar.cumulative),
+      [4, 4, 10],
+    )
+  })
+
+  it('ends at the total', () => {
+    const model = buildChartModel(series([2019, 7], [2020, 1], [2021, 9]), 2026)
+    assert.equal(model?.bars.at(-1)?.cumulative, model?.total)
   })
 })

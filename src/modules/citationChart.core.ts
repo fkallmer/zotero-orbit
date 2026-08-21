@@ -16,6 +16,9 @@ import type { YearCount } from './openAlexClient.core.ts'
 export const MIN_YEARS_FOR_CHART = 2
 
 export interface ChartBar extends YearCount {
+  /** Running total up to and including this year. */
+  cumulative: number
+
   /**
    * True for the year still in progress.
    *
@@ -46,7 +49,11 @@ export interface ChartModel {
 export function buildChartModel(series: readonly YearCount[], currentYear: number): ChartModel | null {
   if (series.length < MIN_YEARS_FOR_CHART) return null
 
-  const bars: ChartBar[] = series.map((point) => ({ ...point, partial: point.year >= currentYear }))
+  let running = 0
+  const bars: ChartBar[] = series.map((point) => {
+    running += point.count
+    return { ...point, partial: point.year >= currentYear, cumulative: running }
+  })
   const maxCount = Math.max(...bars.map((bar) => bar.count))
   // Every year at zero: an axis of empty columns communicates nothing.
   if (maxCount <= 0) return null
@@ -56,22 +63,34 @@ export function buildChartModel(series: readonly YearCount[], currentYear: numbe
     maxCount,
     firstYear: bars[0].year,
     lastYear: bars[bars.length - 1].year,
-    total: bars.reduce((sum, bar) => sum + bar.count, 0),
+    total: running,
   }
 }
 
 export interface ChartTheme {
-  /** Column fill. One series, so one colour -- the heading names it. */
+  /** Mark fill. One measure, so one hue -- the heading names it. */
   series: string
-  /** Axis and label ink. Text never wears the series colour. */
+  /** Axis, gridline and label ink. Text never wears the series colour. */
   muted: string
 }
 
 const VIEW_WIDTH = 240
-const PLOT_HEIGHT = 48
-const LABEL_HEIGHT = 12
-/** Headroom above the plot for the peak value. */
-const VALUE_HEIGHT = 11
+/** Gutter for the y-axis value labels. */
+const AXIS_LEFT = 28
+const PLOT_WIDTH = VIEW_WIDTH - AXIS_LEFT
+
+const BARS_HEIGHT = 44
+/** Separation between the two plots, so they never read as one dual-axis chart. */
+const BAND_GAP = 13
+const CUMULATIVE_HEIGHT = 26
+const XLABEL_HEIGHT = 12
+
+const BARS_TOP = 0
+const BARS_BASE = BARS_TOP + BARS_HEIGHT
+const CUM_TOP = BARS_BASE + BAND_GAP
+const CUM_BASE = CUM_TOP + CUMULATIVE_HEIGHT
+const TOTAL_HEIGHT = CUM_BASE + XLABEL_HEIGHT
+
 const BAR_GAP = 2
 const BAR_RADIUS = 2
 /** A count of zero still gets a sliver, so the year reads as present-but-empty. */
@@ -81,62 +100,102 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function compact(value: number): string {
+  if (value >= 10000) return `${Math.round(value / 1000)}k`
+  return value.toLocaleString('en-US')
+}
+
 /**
- * Render the model as a standalone SVG string.
+ * Render the model as a standalone SVG: per-year columns above, running total
+ * below.
  *
- * The hatch pattern for the partial year doubles as the secondary encoding the
- * colour rules ask for: the distinction survives greyscale, print, and every
- * form of colour vision.
+ * **Two plots, not one chart with two y-scales.** Yearly counts and a running
+ * total differ by orders of magnitude, and overlaying them on a second axis is
+ * the most misleading thing a chart of this data can do -- where the two
+ * crossed would be an artefact of the scales picked, and readers would take it
+ * for a fact about the work. They are stacked instead, each with its own
+ * baseline and its own maximum labelled, sharing only the year axis.
+ *
+ * The hatch on the running year doubles as the secondary encoding the colour
+ * rules ask for: it survives greyscale, print and every form of colour vision.
  */
 export function renderChartSvg(model: ChartModel, theme: ChartTheme, idPrefix: string): string {
   const count = model.bars.length
-  const slot = VIEW_WIDTH / count
+  const slot = PLOT_WIDTH / count
   const barWidth = Math.max(1, slot - BAR_GAP)
-  const height = VALUE_HEIGHT + PLOT_HEIGHT + LABEL_HEIGHT
-  const baseline = VALUE_HEIGHT + PLOT_HEIGHT
   const hatchId = `${idPrefix}-hatch`
-  const peakIndex = model.bars.findIndex((bar) => bar.count === model.maxCount)
+  const x = (index: number): number => AXIS_LEFT + index * slot
 
   const columns = model.bars
     .map((bar, index) => {
-      const scaled = (bar.count / model.maxCount) * PLOT_HEIGHT
-      const barHeight = bar.count > 0 ? Math.max(MIN_BAR_HEIGHT, scaled) : MIN_BAR_HEIGHT
-      const x = index * slot + BAR_GAP / 2
-      const y = baseline - barHeight
+      const scaled = (bar.count / model.maxCount) * BARS_HEIGHT
+      const height = bar.count > 0 ? Math.max(MIN_BAR_HEIGHT, scaled) : MIN_BAR_HEIGHT
       const fill = bar.partial ? `url(#${hatchId})` : theme.series
       const label = bar.partial ? `${bar.year}: ${bar.count} (current year, incomplete)` : `${bar.year}: ${bar.count}`
       return (
-        `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" ` +
-        `height="${barHeight.toFixed(2)}" rx="${BAR_RADIUS}" fill="${fill}">` +
+        `<rect x="${(x(index) + BAR_GAP / 2).toFixed(2)}" y="${(BARS_BASE - height).toFixed(2)}" ` +
+        `width="${barWidth.toFixed(2)}" height="${height.toFixed(2)}" rx="${BAR_RADIUS}" fill="${fill}">` +
         `<title>${escapeXml(label)}</title></rect>`
       )
     })
     .join('')
 
-  // Only the endpoints are labelled; a number under every column is noise.
-  const axis =
-    `<text x="0" y="${height - 2}" font-size="9" fill="${theme.muted}">${model.firstYear}</text>` +
-    `<text x="${VIEW_WIDTH}" y="${height - 2}" font-size="9" fill="${theme.muted}" ` +
+  // Sampled at the centre of each year's slot, so a point sits over the column
+  // it belongs to rather than between two of them.
+  const points = model.bars.map((bar, index) => ({
+    px: x(index) + slot / 2,
+    py: CUM_BASE - (bar.cumulative / model.total) * CUMULATIVE_HEIGHT,
+    bar,
+  }))
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.px.toFixed(2)},${p.py.toFixed(2)}`).join(' ')
+  const area =
+    `M${points[0].px.toFixed(2)},${CUM_BASE} ` +
+    points.map((p) => `L${p.px.toFixed(2)},${p.py.toFixed(2)}`).join(' ') +
+    ` L${points[points.length - 1].px.toFixed(2)},${CUM_BASE} Z`
+
+  // Invisible hit targets, one per year, bigger than the 2px line they explain.
+  const cumulativeHovers = points
+    .map(
+      (p) =>
+        `<rect x="${(p.px - slot / 2).toFixed(2)}" y="${CUM_TOP}" width="${slot.toFixed(2)}" ` +
+        `height="${CUMULATIVE_HEIGHT}" fill="transparent">` +
+        `<title>${escapeXml(`${p.bar.year}: ${p.bar.cumulative} total`)}</title></rect>`,
+    )
+    .join('')
+
+  // Two ticks per plot -- zero and the maximum. A gridline for every step would
+  // outweigh the marks at this size.
+  const tick = (y: number, value: string, textBaseline: number): string =>
+    `<line x1="${AXIS_LEFT}" y1="${y}" x2="${VIEW_WIDTH}" y2="${y}" stroke="${theme.muted}" ` +
+    `stroke-width="1" opacity="0.25"/>` +
+    `<text x="${AXIS_LEFT - 4}" y="${textBaseline}" font-size="8" fill="${theme.muted}" ` +
+    `text-anchor="end" opacity="0.8">${value}</text>`
+
+  const axes =
+    tick(BARS_TOP, compact(model.maxCount), BARS_TOP + 7) +
+    tick(BARS_BASE, '0', BARS_BASE) +
+    tick(CUM_TOP, compact(model.total), CUM_TOP + 7) +
+    tick(CUM_BASE, '0', CUM_BASE) +
+    `<text x="${AXIS_LEFT}" y="${TOTAL_HEIGHT - 2}" font-size="9" fill="${theme.muted}">${model.firstYear}</text>` +
+    `<text x="${VIEW_WIDTH}" y="${TOTAL_HEIGHT - 2}" font-size="9" fill="${theme.muted}" ` +
     `text-anchor="end">${model.lastYear}</text>`
 
-  // One value label, on the peak, so the axis has a scale without a gridline
-  // for every step. Nudged inside the viewport at either edge.
-  const peakCentre = peakIndex * slot + slot / 2
-  const peakAnchor = peakCentre < 20 ? 'start' : peakCentre > VIEW_WIDTH - 20 ? 'end' : 'middle'
-  const peakX = peakAnchor === 'start' ? 0 : peakAnchor === 'end' ? VIEW_WIDTH : peakCentre
-  const peakLabel =
-    `<text x="${peakX.toFixed(2)}" y="${VALUE_HEIGHT - 2}" font-size="9" fill="${theme.muted}" ` +
-    `text-anchor="${peakAnchor}">${model.maxCount.toLocaleString('en-US')}</text>`
-
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW_WIDTH} ${height}" ` +
-    `width="100%" height="${height}" role="img" ` +
-    `aria-label="Citations per year, ${model.firstYear} to ${model.lastYear}, ${model.total} total">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW_WIDTH} ${TOTAL_HEIGHT}" ` +
+    `width="100%" height="${TOTAL_HEIGHT}" role="img" ` +
+    `aria-label="Citations per year and running total, ${model.firstYear} to ${model.lastYear}, ` +
+    `${model.total} in all, peaking at ${model.maxCount} in one year">` +
     `<defs><pattern id="${hatchId}" patternUnits="userSpaceOnUse" width="4" height="4" ` +
     `patternTransform="rotate(45)">` +
     `<rect width="4" height="4" fill="${theme.series}" opacity="0.25"/>` +
     `<line x1="0" y1="0" x2="0" y2="4" stroke="${theme.series}" stroke-width="2"/>` +
     `</pattern></defs>` +
-    `<g>${columns}</g>${peakLabel}${axis}</svg>`
+    `<g>${axes}</g>` +
+    `<g>${columns}</g>` +
+    `<path d="${area}" fill="${theme.series}" opacity="0.18"/>` +
+    `<path d="${line}" fill="none" stroke="${theme.series}" stroke-width="2" ` +
+    `stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<g>${cumulativeHovers}</g>` +
+    `</svg>`
   )
 }
