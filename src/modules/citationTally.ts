@@ -29,6 +29,7 @@ import { getPref, setPref } from '../utils/prefs'
 
 import { effectiveDatabases, semanticScholarUnavailableResult } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
+import { buildScholarUrl, GOOGLE_SCHOLAR_DATABASE, hasRecaptcha, parseScholarCount } from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
 import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
 
@@ -40,6 +41,9 @@ const DEFAULT_RATE_LIMITS: Record<string, number> = {
   crossref: 1000,
   inspire: 1000,
   openalex: 200,
+  // Scholar has no published limit; it just starts serving CAPTCHAs. This is
+  // the midpoint of the random 1-5s wait the standalone GSCC plugin settled on.
+  googlescholar: 3000,
 }
 
 const MAX_RATE_LIMIT_MULTIPLIER = 10
@@ -79,12 +83,17 @@ const MIN_RATE_LIMITS: Record<string, number> = {
   // also carry an x-ratelimit-remaining budget (1000 per window at the time of
   // writing), so pacing matters even though the per-second ceiling is high.
   openalex: 100,
+  // Below roughly a second, Scholar reliably trips its bot detection.
+  googlescholar: 1000,
 }
 
 /** Minimum backoff after a 429, per provider. */
 const MIN_BACKOFF_AFTER_429_MS: Record<string, number> = {
   inspire: 5000,
   openalex: 5000,
+  // A CAPTCHA is not a timed rate limit -- backing off briefly and retrying
+  // just burns the next request too.
+  googlescholar: 60_000,
 }
 
 /**
@@ -417,6 +426,7 @@ function cancelMonthlyCleanup() {
 function getOperationName(key: string): string {
   const nameMap = {
     crossref: 'database-crossref',
+    googlescholar: 'database-googlescholar',
     inspire: 'database-inspire',
     openalex: 'database-openalex',
     semanticscholar: 'database-semanticscholar',
@@ -428,6 +438,7 @@ function getOperationName(key: string): string {
 // Database colors for dark theme (default)
 const databaseColorsDark: Record<string, string> = {
   crossref: '#1a73e8', // Blue
+  googlescholar: '#a142f4', // Purple
   inspire: '#0f9d58', // Green
   openalex: '#f9ab00', // Amber
   semanticscholar: '#ea4335', // Red
@@ -436,6 +447,7 @@ const databaseColorsDark: Record<string, string> = {
 // Database colors for light theme (higher contrast)
 const databaseColorsLight: Record<string, string> = {
   crossref: '#000000', // Black
+  googlescholar: '#7627bb', // Purple, darkened for contrast on white
   inspire: '#0f9d58', // Green
   openalex: '#b06000', // Amber, darkened for contrast on white
   semanticscholar: '#cc0000', // Red
@@ -1019,8 +1031,7 @@ class DBInterface {
     let sawApiError = false
 
     for (const identifier of identifiers) {
-      const lookupDoi =
-        identifier.type === 'doi' ? identifier.id : `10.48550/arxiv.${stripArxivVersion(identifier.id)}`
+      const lookupDoi = identifier.type === 'doi' ? identifier.id : `10.48550/arxiv.${stripArxivVersion(identifier.id)}`
       debugLog(`Citation debug - Trying OpenAlex with DOI: ${lookupDoi} (from ${identifier.source})`)
 
       await RateLimitManager.waitForRateLimit('openalex')
@@ -1083,6 +1094,106 @@ class DBInterface {
       return { count: -1, status: 'api_error', message: 'OpenAlex rejected every identifier' }
     }
     return { count: 0, status: 'not_found', message: 'No valid identifiers found in OpenAlex' }
+  }
+
+  /**
+   * Get citation count from Google Scholar with enhanced status information.
+   *
+   * Unlike every other provider here, Scholar takes no identifier: it is
+   * searched by title and author. That is the whole point of including it --
+   * books, chapters, theses, reports and non-English work carry no DOI and are
+   * invisible to Crossref, OpenAlex, INSPIRE and Semantic Scholar alike. The
+   * price is a scraped results page and Scholar's CAPTCHA.
+   *
+   * `Zotero.HTTP.request` is used rather than the shared `lookupFetch`, because
+   * Scholar's bot detection reacts to `fetch()` and because the cookie the user
+   * earns by solving a CAPTCHA only carries over on Zotero's own HTTP stack.
+   *
+   * @param item Zotero item
+   * @param interactive Whether a CAPTCHA may be surfaced to the user. False on
+   *   automatic runs, where a browser window opening unprompted is hostile.
+   * @returns LookupResult with count and status
+   */
+  static async getGoogleScholarCountEnhanced(item: Zotero.Item, interactive: boolean): Promise<LookupResult> {
+    const rawTitle = item.getField('title')
+    if (!rawTitle) {
+      debugLog('Citation debug - No title, cannot search Google Scholar for item:', item.id)
+      return { count: -1, status: 'no_identifier', message: 'No title to search with' }
+    }
+
+    // Zotero stores markup in titles; a DOMParser is available in the client,
+    // and the core module falls back to a regex when it is not.
+    const parseMarkup = (html: string): string =>
+      new DOMParser().parseFromString(html, 'text/html').body?.textContent || ''
+
+    const authors = (item.getCreators() || []).map((creator) => creator.lastName).filter(Boolean)
+    const year = Number.parseInt(item.getField('year'), 10)
+
+    let url: string
+    try {
+      url = buildScholarUrl({
+        endpoint: getPref('googleScholarEndpoint') || 'https://scholar.google.com',
+        title: parseMarkup(rawTitle),
+        authors,
+        year: Number.isNaN(year) ? undefined : year,
+        matchAuthors: true,
+      })
+    } catch (err) {
+      debugLog('Citation debug - Could not build Google Scholar URL:', err)
+      return { count: -1, status: 'no_identifier', message: 'No usable title to search with' }
+    }
+
+    await RateLimitManager.waitForRateLimit(GOOGLE_SCHOLAR_DATABASE)
+    debugLog('Citation debug - Fetching from Google Scholar:', url)
+
+    let html: string
+    try {
+      const response = await Zotero.HTTP.request('GET', url, {
+        responseType: 'text',
+        timeout: REQUEST_TIMEOUT_MS,
+      })
+      html = (response as { responseText?: string }).responseText ?? ''
+    } catch (err) {
+      // Zotero.HTTP throws on non-2xx, carrying the status on the error.
+      const status = (err as { status?: number })?.status
+      if (typeof status === 'number') {
+        const classified = classifyHttpStatus(status)
+        if (classified === 'rate_limited') RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
+        debugLog(`Citation debug - Google Scholar HTTP ${status} (${classified})`)
+        return { count: -1, status: classified, message: `HTTP ${status}` }
+      }
+      debugLog('Citation debug - Google Scholar request failed:', err)
+      return { count: -1, status: classifyThrown(), message: 'Network request failed' }
+    }
+
+    if (hasRecaptcha(html)) {
+      // Scholar is not rate limiting us on a timer; it wants a human. Backing
+      // off and retrying spends the next request for nothing, so the run stops
+      // here and -- when a person is actually present -- the page is opened so
+      // the challenge can be solved.
+      RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
+      debugLog('Citation debug - Google Scholar returned a CAPTCHA')
+      if (interactive) {
+        try {
+          Zotero.openInViewer(url)
+        } catch (err) {
+          debugLog('Citation debug - Could not open the CAPTCHA page:', err)
+        }
+      }
+      return { count: -1, status: 'rate_limited', message: 'Google Scholar is asking for a CAPTCHA' }
+    }
+
+    const count = parseScholarCount(html)
+    if (count === null) {
+      // No result block: the search matched nothing. That is a statement about
+      // this title, not a transport failure, so it is allowed to persist.
+      debugLog('Citation debug - No Google Scholar result for item:', item.id)
+      return { count: 0, status: 'not_found', message: 'No matching Google Scholar result' }
+    }
+
+    debugLog(`Citation debug - Google Scholar citation count: ${count}`)
+    RateLimitManager.handleSuccess(GOOGLE_SCHOLAR_DATABASE)
+    return { count, status: 'success' }
   }
 
   /**
@@ -1280,6 +1391,11 @@ async function updateItem(
         displayName = getOperationName(operation)
       } else if (operation === 'openalex') {
         result = await DBInterface.getOpenAlexCountEnhanced(item)
+        displayName = getOperationName(operation)
+      } else if (operation === GOOGLE_SCHOLAR_DATABASE) {
+        // Automatic runs never surface a CAPTCHA window unprompted.
+        result = await DBInterface.getGoogleScholarCountEnhanced(item, !isAutoUpdate)
+        displayName = getOperationName(operation)
       } else if (operation === 'inspire') {
         result = await DBInterface.getInspireCountEnhanced(item)
         displayName = getOperationName(operation)

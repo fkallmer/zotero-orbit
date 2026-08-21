@@ -8,6 +8,7 @@ import { parseCitationStampDate, parseDateAddedInstant } from '../utils/temporal
 
 import { Helpers, updateItem } from './citationTally'
 import { effectiveDatabases } from './citationTypes'
+import { GOOGLE_SCHOLAR_DATABASE } from './googleScholarClient.core'
 import { isSemanticScholarAvailable } from './semanticScholarClient'
 
 // Preference values outside the menu options fall back to six months.
@@ -83,6 +84,7 @@ function isItemIgnoredForAutoupdate(itemId: number): boolean {
 function getOperationName(key: string): string {
   const nameMap = {
     crossref: 'database-crossref',
+    googlescholar: 'database-googlescholar',
     inspire: 'database-inspire',
     openalex: 'database-openalex',
     semanticscholar: 'database-semanticscholar',
@@ -159,14 +161,17 @@ function isCitationDataOutdated(item: Zotero.Item): [boolean, string] {
     months: parseCutoffMonths(getPref('autoUpdateCutoff') || '6'),
   })
 
-  // Get item identifier to determine which databases are applicable
+  // Get item identifier to determine which databases are applicable. Google
+  // Scholar searches by title and author, so an item with no DOI and no arXiv
+  // id is still checkable as long as Scholar is among the configured
+  // databases -- which is the entire reason it is here.
   const identifier = Helpers.getItemIdentifier(item)
-  if (!identifier) {
+  if (!identifier && !databases.includes(GOOGLE_SCHOLAR_DATABASE)) {
     return [false, 'no_identifier']
   }
 
   // Check if this is an arXiv DOI (which Crossref won't have data for)
-  const isArxivDoi = identifier.type === 'doi' && identifier.id.includes('arXiv')
+  const isArxivDoi = identifier?.type === 'doi' && identifier.id.includes('arXiv')
 
   // Get ignored items data to filter out blocked databases
   const ignoredItemsData = parseIgnoreStore(getPref('ignoredItems')).entries
@@ -177,7 +182,12 @@ function isCitationDataOutdated(item: Zotero.Item): [boolean, string] {
   let checkableDatabases = 0
 
   // Helper function to check if database is applicable for this item
-  function isDatabaseApplicable(database: string, identifierType: string, isArxivDoi: boolean): boolean {
+  function isDatabaseApplicable(database: string, identifierType: string | null, isArxivDoi: boolean): boolean {
+    if (database === GOOGLE_SCHOLAR_DATABASE) {
+      // Needs no identifier at all; the title check happens at lookup time.
+      return true
+    }
+    if (!identifierType) return false
     if (database === 'crossref') {
       // Crossref only works with regular DOIs, not arXiv DOIs
       return identifierType === 'doi' && !isArxivDoi
@@ -201,11 +211,11 @@ function isCitationDataOutdated(item: Zotero.Item): [boolean, string] {
   // Check each database individually
   for (const database of databases) {
     // Skip databases that don't support this identifier type
-    if (!isDatabaseApplicable(database, identifier.type, isArxivDoi)) {
+    if (!isDatabaseApplicable(database, identifier?.type ?? null, isArxivDoi)) {
       if (isArxivDoi) {
         reasons.push(`${database}_not_applicable_for_arxiv_doi`)
       } else {
-        reasons.push(`${database}_not_applicable_for_${identifier.type}`)
+        reasons.push(`${database}_not_applicable_for_${identifier?.type ?? 'no_identifier'}`)
       }
       continue
     }

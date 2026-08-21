@@ -5,7 +5,9 @@ pref('autoUpdate', 'never')
 pref('autoUpdateCutoff', '6')
 pref('useColors', 'color')
 pref('ignoredItems', '{}')
-pref('rateLimits', '{"crossref":1000,"semanticscholar":3000,"inspire":1000,"openalex":200}')
+pref('rateLimits', '{"crossref":1000,"semanticscholar":3000,"inspire":1000,"openalex":200,"googlescholar":3000}')
+// Regional Scholar mirrors exist; a user behind one needs to point at it.
+pref('googleScholarEndpoint', 'https://scholar.google.com')
 pref('semanticScholarApiKey', '')
 // Diagnostics. A real boolean, not the 'true'/'false' strings the older prefs
 // above use -- that is a wart worth not extending. No UI: set it in Zotero's

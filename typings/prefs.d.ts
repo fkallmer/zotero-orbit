@@ -15,6 +15,7 @@ declare namespace _ZoteroTypes {
       "useColors": string;
       "ignoredItems": string;
       "rateLimits": string;
+      "googleScholarEndpoint": string;
       "semanticScholarApiKey": string;
       "debugLogging": boolean;
     };

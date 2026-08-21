@@ -11,6 +11,7 @@ export type FluentMessageId =
   | 'auto-update-updating-outdated'
   | 'column-citations'
   | 'database-crossref'
+  | 'database-googlescholar'
   | 'database-inspire'
   | 'database-openalex'
   | 'database-semanticscholar'

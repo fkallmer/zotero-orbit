@@ -65,8 +65,8 @@ export type DatabaseValidation =
   | { readonly valid: true; readonly databases: string[]; readonly message: PrefsMessage }
   | { readonly valid: false; readonly message: PrefsMessage }
 
-export const VALID_DATABASES = ['crossref', 'semanticscholar', 'inspire', 'openalex'] as const
-const MAX_DATABASES = 4
+export const VALID_DATABASES = ['crossref', 'semanticscholar', 'inspire', 'openalex', 'googlescholar'] as const
+const MAX_DATABASES = 5
 
 /**
  * Validate a comma-separated database order.

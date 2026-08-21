@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+
+import {
+  buildScholarUrl,
+  hasCitationResults,
+  hasRecaptcha,
+  parseScholarCount,
+  stripTitleMarkup,
+} from '../src/modules/googleScholarClient.core.ts'
+
+describe('stripTitleMarkup', () => {
+  it('removes the markup Zotero stores in titles', () => {
+    assert.equal(stripTitleMarkup('Effects of <i>E. coli</i> on H<sub>2</sub>O'), 'Effects of E. coli on H2O')
+  })
+
+  it('collapses the whitespace the markup leaves behind', () => {
+    assert.equal(stripTitleMarkup('A  <b>bold</b>\n  claim'), 'A bold claim')
+  })
+})
+
+describe('buildScholarUrl', () => {
+  const base = { endpoint: 'https://scholar.google.com', title: 'Attention is all you need', authors: [] }
+
+  it('quotes the title so a loose match cannot return a different paper', () => {
+    const url = new URL(buildScholarUrl(base))
+    assert.equal(url.searchParams.get('q'), '"Attention is all you need"')
+    assert.equal(url.searchParams.get('as_occt'), 'title')
+  })
+
+  it('leaves the title unquoted when fuzzy matching is asked for', () => {
+    const url = new URL(buildScholarUrl({ ...base, fuzzyTitle: true }))
+    assert.equal(url.searchParams.get('q'), 'Attention is all you need')
+  })
+
+  it('joins surnames with + and caps them at five', () => {
+    const authors = ['Vaswani', 'Shazeer', 'Parmar', 'Uszkoreit', 'Jones', 'Gomez', 'Kaiser']
+    const url = new URL(buildScholarUrl({ ...base, authors, matchAuthors: true }))
+    assert.equal(url.searchParams.get('as_sauthors'), 'Vaswani+Shazeer+Parmar+Uszkoreit+Jones')
+  })
+
+  it('omits the author parameter when not requested', () => {
+    const url = new URL(buildScholarUrl({ ...base, authors: ['Vaswani'] }))
+    assert.equal(url.searchParams.get('as_sauthors'), null)
+  })
+
+  it('brackets the publication year when a date range is requested', () => {
+    const url = new URL(buildScholarUrl({ ...base, year: 2017, dateRange: true }))
+    assert.equal(url.searchParams.get('as_ylo'), '2015')
+    assert.equal(url.searchParams.get('as_yhi'), '2019')
+  })
+
+  it('ignores a date range when the item has no usable year', () => {
+    const url = new URL(buildScholarUrl({ ...base, dateRange: true }))
+    assert.equal(url.searchParams.get('as_ylo'), null)
+  })
+
+  it('tolerates an endpoint with or without a trailing slash', () => {
+    const withSlash = buildScholarUrl({ ...base, endpoint: 'https://scholar.google.de/' })
+    const without = buildScholarUrl({ ...base, endpoint: 'https://scholar.google.de' })
+    assert.equal(withSlash, without)
+    assert.ok(withSlash.startsWith('https://scholar.google.de/scholar?'))
+  })
+
+  it('escapes a title that would otherwise break the query string', () => {
+    const url = new URL(buildScholarUrl({ ...base, title: 'Law & Order: "policy" #3' }))
+    assert.equal(url.searchParams.get('q'), '"Law & Order: "policy" #3"')
+  })
+
+  it('refuses to search with an empty title', () => {
+    assert.throws(() => buildScholarUrl({ ...base, title: '   ' }), /without a title/)
+  })
+})
+
+describe('hasRecaptcha', () => {
+  it('detects the injected challenge', () => {
+    assert.equal(hasRecaptcha('<script src="//www.google.com/recaptcha/api.js?onload=cb"></script>'), true)
+  })
+
+  it('does not fire on a bare script include', () => {
+    assert.equal(hasRecaptcha('<script src="//www.google.com/recaptcha/api.js"></script>'), false)
+  })
+})
+
+describe('parseScholarCount', () => {
+  it('reads the count out of the Cited by link', () => {
+    assert.equal(parseScholarCount('<a href="/scholar?cites=123">Cited by 1981</a>'), 1981)
+  })
+
+  it('returns 0 for a result that is present but uncited', () => {
+    assert.equal(parseScholarCount('<h3 class="gs_rt"><a>Some obscure paper</a></h3>'), 0)
+  })
+
+  it('returns null when nothing matched, rather than claiming zero citations', () => {
+    // This is the distinction that makes a scraper trustworthy: "not found"
+    // must not be recorded as "found, and uncited".
+    assert.equal(parseScholarCount('<div id="gs_res_ccl_mid"></div>'), null)
+  })
+
+  it('returns null when the count is not a number', () => {
+    assert.equal(parseScholarCount('<a>Cited by many</a>'), null)
+  })
+
+  it('honours a localised Cited by prefix', () => {
+    assert.equal(parseScholarCount('<a>Zitiert durch: 42</a>', 'Zitiert durch:'), 42)
+  })
+})
+
+describe('hasCitationResults', () => {
+  it('recognises the result container', () => {
+    assert.equal(hasCitationResults('<div class="gs_r gs_or gs_scl">'), true)
+  })
+
+  it('reports nothing for an empty page', () => {
+    assert.equal(hasCitationResults('<html><body></body></html>'), false)
+  })
+})
