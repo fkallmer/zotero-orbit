@@ -15,6 +15,7 @@ import { getLocaleID, getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
 import { getPref } from '../utils/prefs'
 import { readCache } from '../utils/recordCache'
+import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
 import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationTally'
@@ -528,8 +529,12 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
   // Written by the count path on its own lookup, so the pane pays nothing for
   // it -- and finds nothing until that lookup has run at least once.
   const s2 =
-    identifiers
-      .map((id) => readCache<S2Details>(s2DetailsCacheKey(`${id.type === 'doi' ? 'DOI' : 'ARXIV'}:${id.id}`)))
+    toS2PaperRefs(identifiers)
+      // Derived with toS2PaperRefs rather than rebuilt here: the client writes
+      // under the ref it actually queried, which percent-encodes the id and
+      // flips arXiv DOIs to the ARXIV scheme. Reconstructing that by hand
+      // matches for a plain DOI and silently misses for everything else.
+      .map((ref) => readCache<S2Details>(s2DetailsCacheKey(ref.paperId)))
       .find((found) => found !== null) ?? null
 
   const inLibrary = s2 && s2.references.length > 0 ? await getDoiIndex(item.libraryID) : new Map<string, number>()
