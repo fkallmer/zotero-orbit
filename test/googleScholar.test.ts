@@ -128,13 +128,29 @@ describe('stripCitationLines', () => {
       'Citations: 1 (Crossref) [2026-08-21]',
     ]
     const { kept, removed } = stripCitationLines(lines, ['Crossref'])
-    assert.deepEqual(removed, ['Citations: 1 () [2026-08-21]', 'Citations: 1 (Crossref) [2026-08-21]'])
-    assert.deepEqual(kept, ['GSCC: 0000014 2026-08-21T19:29:39.972Z 0'])
+    assert.ok(removed.includes('Citations: 1 () [2026-08-21]'))
+    assert.ok(removed.includes('Citations: 1 (Crossref) [2026-08-21]'))
+    // The GSCC line goes too, by the legacy pattern below.
+    assert.deepEqual(kept, [])
   })
 
   it('leaves a stamp from a database that is not currently configured', () => {
     const lines = ['Citations: 7 (INSPIRE) [2026-08-21]']
     const { kept } = stripCitationLines(lines, ['Crossref'])
+    assert.deepEqual(kept, lines)
+  })
+})
+
+describe('legacy GSCC stamps', () => {
+  it('removes the standalone plugin stamp this fork supersedes', () => {
+    const lines = ['GSCC: 0000014 2026-08-21T19:29:39.972Z 0', 'Citations: 14 (Google Scholar) [2026-08-21]']
+    const { kept } = stripCitationLines(lines, ['Google Scholar'])
+    assert.deepEqual(kept, [])
+  })
+
+  it('leaves unrelated Extra content alone', () => {
+    const lines = ['Citation Key: chenMITNetGANEnhanced2024', 'PMID: 12345678', 'GSCC is mentioned in prose here']
+    const { kept } = stripCitationLines(lines, ['Google Scholar'])
     assert.deepEqual(kept, lines)
   })
 })

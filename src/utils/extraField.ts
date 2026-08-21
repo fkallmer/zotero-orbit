@@ -54,6 +54,11 @@ export function buildCitationLinePatterns(databaseTitles: readonly string[]): Re
     new RegExp(String.raw`^Citations \(${titlePattern}\): \d+`, 'i'),
     new RegExp(String.raw`^\d+ citations \(${titlePattern}\)`, 'i'),
     new RegExp(String.raw`^\d+ citations \(${titlePattern}\) ${date}`, 'i'),
+    // Stamps from the standalone Google Scholar Citation Count plugin, whose
+    // job this fork now does natively. Format: `GSCC: 0000068 <iso> <score>`.
+    // Left alone they sit in the Extra field of every item that plugin ever
+    // touched, next to a Google Scholar line saying the same thing.
+    new RegExp(String.raw`^GSCC: *\d+(?:\s.*)?$`, 'i'),
     // Pre-localization names, which were never translated.
     new RegExp(
       String.raw`^\d+ citations \((?:Crossref\/DOI|Inspire\/DOI|Inspire\/arXiv|Semantic Scholar\/DOI|Semantic Scholar\/arXiv)\) ${date}`,
