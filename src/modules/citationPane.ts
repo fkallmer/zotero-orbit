@@ -99,18 +99,21 @@ function row(doc: Document, label: string, value: string, hint?: string): HTMLEl
  * pane.
  */
 function headingWithInfo(doc: Document, text: string, body: HTMLElement): HTMLElement {
-  const node = heading(doc, text)
-  node.style.display = 'flex'
-  node.style.alignItems = 'center'
-  node.style.justifyContent = 'space-between'
+  // The label goes in its own span: a bare text node beside an element in a
+  // flex row becomes an anonymous item and lays out unpredictably.
+  const node = el(doc, 'div', 'citationtally-heading')
+  node.style.cssText = 'display:flex;align-items:center;gap:6px;font-weight:600;margin:10px 0 3px'
+  node.append(el(doc, 'span', undefined, text))
 
+  // Beside the heading rather than pushed to the far edge -- at the far right
+  // it reads as unrelated furniture and goes unnoticed.
   const toggle = el(doc, 'span', undefined, 'i')
   toggle.setAttribute('title', getString('pane-info-toggle'))
   toggle.setAttribute('role', 'button')
   toggle.setAttribute('tabindex', '0')
   toggle.style.cssText =
-    'cursor:pointer;opacity:.55;font-style:italic;font-weight:600;width:14px;height:14px;' +
-    'line-height:14px;text-align:center;border:1px solid currentColor;border-radius:50%;flex:none'
+    'cursor:pointer;opacity:.75;font-style:italic;font-weight:600;font-size:10px;width:13px;height:13px;' +
+    'line-height:13px;text-align:center;border:1px solid currentColor;border-radius:50%;flex:none'
   const flip = () => {
     const notes = [...body.querySelectorAll<HTMLElement>(`[${HINT_ATTR}]`)]
     const show = notes.some((note) => note.style.display === 'none')
@@ -163,7 +166,10 @@ function sourceUrl(database: string, item: Zotero.Item, record: ScholarlyRecord 
     case 'crossref':
       return doi ? `https://search.crossref.org/search/works?q=${encodeURIComponent(doi)}&from_ui=yes` : null
     case 'semanticscholar':
-      return doi ? `https://www.semanticscholar.org/paper/${doi}` : null
+      // The api host redirects a DOI to the canonical paper page. The obvious
+      // `semanticscholar.org/paper/<doi>` does not resolve at all -- that path
+      // expects Semantic Scholar's own paper id.
+      return doi ? `https://api.semanticscholar.org/${doi}` : null
     case 'inspire':
       return doi ? `https://inspirehep.net/literature?q=${encodeURIComponent(doi)}` : null
     case 'googlescholar': {
