@@ -57,6 +57,15 @@ const DEFAULT_RATE_LIMITS: Record<string, number> = {
 
 const MAX_RATE_LIMIT_MULTIPLIER = 10
 
+/** Engage budget pacing only below this share of a provider's allowance. */
+const BUDGET_PACING_THRESHOLD = 0.2
+
+/** Fallback when the provider reports a remaining count but no total. */
+const BUDGET_PACING_MIN_REMAINING = 100
+
+/** Ceiling on budget-derived spacing. Beyond this the cure is worse. */
+const MAX_BUDGET_SPACING_MS = 5000
+
 /** Deadline for a single Crossref or INSPIRE request. */
 const REQUEST_TIMEOUT_MS = 20_000
 
@@ -224,8 +233,23 @@ class RateLimitManager {
       return
     }
 
-    // Only step in once the budget is genuinely tight; above that the
-    // configured spacing already governs.
+    // Only step in once the budget is genuinely tight. Spreading the remaining
+    // allowance evenly across the whole reset window sounds fair and is
+    // useless: with 956 of 1000 credits left and hours until reset it computed
+    // a 10-second gap between requests, which makes the item pane unusable
+    // while nothing is actually scarce. Below the threshold the arithmetic is
+    // worth having; above it the configured spacing already governs.
+    const limitHeader = response.headers.get('x-ratelimit-limit')
+    const limit = limitHeader === null ? null : Number.parseInt(limitHeader, 10)
+    const tight =
+      Number.isFinite(limit) && limit !== null && limit > 0
+        ? remaining / limit <= BUDGET_PACING_THRESHOLD
+        : remaining <= BUDGET_PACING_MIN_REMAINING
+    if (!tight) {
+      delete this.budgetFloors[database]
+      return
+    }
+
     const fairShareMs = (resetSeconds * 1000) / remaining
     // Compare against the configured spacing without the budget floor folded
     // in, or each call would ratchet against its own previous result.
@@ -234,7 +258,9 @@ class RateLimitManager {
     const configured = this.getDelay(database)
     if (previousFloor !== undefined) this.budgetFloors[database] = previousFloor
     if (fairShareMs > configured) {
-      this.budgetFloors[database] = fairShareMs
+      // Capped: past this point the pacing is worse for the user than the 429
+      // it avoids.
+      this.budgetFloors[database] = Math.min(fairShareMs, MAX_BUDGET_SPACING_MS)
       ztoolkit.log(
         `Budget pacing for ${database}: ${remaining} left before reset, spacing to ${Math.round(fairShareMs)}ms`,
       )

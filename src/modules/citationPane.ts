@@ -288,29 +288,46 @@ export function registerCitationPane(): void {
     pluginID: addon.data.config.addonID,
     header: {
       l10nID: getLocaleID('pane-header'),
-      icon: `chrome://${addon.data.config.addonRef}/content/icons/pane16.svg`,
+      // Control test: a built-in icon, to separate 'my SVG or chrome path is
+      // wrong' from 'the icon never gets applied at all'.
+      icon: 'chrome://zotero/skin/16/universal/abstract.svg',
     },
     sidenav: {
       l10nID: getLocaleID('pane-sidenav'),
-      icon: `chrome://${addon.data.config.addonRef}/content/icons/pane20.svg`,
+      icon: 'chrome://zotero/skin/20/universal/checkmark.svg',
     },
     onItemChange: ({ item, setEnabled }) => {
       setEnabled(item?.isRegularItem() === true)
     },
     onRender: ({ doc, body, item }) => {
-      // Synchronous pass: show what is already stored, so the section has its
-      // height and its most important content before any network call.
-      renderInto(doc, body, item, { record: null, journal: null })
-      body.append(el(doc, 'div', undefined, getString('pane-loading')))
+      // Unconditional, like the registration line: without it a section that
+      // never renders is indistinguishable from one that renders nothing.
+      Zotero.debug(`Citation Tally: onRender for item ${item?.id ?? 'none'}`)
+      try {
+        // Synchronous pass: show what is already stored, so the section has its
+        // height and its most important content before any network call.
+        renderInto(doc, body, item, { record: null, journal: null })
+        body.append(el(doc, 'div', undefined, getString('pane-loading')))
+        Zotero.debug(`Citation Tally: onRender produced ${body.childNodes.length} nodes`)
+      } catch (err) {
+        Zotero.debug(`Citation Tally: onRender threw: ${String(err)}`)
+        throw err
+      }
     },
     onAsyncRender: async ({ doc, body, item }) => {
       const token = item.id
       inFlight.set(body, token)
+      Zotero.debug(`Citation Tally: onAsyncRender for item ${token}`)
       try {
         const data = await loadData(item, false)
         if (inFlight.get(body) !== token) return
         renderInto(doc, body, item, data)
+        Zotero.debug(
+          `Citation Tally: onAsyncRender produced ${body.childNodes.length} nodes, ` +
+            `record ${data.record ? 'found' : 'missing'}`,
+        )
       } catch (err) {
+        Zotero.debug(`Citation Tally: onAsyncRender threw: ${String(err)}`)
         debugLog('Citation debug - Item pane render failed:', err)
         if (inFlight.get(body) !== token) return
         renderInto(doc, body, item, { record: null, journal: null })
