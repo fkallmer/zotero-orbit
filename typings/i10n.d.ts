@@ -10,6 +10,7 @@ export type FluentMessageId =
   | 'auto-update-updating-item'
   | 'auto-update-updating-outdated'
   | 'column-citations'
+  | 'column-fwci'
   | 'database-crossref'
   | 'database-googlescholar'
   | 'database-inspire'

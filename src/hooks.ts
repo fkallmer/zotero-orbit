@@ -48,6 +48,7 @@ async function onStartup() {
 
   // Register custom column for citation counts
   UIRegistrar.registerCitationColumn()
+  UIRegistrar.registerFwciColumn()
 
   // Process-wide registrations. These used to live in onMainWindowLoad, which
   // runs once per main window, so a second window re-registered the menus and

@@ -22,6 +22,7 @@ import {
   normalizeSource,
   normalizeWork,
   OPENALEX_DATABASE,
+  openAlexRecordCacheKey,
   toLookupDoi,
   WORK_FULL_SELECT,
 } from './openAlexClient.core.ts'
@@ -31,10 +32,6 @@ import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
 
 /** Journals change far more slowly than works, and there are few of them. */
 const SOURCE_TTL_MS = 60 * 24 * 60 * 60 * 1000
-
-function workCacheKey(lookupDoi: string): string {
-  return `work:${lookupDoi.toLowerCase()}`
-}
 
 function sourceCacheKey(sourceId: string): string {
   return `source:${sourceId.toLowerCase()}`
@@ -83,7 +80,7 @@ export async function fetchScholarlyRecord(
 ): Promise<ScholarlyRecord | null> {
   for (const identifier of identifiers) {
     const lookupDoi = toLookupDoi(identifier)
-    const key = workCacheKey(lookupDoi)
+    const key = openAlexRecordCacheKey(lookupDoi)
 
     if (options.force) {
       dropCache(key)

@@ -94,3 +94,5 @@ pane-references-more = and { $count } more
 pane-hint-references = Works this paper cites, as far as Semantic Scholar resolved them — consistently more than OpenAlex finds, and still fewer than the printed bibliography. Treat it as a floor, not a count.
 pane-label-influential = Influential citations
 pane-hint-influential = Citations where Semantic Scholar judges the citing work built on this one, rather than mentioning it in passing. At ten citations, one influential versus eight is the whole story.
+
+column-fwci = Field-weighted impact

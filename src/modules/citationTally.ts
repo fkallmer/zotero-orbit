@@ -26,6 +26,7 @@ import { getLocaleID, getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
 import { reserveSlot } from '../utils/pacing'
 import { getPref, setPref } from '../utils/prefs'
+import { readCache, writeCache } from '../utils/recordCache'
 
 import { effectiveDatabases, semanticScholarUnavailableResult } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
@@ -39,10 +40,18 @@ import {
   titleSimilarity,
 } from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
-import { buildWorkUrl, OPENALEX_DATABASE, toLookupDoi, WORK_COUNT_SELECT } from './openAlexClient.core'
+import {
+  buildWorkUrl,
+  normalizeWork,
+  OPENALEX_DATABASE,
+  openAlexRecordCacheKey,
+  toLookupDoi,
+  WORK_FULL_SELECT,
+} from './openAlexClient.core'
 import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
 
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
+import type { ScholarlyRecord } from './openAlexClient.core'
 import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 
 // Semantic Scholar uses its own scheduler and has no entry in this millisecond table.
@@ -1169,9 +1178,11 @@ class DBInterface {
 
       await RateLimitManager.waitForRateLimit(OPENALEX_DATABASE)
 
-      // Only the one field this path reads. The full record is tens of
-      // kilobytes and is fetched separately, by the item pane, on demand.
-      const url = buildWorkUrl(lookupDoi, WORK_COUNT_SELECT)
+      // The full record rather than the single field this path reads. It is
+      // the same request either way -- only the payload grows -- and caching it
+      // here is what lets the item pane open without a fetch and the
+      // field-weighted column have a value for items never opened.
+      const url = buildWorkUrl(lookupDoi, WORK_FULL_SELECT)
 
       let response: Response
       try {
@@ -1204,6 +1215,9 @@ class DBInterface {
         sawTransient = true
         continue
       }
+
+      const record = normalizeWork(body)
+      if (record) writeCache(openAlexRecordCacheKey(lookupDoi), record)
 
       const raw = (body as Record<string, unknown> | null)?.cited_by_count
       const count = parseCitationCount(raw)
@@ -1610,6 +1624,41 @@ class UIRegistrar {
   /**
    * Register custom column to display citation counts
    */
+  /**
+   * Field-weighted citation impact, as a sortable column.
+   *
+   * Read from the local cache, never from the Extra field. Sorting needs a
+   * value for every row, and the obvious way to get one -- writing it to Extra
+   * -- would sync a derived number into every shared library the user is in.
+   * The count lookup fills this cache as a side effect, so any item that has
+   * ever been tallied has a value here.
+   *
+   * The point of the column is that FWCI is the one number in the plugin that
+   * compares across disciplines: 50 citations means something different in
+   * mathematics than in oncology, and this is what takes that out.
+   */
+  static registerFwciColumn() {
+    debugLog('Citation debug - Registering FWCI column')
+    Zotero.ItemTreeManager.registerColumn({
+      pluginID: addon.data.config.addonID,
+      dataKey: 'openAlexFwci',
+      label: getString('column-fwci'),
+      width: '70',
+      flex: 0,
+      zoteroPersist: ['width', 'ordinal', 'hidden', 'sortDirection'],
+      dataProvider: (item: Zotero.Item) => {
+        // Runs per visible row on every redraw: cache reads only, no fetching
+        // and no logging.
+        if (!item.isRegularItem()) return ''
+        for (const identifier of Helpers.getAllItemIdentifiers(item)) {
+          const record = readCache<ScholarlyRecord>(openAlexRecordCacheKey(toLookupDoi(identifier)))
+          if (record?.fwci !== null && record?.fwci !== undefined) return record.fwci.toFixed(2)
+        }
+        return ''
+      },
+    })
+  }
+
   static registerCitationColumn() {
     debugLog('Citation debug - Registering citation count column')
     Zotero.ItemTreeManager.registerColumn({
