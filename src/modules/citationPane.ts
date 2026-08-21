@@ -311,9 +311,6 @@ export function registerCitationPane(): void {
       setEnabled(item?.isRegularItem() === true)
     },
     onRender: ({ doc, body, item, setSectionSummary }) => {
-      // Unconditional, like the registration line: without it a section that
-      // never renders is indistinguishable from one that renders nothing.
-      Zotero.debug(`Citation Tally: onRender for item ${item?.id ?? 'none'}`)
       try {
         // Synchronous pass: show what is already stored, so the section has its
         // height and its most important content before any network call.
@@ -328,16 +325,33 @@ export function registerCitationPane(): void {
         setSectionSummary(
           stored.length > 0 ? stored.map((entry) => String(entry.count)).join(' / ') : getString('pane-loading'),
         )
-        Zotero.debug(`Citation Tally: onRender produced ${body.childNodes.length} nodes`)
       } catch (err) {
-        Zotero.debug(`Citation Tally: onRender threw: ${String(err)}`)
-        throw err
+        debugLog('Citation debug - Item pane render failed:', err)
       }
     },
+    sectionButtons: [
+      {
+        // The DOM dump showed `extra-buttons=citationtally-refresh` present on
+        // the section all along, so this was never what kept the header from
+        // building -- that was the Fluent message shape.
+        type: 'citationtally-refresh',
+        icon: 'chrome://zotero/skin/16/universal/sync.svg',
+        l10nID: getLocaleID('pane-refresh'),
+        onClick: ({ doc, body, item }) => {
+          void (async () => {
+            try {
+              const data = await loadData(item, true)
+              renderInto(doc, body, item, data)
+            } catch (err) {
+              debugLog('Citation debug - Item pane refresh failed:', err)
+            }
+          })()
+        },
+      },
+    ],
     onAsyncRender: async ({ doc, body, item, setSectionSummary }) => {
       const token = item.id
       inFlight.set(body, token)
-      Zotero.debug(`Citation Tally: onAsyncRender for item ${token}`)
       try {
         const data = await loadData(item, false)
         if (inFlight.get(body) !== token) return
@@ -346,12 +360,7 @@ export function registerCitationPane(): void {
           .map((entry) => String(entry.count))
           .join(' / ')
         if (summary) setSectionSummary(summary)
-        Zotero.debug(
-          `Citation Tally: onAsyncRender produced ${body.childNodes.length} nodes, ` +
-            `record ${data.record ? 'found' : 'missing'}`,
-        )
       } catch (err) {
-        Zotero.debug(`Citation Tally: onAsyncRender threw: ${String(err)}`)
         debugLog('Citation debug - Item pane render failed:', err)
         if (inFlight.get(body) !== token) return
         renderInto(doc, body, item, { record: null, journal: null })
