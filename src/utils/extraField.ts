@@ -39,6 +39,11 @@ export function buildCitationLinePatterns(databaseTitles: readonly string[]): Re
   return [
     // Current format.
     new RegExp(String.raw`^Citations: *\d+ *\(${titlePattern}\) *${date}`, 'i'),
+    // A stamp whose source label is empty. No provider is called "", so such a
+    // line can only come from a dispatch branch that forgot to resolve its
+    // display name. It matches no title, so without this it would survive every
+    // later update and sit in the Extra field forever.
+    new RegExp(String.raw`^Citations: *\d+ *\( *\) *${date}`, 'i'),
     // Legacy formats, oldest last.
     new RegExp(String.raw`^Citation *Count: *\d+ *\(${titlePattern}\) *${date}`, 'i'),
     // The `\d+` here was written as `\d+` inside an untagged template literal,

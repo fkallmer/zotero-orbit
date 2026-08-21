@@ -8,6 +8,7 @@ import {
   parseScholarCount,
   stripTitleMarkup,
 } from '../src/modules/googleScholarClient.core.ts'
+import { stripCitationLines } from '../src/utils/extraField.ts'
 
 describe('stripTitleMarkup', () => {
   it('removes the markup Zotero stores in titles', () => {
@@ -113,5 +114,27 @@ describe('hasCitationResults', () => {
 
   it('reports nothing for an empty page', () => {
     assert.equal(hasCitationResults('<html><body></body></html>'), false)
+  })
+})
+
+describe('stripCitationLines', () => {
+  it('removes a stamp whose source label is empty', () => {
+    // Regression: a dispatch branch that failed to resolve its display name
+    // wrote `Citations: 1 () [...]`. That matches no database title, so it
+    // survived every later update.
+    const lines = [
+      'GSCC: 0000014 2026-08-21T19:29:39.972Z 0',
+      'Citations: 1 () [2026-08-21]',
+      'Citations: 1 (Crossref) [2026-08-21]',
+    ]
+    const { kept, removed } = stripCitationLines(lines, ['Crossref'])
+    assert.deepEqual(removed, ['Citations: 1 () [2026-08-21]', 'Citations: 1 (Crossref) [2026-08-21]'])
+    assert.deepEqual(kept, ['GSCC: 0000014 2026-08-21T19:29:39.972Z 0'])
+  })
+
+  it('leaves a stamp from a database that is not currently configured', () => {
+    const lines = ['Citations: 7 (INSPIRE) [2026-08-21]']
+    const { kept } = stripCitationLines(lines, ['Crossref'])
+    assert.deepEqual(kept, lines)
   })
 })
