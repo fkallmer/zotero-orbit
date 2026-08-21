@@ -294,6 +294,11 @@ export function registerCitationPane(): void {
   registeredPaneID = Zotero.ItemPaneManager.registerSection({
     paneID: PANE_ID,
     pluginID: addon.data.config.addonID,
+    // Better Notes registers working sections and does this; we did not, and
+    // it is the only difference between the two calls. Without it the body div
+    // is built empty, and the section header rendered without its icon, its
+    // twisty or any way to expand.
+    bodyXHTML: '<html:div class="citationtally-body"></html:div>',
     header: {
       l10nID: getLocaleID('pane-header'),
       // Control test: a built-in icon, to separate 'my SVG or chrome path is
