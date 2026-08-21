@@ -39,10 +39,16 @@ column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
 
 # Item pane section
-pane-header = Citation Details
-pane-sidenav = Citation Details
+# Attribute-only, like Zotero's own section strings (section-tags, sidenav-info).
+# A Fluent message with a *value* is written into the element's textContent,
+# which wipes the collapsible-section's internal structure -- header icon,
+# twisty and body all disappear and only the bare text remains.
+pane-header =
+  .label = Citation Details
+pane-sidenav =
+  .tooltiptext = Citation Details
 pane-refresh =
-  .label = Refresh from OpenAlex
+  .tooltiptext = Refresh from OpenAlex
 pane-loading = Loading OpenAlex data...
 pane-no-openalex = No OpenAlex record for this item. Works without a DOI or arXiv ID cannot be looked up there.
 pane-retracted = This work has been retracted.

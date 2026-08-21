@@ -301,13 +301,11 @@ export function registerCitationPane(): void {
     pluginID: addon.data.config.addonID,
     header: {
       l10nID: getLocaleID('pane-header'),
-      // Control test: a built-in icon, to separate 'my SVG or chrome path is
-      // wrong' from 'the icon never gets applied at all'.
-      icon: 'chrome://zotero/skin/16/universal/abstract.svg',
+      icon: `chrome://${addon.data.config.addonRef}/content/icons/pane16.svg`,
     },
     sidenav: {
       l10nID: getLocaleID('pane-sidenav'),
-      icon: 'chrome://zotero/skin/20/universal/checkmark.svg',
+      icon: `chrome://${addon.data.config.addonRef}/content/icons/pane20.svg`,
     },
     onItemChange: ({ item, setEnabled }) => {
       setEnabled(item?.isRegularItem() === true)
