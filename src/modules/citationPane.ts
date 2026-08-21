@@ -56,8 +56,20 @@ function el(doc: Document, tag: string, className?: string, text?: string): HTML
   return node
 }
 
-/** A `label: value` line. */
-function row(doc: Document, label: string, value: string): HTMLElement {
+/** Marks the explanation blocks the info toggle shows and hides. */
+const HINT_ATTR = 'data-citationtally-hint'
+
+/**
+ * A `label: value` line, optionally with an explanation.
+ *
+ * The hint is always in the DOM and hidden, not built on demand: a value like
+ * "2-year mean citedness: 4.18" is unreadable to anyone who does not already
+ * know the term, and the explanation has to be one click away rather than one
+ * search away.
+ */
+function row(doc: Document, label: string, value: string, hint?: string): HTMLElement {
+  const wrap = el(doc, 'div')
+
   const line = el(doc, 'div', 'citationtally-row')
   line.style.display = 'flex'
   line.style.justifyContent = 'space-between'
@@ -68,7 +80,50 @@ function row(doc: Document, label: string, value: string): HTMLElement {
   const val = el(doc, 'span', undefined, value)
   val.style.textAlign = 'right'
   line.append(key, val)
-  return line
+  wrap.append(line)
+
+  if (hint) {
+    // Hovering works too, for anyone who never finds the toggle.
+    key.setAttribute('title', hint)
+    key.style.cursor = 'help'
+    const note = el(doc, 'div', undefined, hint)
+    note.setAttribute(HINT_ATTR, '1')
+    note.style.cssText = 'display:none;opacity:.6;font-size:11px;line-height:1.35;padding:0 0 4px 0'
+    wrap.append(note)
+  }
+  return wrap
+}
+
+/**
+ * The heading for a block, with a toggle that reveals every explanation in the
+ * pane.
+ */
+function headingWithInfo(doc: Document, text: string, body: HTMLElement): HTMLElement {
+  const node = heading(doc, text)
+  node.style.display = 'flex'
+  node.style.alignItems = 'center'
+  node.style.justifyContent = 'space-between'
+
+  const toggle = el(doc, 'span', undefined, 'i')
+  toggle.setAttribute('title', getString('pane-info-toggle'))
+  toggle.setAttribute('role', 'button')
+  toggle.setAttribute('tabindex', '0')
+  toggle.style.cssText =
+    'cursor:pointer;opacity:.55;font-style:italic;font-weight:600;width:14px;height:14px;' +
+    'line-height:14px;text-align:center;border:1px solid currentColor;border-radius:50%;flex:none'
+  const flip = () => {
+    const notes = [...body.querySelectorAll<HTMLElement>(`[${HINT_ATTR}]`)]
+    const show = notes.some((note) => note.style.display === 'none')
+    for (const note of notes) note.style.display = show ? 'block' : 'none'
+    toggle.style.opacity = show ? '1' : '.55'
+  }
+  toggle.addEventListener('click', flip)
+  toggle.addEventListener('keydown', (event) => {
+    if ((event as KeyboardEvent).key === 'Enter' || (event as KeyboardEvent).key === ' ') flip()
+  })
+
+  node.append(toggle)
+  return node
 }
 
 function heading(doc: Document, text: string): HTMLElement {
@@ -219,7 +274,14 @@ function renderOpenAccess(doc: Document, body: HTMLElement, record: ScholarlyRec
     body.append(line)
   }
   if (record.apc) {
-    body.append(row(doc, getString('pane-label-apc'), `${record.apc.value.toLocaleString()} ${record.apc.currency}`))
+    body.append(
+      row(
+        doc,
+        getString('pane-label-apc'),
+        `${record.apc.value.toLocaleString()} ${record.apc.currency}`,
+        getString('pane-hint-apc'),
+      ),
+    )
   }
 }
 
@@ -244,7 +306,9 @@ function renderJournal(
   const inDoaj = journal?.isInDoaj ?? record.sourceIsInDoaj
   body.append(row(doc, getString('pane-label-doaj'), getString(inDoaj ? 'pane-value-yes' : 'pane-value-no')))
   if (journal?.apcUsd !== null && journal?.apcUsd !== undefined && !record.apc) {
-    body.append(row(doc, getString('pane-label-apc'), `${journal.apcUsd.toLocaleString()} USD`))
+    body.append(
+      row(doc, getString('pane-label-apc'), `${journal.apcUsd.toLocaleString()} USD`, getString('pane-hint-apc')),
+    )
   }
 }
 
