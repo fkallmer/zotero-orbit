@@ -6,8 +6,6 @@ menuitem-update-citation-tallies =
 menuitem-retally-outdated-citations =
     .label = 重新统计过期引用
 prefs-title = 引用计数
-prefs-table-title = 标题
-prefs-table-detail = 详情
 
 # Progress window messages
 progress-getting-citation-tallies = 正在获取引用计数

@@ -216,3 +216,79 @@ test('retired ids are gone', () => {
     assert.equal(ids.has('pref-title'), false, `${locale} still declares pref-title`)
   }
 })
+
+// --- Reachability ----------------------------------------------------------
+//
+// Two features once shipped as dead code: an info toggle that nothing called,
+// and six explanations referenced from nowhere. Types, lint and every test
+// stayed green -- an uncalled function is not a type error and an unreferenced
+// string is not a lint violation -- and esbuild quietly dropped both from the
+// bundle. These assertions are what would have caught it.
+
+const SOURCE_DIR = fileURLToPath(new URL('../src', import.meta.url))
+const MARKUP_FILES = ['../addon/content/preferences.xhtml']
+
+function sourceText(): string {
+  const parts: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.ts')) parts.push(readFileSync(path, 'utf8'))
+    }
+  }
+  walk(SOURCE_DIR)
+  for (const file of MARKUP_FILES) {
+    parts.push(readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8'))
+  }
+  return parts.join('\n')
+}
+
+test('every translated string is reachable from the code', () => {
+  const haystack = sourceText()
+  const orphans: string[] = []
+
+  for (const file of REFERENCE_FILES) {
+    for (const id of read(REFERENCE_LOCALE, file).idOrder) {
+      // Ids are written as string literals -- getString('x'), getLocaleID('x'),
+      // data-l10n-id="x" -- so a plain substring search is enough and does not
+      // care which of the three a given id goes through.
+      if (haystack.includes(`'${id}'`) || haystack.includes(`"${id}"`)) continue
+      orphans.push(`${file}: ${id}`)
+    }
+  }
+
+  assert.deepEqual(
+    orphans,
+    [],
+    `these strings are translated but referenced nowhere, so they cannot reach a user:\n  ${orphans.join('\n  ')}`,
+  )
+})
+
+test('item pane section ids are attribute-only, like Zotero’s own', () => {
+  // `pane-header = Citation Details` renders the section as bare text: Fluent
+  // writes a message value into textContent, wiping collapsible-section's
+  // internals, so the header loses its icon, its buttons and its twisty and the
+  // body can never be opened. Zotero's own section-tags and sidenav-info are
+  // attribute-only for exactly this reason.
+  const expected: Record<string, string> = {
+    'pane-header': 'label',
+    'pane-sidenav': 'tooltiptext',
+    'pane-refresh': 'tooltiptext',
+  }
+
+  for (const locale of LOCALES) {
+    const messages = read(locale, 'addon.ftl').messages
+    for (const [id, attribute] of Object.entries(expected)) {
+      const message = messages.get(id)
+      assert.ok(message, `${locale}: addon.ftl does not define ${id}`)
+      assert.ok(message.attributes.has(attribute), `${locale}: ${id} needs a .${attribute} attribute`)
+      assert.equal(
+        message.hasValue,
+        false,
+        `${locale}: ${id} is handed to registerSection and must have no value — ` +
+          `Fluent would write it into the section element and destroy its structure`,
+      )
+    }
+  }
+})

@@ -6,8 +6,6 @@ menuitem-update-citation-tallies =
 menuitem-retally-outdated-citations =
     .label = Retally outdated item citations
 prefs-title = Citation Tally
-prefs-table-title = Title
-prefs-table-detail = Detail
 
 # Progress window messages
 progress-getting-citation-tallies = Getting citation tallies
