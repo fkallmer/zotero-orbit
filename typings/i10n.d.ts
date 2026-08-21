@@ -39,6 +39,8 @@ export type FluentMessageId =
   | 'pane-loading'
   | 'pane-no-openalex'
   | 'pane-refresh'
+  | 'pane-refresh-failed'
+  | 'pane-refreshing'
   | 'pane-retracted'
   | 'pane-sidenav'
   | 'pane-value-no'

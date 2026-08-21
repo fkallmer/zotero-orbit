@@ -16,7 +16,7 @@ import { debugLog } from '../utils/log'
 import { getPref } from '../utils/prefs'
 
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
-import { Core, getDatabaseColors, getOperationName, Helpers } from './citationTally'
+import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationTally'
 import { buildScholarUrl } from './googleScholarClient.core.ts'
 import { fetchJournalMetrics, fetchScholarlyRecord } from './openAlexEnrichment'
 
@@ -384,13 +384,29 @@ export function registerCitationPane(): void {
         type: 'citationtally-refresh',
         icon: 'chrome://zotero/skin/16/universal/sync.svg',
         l10nID: getLocaleID('pane-refresh'),
-        onClick: ({ doc, body, item }) => {
+        onClick: ({ doc, body, item, setSectionSummary, setSectionButtonStatus }) => {
           void (async () => {
+            // Disabled for the duration: these are network round trips to four
+            // providers, and a second click would start a second set of them.
+            setSectionButtonStatus('citationtally-refresh', { disabled: true })
+            body.replaceChildren(el(doc, 'div', undefined, getString('pane-refreshing')))
             try {
+              // Both halves, in the order the pane reads them. Refetching only
+              // the OpenAlex record -- which is all this button used to do --
+              // left the four counts exactly as they were, which is not what
+              // anyone means by refreshing citation details.
+              await updateItem(item)
               const data = await loadData(item, true)
               renderInto(doc, body, item, data)
+              const summary = Core.getStoredCountsByDatabase(item)
+                .map((entry) => String(entry.count))
+                .join(' / ')
+              if (summary) setSectionSummary(summary)
             } catch (err) {
               debugLog('Citation debug - Item pane refresh failed:', err)
+              body.replaceChildren(el(doc, 'div', undefined, getString('pane-refresh-failed')))
+            } finally {
+              setSectionButtonStatus('citationtally-refresh', { disabled: false })
             }
           })()
         },
