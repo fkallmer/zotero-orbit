@@ -338,7 +338,10 @@ export function registerCitationPane(): void {
     ],
   })
 
-  debugLog(`Citation debug - Item pane section registered: ${String(registeredPaneID)}`)
+  // Unconditional: registerSection returns false on a rejected option set and
+  // only logs to the debug output, so without this a silent failure looks
+  // exactly like a section that renders nothing.
+  Zotero.debug(`Citation Tally: registerSection returned ${String(registeredPaneID)}`)
 }
 
 export function unregisterCitationPane(): void {

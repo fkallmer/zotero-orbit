@@ -47,10 +47,6 @@ async function onStartup() {
 
   // Register custom column for citation counts
   UIRegistrar.registerCitationColumn()
-  registerCitationPane()
-  // The cache only feeds the item pane, so a slow read must not hold up
-  // startup; the pane's first async render awaits it anyway.
-  void loadCache()
 
   // Process-wide registrations. These used to live in onMainWindowLoad, which
   // runs once per main window, so a second window re-registered the menus and
@@ -58,6 +54,24 @@ async function onStartup() {
   UIRegistrar.registerCitationCountMenuItem()
   UIRegistrar.registerRetallyCitationsMenuItem()
   UIRegistrar.registerThemeObservers()
+
+  // The item pane section is an extra, and it goes last and inside a guard for
+  // that reason: an unguarded call here once took the rest of startup with it
+  // -- menus, theme observers, per-window setup -- leaving the whole plugin
+  // looking dead after a restart. Zotero.debug rather than the plugin's own
+  // gated logger, so the outcome is recorded without the debug pref set.
+  try {
+    registerCitationPane()
+  } catch (err) {
+    Zotero.logError(err as Error)
+    Zotero.debug(`Citation Tally: item pane section failed to register: ${String(err)}`)
+  }
+
+  // The cache only feeds the item pane, so a slow read must not hold up
+  // startup; the pane's first async render awaits it anyway.
+  loadCache().catch((err: unknown) => {
+    Zotero.debug(`Citation Tally: cache load failed: ${String(err)}`)
+  })
 
   await Promise.all(Zotero.getMainWindows().map((win) => onMainWindowLoad(win)))
 
