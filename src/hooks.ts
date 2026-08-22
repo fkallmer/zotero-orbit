@@ -14,6 +14,7 @@ import {
   maybeShowProactiveDegradedNotice,
   notifySemanticScholarUnavailable,
 } from './modules/degradedNotice'
+import { registerGraphMenus } from './modules/graphTab'
 import { registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } from './modules/libraryIndex'
 import { registerPrefsScripts, validateApiKeyUI, validateDatabaseOrderUI } from './modules/preferenceScript'
 import {
@@ -56,6 +57,10 @@ async function onStartup() {
   UIRegistrar.registerCitationCountMenuItem()
   UIRegistrar.registerRetallyCitationsMenuItem()
   UIRegistrar.registerThemeObservers()
+
+  // Scaffolding for the graph tab: menus only, the tab itself draws a
+  // placeholder until the rendering is confirmed to work in Zotero's chrome.
+  registerGraphMenus()
 
   // The item pane section is an extra, and it goes last and inside a guard for
   // that reason: an unguarded call here once took the rest of startup with it

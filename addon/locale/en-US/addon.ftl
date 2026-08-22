@@ -99,3 +99,15 @@ column-fwci = Field-weighted impact
 pane-references-none = Semantic Scholar lists no references for this work.
 pane-references-elided = The publisher has asked Semantic Scholar not to serve this work's reference list through its API — { $count } references exist and are visible on the Semantic Scholar site. OpenAlex had none for this work either.
 pane-reference-cited-by = Citations of this cited work
+
+# Citation graph tab
+graph-tab-title = Graph: { $name }
+graph-placeholder-title = Citation graph
+graph-placeholder-note = Scaffolding only — no data yet. If you can read this, the tab renders.
+graph-seed-items = { $count } selected items
+graph-seed-untitled = Untitled item
+graph-seed-library = Library
+menuitem-graph-library =
+  .label = Citation graph for this library
+menuitem-graph-selection =
+  .label = Citation graph
