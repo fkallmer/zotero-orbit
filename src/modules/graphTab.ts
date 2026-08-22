@@ -18,6 +18,18 @@ import { debugLog } from '../utils/log'
 const XHTML_NS = 'http://www.w3.org/1999/xhtml'
 
 /**
+ * Every entry in Zotero's context menus is `menuitem-iconic`, a class the menu
+ * manager only adds when an icon is given. The first version passed none and
+ * the entries rendered as blank clickable rows.
+ *
+ * `onShowing` is deliberately absent throughout: the menu manager calls it as a
+ * hook and discards what it returns, so guarding a menu with it does nothing.
+ * The guard lives in onCommand, where seedFromSelection returns null and the
+ * command is a no-op.
+ */
+const GRAPH_MENU_ICON = 'chrome://zotero/skin/16/universal/related.svg'
+
+/**
  * One tab per seed, reused rather than reopened.
  *
  * Without a stable id every invocation stacks another tab, and a menu item
@@ -54,9 +66,11 @@ function el(doc: Document, tag: string, text?: string): HTMLElement {
  */
 function renderPlaceholder(doc: Document, container: Element, seed: GraphSeed): void {
   const root = el(doc, 'div')
+  // width as well as height: a block child of the XUL tab container does not
+  // stretch on its own, and without it the centring only worked vertically.
   root.style.cssText =
     'display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;' +
-    'height:100%;padding:24px;font-size:13px;box-sizing:border-box'
+    'width:100%;height:100%;padding:24px;font-size:13px;box-sizing:border-box'
 
   const frame = el(doc, 'div')
   frame.style.cssText =
@@ -100,7 +114,9 @@ export function openGraphTab(seed: GraphSeed): void {
     id,
     type: 'citationtally-graph',
     title: getString('graph-tab-title', { args: { name: seed.name } }),
-    data: {},
+    // The tab bar reads its icon from data.icon; `related` is Zotero's own
+    // linked-rings glyph, which is the concept exactly.
+    data: { icon: 'related' },
     select: true,
   })
 
@@ -142,6 +158,7 @@ export function registerGraphMenus(): void {
       {
         menuType: 'menuitem',
         l10nID: getLocaleID('menuitem-graph-library'),
+        icon: GRAPH_MENU_ICON,
         onCommand: () => {
           const pane = Zotero.getActiveZoteroPane()
           const libraryIDs = pane?.getSelectedLibraryIDs() ?? []
@@ -167,7 +184,7 @@ export function registerGraphMenus(): void {
       {
         menuType: 'menuitem',
         l10nID: getLocaleID('menuitem-graph-selection'),
-        onShowing: () => (Zotero.getActiveZoteroPane()?.getSelectedCollections().length ?? 0) > 0,
+        icon: GRAPH_MENU_ICON,
         onCommand: () => {
           const seed = seedFromSelection()
           if (seed) openGraphTab(seed)
@@ -184,10 +201,7 @@ export function registerGraphMenus(): void {
       {
         menuType: 'menuitem',
         l10nID: getLocaleID('menuitem-graph-selection'),
-        onShowing: () => {
-          const items = Zotero.getActiveZoteroPane()?.getSelectedItems() ?? []
-          return items.some((item) => item.isRegularItem())
-        },
+        icon: GRAPH_MENU_ICON,
         onCommand: () => {
           const seed = seedFromSelection()
           if (seed) openGraphTab(seed)
