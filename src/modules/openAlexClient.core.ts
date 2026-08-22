@@ -79,6 +79,22 @@ export function buildWorksByIdUrl(openAlexIds: readonly string[]): string {
   )
 }
 
+/**
+ * Works citing a given one, newest first.
+ *
+ * `cites:` is a filter like any other, so this is one request per page rather
+ * than a walk. Capped: a paper with 12,000 citations is not a graph anyone can
+ * read, and the most-cited of them carry the story.
+ */
+export function buildCitingWorksUrl(openAlexId: string, perPage: number): string {
+  const bare = openAlexId.replace(/^https?:\/\/openalex\.org\//i, '')
+  return (
+    `${API_ROOT}/works?filter=cites:${encodeURIComponent(bare)}` +
+    `&select=${encodeURIComponent(REFERENCE_SELECT)}&per-page=${perPage}` +
+    `&sort=cited_by_count:desc&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+  )
+}
+
 export const SOURCE_SELECT = 'id,display_name,issn_l,is_in_doaj,is_oa,apc_usd,apc_prices,summary_stats'
 
 /**

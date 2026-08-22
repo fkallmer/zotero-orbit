@@ -17,6 +17,7 @@ import { dropCache, readCache, writeCache } from '../utils/recordCache'
 
 import { lookupFetch, RateLimitManager, REQUEST_HEADERS } from './citationTally'
 import {
+  buildCitingWorksUrl,
   buildSourceUrl,
   buildWorksByIdUrl,
   buildWorkUrl,
@@ -159,6 +160,36 @@ export async function fetchReferences(
     resolved.push(...normalizeReferences(json))
   }
 
+  if (resolved.length > 0) writeCache(key, resolved)
+  return resolved
+}
+
+/** How many citing works a graph takes on; the rest would not be readable. */
+export const CITING_LIMIT = 50
+
+/**
+ * Works that cite this one, most-cited first.
+ *
+ * The forward direction of the graph. One request, and the sort means a
+ * heavily cited paper contributes its most consequential descendants rather
+ * than an arbitrary fifty.
+ */
+export async function fetchCitingWorks(
+  record: ScholarlyRecord,
+  options: { force?: boolean } = {},
+): Promise<ResolvedReference[]> {
+  if (!record.openAlexId) return []
+
+  const key = `cites:${record.openAlexId.toLowerCase()}`
+  if (options.force) dropCache(key)
+  else {
+    const cached = readCache<ResolvedReference[]>(key)
+    if (cached) return cached
+  }
+
+  const json = await fetchJson(buildCitingWorksUrl(record.openAlexId, CITING_LIMIT))
+  if (json === null) return []
+  const resolved = normalizeReferences(json)
   if (resolved.length > 0) writeCache(key, resolved)
   return resolved
 }

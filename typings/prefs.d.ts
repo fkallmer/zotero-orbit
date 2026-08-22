@@ -18,6 +18,7 @@ declare namespace _ZoteroTypes {
       "googleScholarEndpoint": string;
       "semanticScholarApiKey": string;
       "debugLogging": boolean;
+      "graphScale": string;
     };
   }
 }

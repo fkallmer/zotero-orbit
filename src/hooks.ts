@@ -14,7 +14,7 @@ import {
   maybeShowProactiveDegradedNotice,
   notifySemanticScholarUnavailable,
 } from './modules/degradedNotice'
-import { registerGraphMenus } from './modules/graphTab'
+import { installTabIconStyle, registerGraphMenus, removeTabIconStyle } from './modules/graphTab'
 import { registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } from './modules/libraryIndex'
 import { registerPrefsScripts, validateApiKeyUI, validateDatabaseOrderUI } from './modules/preferenceScript'
 import {
@@ -104,6 +104,7 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   // The toolkit is process-wide and is created once in the Addon constructor.
   // Re-creating it here simply replaced the shared instance on every window.
   win.MozXULElement.insertFTLIfNeeded(`${addon.data.config.addonRef}-addon.ftl`)
+  installTabIconStyle(win)
 
   const popupWin = new ztoolkit.ProgressWindow(addon.data.config.addonName, {
     closeOnClick: true,
@@ -150,6 +151,7 @@ function onMainWindowUnload(win: Window): void {
   // which tore down registrations still needed by any other open window; it now
   // runs once, at shutdown.
   UIRegistrar.unregisterWindowThemeListener(win)
+  removeTabIconStyle(win)
   closeSemanticScholarWarning()
   closeDegradedNotice()
   addon.data.dialog?.window?.close()

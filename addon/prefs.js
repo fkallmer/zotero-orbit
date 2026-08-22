@@ -14,3 +14,5 @@ pref('semanticScholarApiKey', '')
 // Config Editor (extensions.zotero.citationtally.debugLogging) when asked for
 // a log.
 pref('debugLogging', false)
+// Remembered per user; see citationScale for why neither axis fits both cases.
+pref('graphScale', 'log')
