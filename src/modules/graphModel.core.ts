@@ -22,8 +22,6 @@ export interface GraphNode {
   citedByCount: number | null
   role: GraphRole
   doi: string | null
-  /** Set when the work is in the user's library. */
-  itemID: number | null
 }
 
 export interface PlacedNode extends GraphNode {
@@ -185,9 +183,8 @@ function colorFor(role: GraphRole, theme: GraphTheme): string {
  * Render the layout as SVG.
  *
  * Marks carry a 2px ring in the surface colour so overlapping dots stay
- * countable, and works already in the library get a second, wider ring --
- * secondary encoding, so membership survives greyscale and colour blindness
- * rather than resting on hue.
+ * countable, and the seed a wider halo -- shape rather than hue, so the focal
+ * point survives greyscale and colour blindness.
  */
 export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme): string {
   const grid = layout.yTicks
@@ -217,37 +214,26 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme): string {
   const marks = layout.nodes
     .map((node) => {
       const fill = colorFor(node.role, theme)
-      const inLibrary = node.itemID !== null
       const detail = [
         node.title,
         node.year === null ? null : String(node.year),
         node.citedByCount === null ? null : `${node.citedByCount} citations`,
-        inLibrary ? 'in your library' : null,
       ]
         .filter(Boolean)
         .join(' · ')
 
-      // Two rings, two meanings: the wider halo marks the seed, the inner one
-      // library membership. Both are shape, not hue, so neither depends on
-      // colour vision.
       const halo =
         node.role === 'seed'
           ? `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${(node.radius + 7).toFixed(1)}" ` +
             `fill="none" stroke="${fill}" stroke-width="1" opacity="0.35"/>`
           : ''
-      const ring = inLibrary
-        ? `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${(node.radius + 3).toFixed(1)}" ` +
-          `fill="none" stroke="${fill}" stroke-width="1.5" opacity="0.55"/>`
-        : ''
 
       return (
         halo +
-        ring +
         `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.radius.toFixed(1)}" ` +
         `fill="${fill}" stroke="${theme.surface}" stroke-width="2" ` +
-        `data-key="${escapeXml(node.key)}" data-item-id="${node.itemID ?? ''}" ` +
-        `data-doi="${escapeXml(node.doi ?? '')}" style="cursor:pointer">` +
-        `<title>${escapeXml(detail)}</title></circle>`
+        `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
+        `style="cursor:pointer"><title>${escapeXml(detail)}</title></circle>`
       )
     })
     .join('')

@@ -143,7 +143,10 @@ export async function fetchReferences(
   record: ScholarlyRecord,
   options: { force?: boolean } = {},
 ): Promise<ResolvedReference[]> {
-  if (record.referencedWorks.length === 0) return []
+  // Defensive as well as versioned: a cache entry from an older shape should
+  // degrade to "no references" rather than throw.
+  const ids = record.referencedWorks ?? []
+  if (ids.length === 0) return []
 
   const key = `refs:${(record.openAlexId ?? '').toLowerCase()}`
   if (options.force) dropCache(key)
@@ -153,8 +156,8 @@ export async function fetchReferences(
   }
 
   const resolved: ResolvedReference[] = []
-  for (let at = 0; at < record.referencedWorks.length; at += REFERENCE_CHUNK) {
-    const chunk = record.referencedWorks.slice(at, at + REFERENCE_CHUNK)
+  for (let at = 0; at < ids.length; at += REFERENCE_CHUNK) {
+    const chunk = ids.slice(at, at + REFERENCE_CHUNK)
     const json = await fetchJson(buildWorksByIdUrl(chunk))
     if (json === null) break // partial beats nothing, and the cache is skipped below
     resolved.push(...normalizeReferences(json))

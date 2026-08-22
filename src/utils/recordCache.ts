@@ -17,7 +17,15 @@
 import { debugLog } from './log'
 
 const CACHE_FILE = 'citationtally-cache.json'
-const CACHE_VERSION = 1
+/**
+ * Bump whenever a cached shape changes.
+ *
+ * v2 added referencedWorks to the OpenAlex record. Entries written before it
+ * lacked the field, and the graph read `.length` off undefined -- a stale cache
+ * is a schema mismatch, and the version is what makes it one rather than a
+ * crash.
+ */
+const CACHE_VERSION = 2
 
 /** Entries older than this are refetched. OpenAlex counts move slowly. */
 const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000

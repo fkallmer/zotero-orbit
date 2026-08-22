@@ -21,7 +21,6 @@ function node(partial: Partial<GraphNode> & { key: string }): GraphNode {
     citedByCount: 10,
     role: 'reference',
     doi: null,
-    itemID: null,
     ...partial,
   }
 }
@@ -110,27 +109,26 @@ describe('renderGraphSvg', () => {
   const layout = buildGraphLayout(
     [
       node({ key: 'seed', role: 'seed', year: 2019, citedByCount: 6, doi: '10.1/seed' }),
-      node({ key: 'held', year: 2010, citedByCount: 80, itemID: 42, doi: '10.1/held' }),
+      node({ key: 'held', year: 2010, citedByCount: 80, doi: '10.1/held' }),
       node({ key: 'cite', role: 'citing', year: 2022, citedByCount: 3 }),
     ],
     options,
   )!
 
-  it('carries the identifiers a click needs', () => {
+  it('carries the DOI a click needs', () => {
     const svg = renderGraphSvg(layout, theme)
-    assert.ok(svg.includes('data-item-id="42"'))
     assert.ok(svg.includes('data-doi="10.1/seed"'))
   })
 
-  it('rings works that are in the library', () => {
+  it('haloes the seed and nothing else', () => {
     const svg = renderGraphSvg(layout, theme)
-    // Three marks, plus a ring for the held one and a halo for the seed.
-    assert.equal(svg.match(/<circle /g)?.length, 5)
+    // Three marks plus one halo.
+    assert.equal(svg.match(/<circle /g)?.length, 4)
   })
 
-  it('names year, citations and library membership on hover', () => {
+  it('names title, year and citations on hover', () => {
     const svg = renderGraphSvg(layout, theme)
-    assert.ok(svg.includes('<title>held · 2010 · 80 citations · in your library</title>'))
+    assert.ok(svg.includes('<title>held · 2010 · 80 citations</title>'))
   })
 
   it('escapes a title that would otherwise break the markup', () => {
