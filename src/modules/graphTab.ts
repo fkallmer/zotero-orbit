@@ -23,6 +23,7 @@ import { fetchCitingWorks, fetchReferences, fetchScholarlyRecord } from './openA
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
+import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { S2Details } from './semanticScholarClient.core'
 
 /** The item pane is a XUL document; so is this. See citationPane. */
@@ -314,11 +315,13 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     .map((ref) => readCache<S2Details>(s2DetailsCacheKey(ref.paperId)))
     .find((found) => found !== null)
 
-  let references = (s2?.references ?? []).map((ref) => ({
+  let references: ResolvedReference[] = (s2?.references ?? []).map((ref) => ({
     title: ref.title,
     doi: ref.doi,
     year: ref.year,
     citedByCount: ref.citedByCount,
+    author: ref.author,
+    referenceCount: ref.referenceCount,
   }))
   if (references.length === 0) references = await fetchReferences(record, { force })
 
@@ -332,6 +335,8 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     year: number | null,
     citedByCount: number | null,
     role: GraphNode['role'],
+    author: string | null = null,
+    referenceCount: number | null = null,
   ): void => {
     const key = (doi ?? title ?? '').toLowerCase()
     // A work can be both cited and citing across a wider graph; first role wins
@@ -342,7 +347,7 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     // work's surroundings, not about which of it happens to be filed already --
     // that question belongs to the item pane's reference list, where it is
     // still asked and answered.
-    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi })
+    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount })
   }
 
   push(
@@ -351,9 +356,15 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     record.publicationYear,
     record.citedByCount,
     'seed',
+    record.authors[0]?.name.split(/\s+/).pop() ?? null,
+    record.referencedWorksCount,
   )
-  for (const ref of references) push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference')
-  for (const cite of citing) push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing')
+  for (const ref of references) {
+    push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author ?? null, ref.referenceCount ?? null)
+  }
+  for (const cite of citing) {
+    push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount)
+  }
   return nodes
 }
 
@@ -420,6 +431,68 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
   container.replaceChildren(root)
 
   // Measured after layout, not guessed: the tab is whatever size the window is.
+  // Panning must not fire the click handler, so the two share this flag.
+  let dragged = false
+
+  /**
+   * Wheel to zoom, drag to pan, by moving the viewBox.
+   *
+   * Labels and marks keep their size in screen terms because the whole
+   * coordinate system scales -- which is the point: at fifty works the plot is
+   * denser than a fixed viewport can show, and zooming is how the crowded
+   * middle becomes readable without dropping anything from it.
+   */
+  const installPanAndZoom = (svg: SVGSVGElement, width: number, height: number): void => {
+    let box = { x: 0, y: 0, w: width, h: height }
+    const apply = (): void => svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`)
+
+    svg.addEventListener(
+      'wheel',
+      (event: WheelEvent) => {
+        event.preventDefault()
+        const factor = event.deltaY > 0 ? 1.12 : 1 / 1.12
+        // Clamped: far enough in to separate overlapping marks, not so far out
+        // that the plot becomes a speck.
+        const nextW = Math.min(width * 4, Math.max(width / 12, box.w * factor))
+        const scaleChange = nextW / box.w
+        const rect = svg.getBoundingClientRect()
+        // Zoom about the pointer, so the mark under it stays put.
+        const px = (event.clientX - rect.left) / rect.width
+        const py = (event.clientY - rect.top) / rect.height
+        box = {
+          x: box.x + box.w * px * (1 - scaleChange),
+          y: box.y + box.h * py * (1 - scaleChange),
+          w: nextW,
+          h: box.h * scaleChange,
+        }
+        apply()
+      },
+      { passive: false },
+    )
+
+    let from: { x: number; y: number } | null = null
+    svg.addEventListener('mousedown', (event: MouseEvent) => {
+      from = { x: event.clientX, y: event.clientY }
+      dragged = false
+    })
+    svg.addEventListener('mousemove', (event: MouseEvent) => {
+      if (!from) return
+      const rect = svg.getBoundingClientRect()
+      const dx = ((event.clientX - from.x) / rect.width) * box.w
+      const dy = ((event.clientY - from.y) / rect.height) * box.h
+      if (Math.abs(event.clientX - from.x) > 3 || Math.abs(event.clientY - from.y) > 3) dragged = true
+      box = { ...box, x: box.x - dx, y: box.y - dy }
+      from = { x: event.clientX, y: event.clientY }
+      apply()
+    })
+    const release = (): void => {
+      from = null
+    }
+    svg.addEventListener('mouseup', release)
+    svg.addEventListener('mouseleave', release)
+    svg.style.cursor = 'grab'
+  }
+
   const draw = (): void => {
     const width = Math.max(320, plot.clientWidth)
     const height = Math.max(220, plot.clientHeight)
@@ -437,11 +510,15 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
     const imported = doc.importNode(svg, true)
 
     imported.addEventListener('click', (event) => {
+      // A drag that ends over a mark is panning, not a click on it.
+      if (dragged) return
       const target = (event.target as Element | null)?.closest?.('circle')
       if (!target) return
       const doi = target.getAttribute('data-doi')
       if (doi) Zotero.launchURL(`https://doi.org/${doi}`)
     })
+
+    installPanAndZoom(imported as unknown as SVGSVGElement, width, height)
 
     plot.replaceChildren(imported)
     if (layout.droppedNoYear > 0) {

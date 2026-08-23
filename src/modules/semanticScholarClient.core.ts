@@ -26,7 +26,8 @@ export const S2_PAPER_BASE = 'https://api.semanticscholar.org/graph/v1/paper'
  */
 const S2_FIELDS =
   'fields=citationCount,influentialCitationCount,referenceCount,openAccessPdf,' +
-  'references.title,references.externalIds,references.year,references.citationCount'
+  'references.title,references.externalIds,references.year,references.citationCount,' +
+  'references.referenceCount,references.authors'
 
 /** One confirming request after a first 403, on a budget of its own. */
 const AUTH_CORROBORATION_RETRIES = 1
@@ -139,6 +140,10 @@ export interface S2Reference {
   year: number | null
   /** How often the cited work is itself cited. Sorts the list by weight. */
   citedByCount: number | null
+  /** First author's surname, for a graph label that fits beside a mark. */
+  author: string | null
+  /** How many works it cites; the graph's size channel. */
+  referenceCount: number | null
 }
 
 /** Everything the paper request yields beyond the count itself. */
@@ -189,12 +194,17 @@ export function parseS2Details(bodyText: string): S2Details | null {
     const doi = asText(ids.DOI)
     // A reference with neither a title nor a DOI cannot be shown or matched.
     if (!title && !doi) continue
+    const authors = Array.isArray(ref.authors) ? ref.authors : []
+    const firstName = asText((authors[0] as { name?: unknown } | undefined)?.name)
     references.push({
       title,
       doi,
       paperId: asText(ref.paperId),
       year: asInt(ref.year),
       citedByCount: asInt(ref.citationCount),
+      // Surname only: a label has room for "Li 2016", not for the full name.
+      author: firstName ? (firstName.trim().split(/\s+/).pop() ?? null) : null,
+      referenceCount: asInt(ref.referenceCount),
     })
   }
 

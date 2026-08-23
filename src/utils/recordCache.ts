@@ -20,12 +20,12 @@ const CACHE_FILE = 'citationtally-cache.json'
 /**
  * Bump whenever a cached shape changes.
  *
- * v2 added referencedWorks to the OpenAlex record. Entries written before it
- * lacked the field, and the graph read `.length` off undefined -- a stale cache
- * is a schema mismatch, and the version is what makes it one rather than a
- * crash.
+ * v2 added referencedWorks to the OpenAlex record; entries written before it
+ * lacked the field and the graph read `.length` off undefined. v3 added author
+ * and referenceCount to the Semantic Scholar references. A stale cache is a
+ * schema mismatch, and the version is what makes it one rather than a crash.
  */
-const CACHE_VERSION = 2
+const CACHE_VERSION = 3
 
 /** Entries older than this are refetched. OpenAlex counts move slowly. */
 const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000

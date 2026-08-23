@@ -59,7 +59,7 @@ export const WORK_FULL_SELECT = [
 ].join(',')
 
 /** Batch-resolving referenced works: one request however many there are. */
-export const REFERENCE_SELECT = 'id,doi,display_name,publication_year,cited_by_count'
+export const REFERENCE_SELECT = 'id,doi,display_name,publication_year,cited_by_count,referenced_works_count,authorships'
 
 /** OpenAlex caps a filter list; longer reference lists go in chunks. */
 export const REFERENCE_CHUNK = 50
@@ -169,6 +169,24 @@ export interface ResolvedReference {
   doi: string | null
   year: number | null
   citedByCount: number | null
+  /** First author's surname, for a label that fits beside a mark. */
+  author: string | null
+  /** How many works it cites -- breadth, as against the impact on the y-axis. */
+  referenceCount: number | null
+}
+
+/**
+ * The surname alone.
+ *
+ * A label beside a mark has room for "Soleimani 2019" and not for
+ * "Manuchehr Soleimani". OpenAlex gives no surname field, so the last
+ * whitespace-separated part it is -- wrong for a few naming conventions, and
+ * the full name stays in the tooltip for those.
+ */
+function surnameOf(displayName: string | null): string | null {
+  if (!displayName) return null
+  const parts = displayName.trim().split(/\s+/)
+  return parts[parts.length - 1] || null
 }
 
 export function normalizeReferences(json: unknown): ResolvedReference[] {
@@ -181,11 +199,14 @@ export function normalizeReferences(json: unknown): ResolvedReference[] {
     const title = asNonEmptyString(work.display_name)
     const doi = asNonEmptyString(work.doi)
     if (!title && !doi) continue
+    const first = Array.isArray(work.authorships) ? asRecord(work.authorships[0]) : null
     out.push({
       title,
       doi: doi ? doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '') : null,
       year: asFiniteNumber(work.publication_year),
       citedByCount: asFiniteNumber(work.cited_by_count),
+      author: surnameOf(asNonEmptyString(asRecord(first?.author)?.display_name)),
+      referenceCount: asFiniteNumber(work.referenced_works_count),
     })
   }
   return out

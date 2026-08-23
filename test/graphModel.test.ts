@@ -21,6 +21,8 @@ function node(partial: Partial<GraphNode> & { key: string }): GraphNode {
     citedByCount: 10,
     role: 'reference',
     doi: null,
+    author: null,
+    referenceCount: null,
     ...partial,
   }
 }
@@ -140,6 +142,108 @@ describe('renderGraphSvg', () => {
 
   it('carries a text alternative', () => {
     assert.ok(renderGraphSvg(layout, theme).includes('role="img"'))
+  })
+
+  it('draws arrowheads from the citing work to the cited one', () => {
+    const svg = renderGraphSvg(layout, theme)
+    // The seed cites its references, so those edges leave the seed; the citing
+    // works cite the seed, so theirs arrive at it. Without the heads the plot
+    // shows two clusters and leaves the direction to be guessed.
+    assert.ok(svg.includes('marker-end="url(#arrow-ref)"'))
+    assert.ok(svg.includes('marker-end="url(#arrow-cite)"'))
+  })
+
+  it('says how many works a mark cites, since that is what its size means', () => {
+    const sized = buildGraphLayout([node({ key: 'r', title: 'R', referenceCount: 42 })], options)!
+    assert.ok(renderGraphSvg(sized, theme).includes('cites 42 works'))
+  })
+
+  it('omits the reference count rather than printing undefined for it', () => {
+    const svg = renderGraphSvg(layout, theme)
+    assert.ok(!svg.includes('undefined'))
+  })
+})
+
+describe('mark size', () => {
+  it('grows with the bibliography, not with the citation count', () => {
+    // Size and the vertical axis must not encode the same variable; breadth is
+    // what the axis leaves unsaid.
+    const layout = buildGraphLayout(
+      [
+        node({ key: 'broad', citedByCount: 1, referenceCount: 200 }),
+        node({ key: 'narrow', citedByCount: 5000, referenceCount: 4, year: 2015 }),
+      ],
+      options,
+    )!
+    const broad = layout.nodes.find((placed) => placed.key === 'broad')!
+    const narrow = layout.nodes.find((placed) => placed.key === 'narrow')!
+    assert.ok(broad.radius > narrow.radius)
+  })
+
+  it('gives a work with no known bibliography the base size rather than none', () => {
+    const layout = buildGraphLayout([node({ key: 'unknown', referenceCount: null })], options)!
+    assert.ok(layout.nodes[0].radius >= 6)
+  })
+
+  it('keeps the seed findable even when it cites almost nothing', () => {
+    const layout = buildGraphLayout(
+      [node({ key: 'seed', role: 'seed', referenceCount: 1 }), node({ key: 'ref', referenceCount: 30, year: 2015 })],
+      options,
+    )!
+    const seed = layout.nodes.find((placed) => placed.role === 'seed')!
+    assert.ok(seed.radius >= 16)
+  })
+})
+
+describe('labels', () => {
+  const options = { width: 600, height: 300, padding: { top: 10, right: 10, bottom: 20, left: 30 } }
+
+  it('reads as author, year and title', () => {
+    const layout = buildGraphLayout(
+      [node({ key: 's', role: 'seed', author: 'Soleimani', year: 2019, title: 'Magnetic induction' })],
+      options,
+    )!
+    assert.equal(layout.nodes[0].label, 'Soleimani 2019 · Magnetic induction')
+  })
+
+  it('still labels a work whose author is unknown', () => {
+    const layout = buildGraphLayout([node({ key: 's', author: null, year: 2019, title: 'Untitled work' })], options)!
+    assert.equal(layout.nodes[0].label, '2019 · Untitled work')
+  })
+
+  it('never lets a label sit on top of a mark', () => {
+    // Ten works in one year pile up on a single vertical line.
+    const crowded = Array.from({ length: 10 }, (_, index) =>
+      node({ key: `n${index}`, author: 'Author', title: 'A paper about something', citedByCount: 10 + index }),
+    )
+    const layout = buildGraphLayout(crowded, options)!
+    for (const placed of layout.nodes) {
+      if (placed.label === null) continue
+      const half = (placed.label.length * 5.4) / 2
+      const x1 =
+        placed.labelAnchor === 'start'
+          ? placed.labelX!
+          : placed.labelAnchor === 'end'
+            ? placed.labelX! - half * 2
+            : placed.labelX! - half
+      const x2 = x1 + placed.label.length * 5.4
+      for (const other of layout.nodes) {
+        const clearsHorizontally = x2 < other.x - other.radius || x1 > other.x + other.radius
+        const clearsVertically = Math.abs((placed.labelY ?? 0) - other.y) > other.radius + 12
+        assert.ok(clearsHorizontally || clearsVertically, `${placed.key} label overlaps ${other.key}`)
+      }
+    }
+  })
+
+  it('labels the seed even where its own citing works crowd around it', () => {
+    const crowd = Array.from({ length: 12 }, (_, index) =>
+      node({ key: `c${index}`, role: 'citing', citedByCount: 9 + index, referenceCount: 40 }),
+    )
+    const layout = buildGraphLayout(
+      [node({ key: 'seed', role: 'seed', author: 'Li', title: 'Seed' }), ...crowd],
+      options,
+    )!
+    assert.equal(layout.nodes.find((placed) => placed.role === 'seed')?.label, 'Li 2020 · Seed')
   })
 })
 
