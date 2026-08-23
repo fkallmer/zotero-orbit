@@ -4,12 +4,17 @@
  * Free of Zotero and DOM dependencies so `node --test` can exercise the
  * arithmetic and the emitted markup.
  *
- * Form: a scatter of year against citations, not a force-directed network.
- * The question being asked is "what came before this, what came after, and
- * which of it mattered" -- that is two quantities per paper, and a spring
- * layout would answer it by accident at best. Time runs left to right, which
- * puts references on one side of the seed and citing work on the other without
- * drawing a single edge.
+ * Form: a scatter, not a force-directed network. The question being asked is
+ * "what came before this, what came after, and which of it mattered" -- that is
+ * quantities per paper, and a spring layout would answer it by accident at
+ * best.
+ *
+ * Which quantities is the reader's choice. Year against citations is the
+ * default because time on the horizontal puts references on one side of the
+ * seed and citing work on the other without drawing a single edge; but
+ * citations against references asks a different and equally real question --
+ * which of these works built on a wide literature and which got read -- and
+ * that shape is one dropdown away rather than a different plot.
  */
 
 export type GraphRole = 'seed' | 'reference' | 'citing'
@@ -57,8 +62,10 @@ export interface GraphLayout {
   yTicks: AxisTick[]
   width: number
   height: number
-  /** Works that carry no year and so cannot be placed on a time axis. */
-  droppedNoYear: number
+  xMetric: AxisMetric
+  yMetric: AxisMetric
+  /** Works missing a value on either axis, which cannot be placed at all. */
+  dropped: number
 }
 
 export interface LayoutOptions {
@@ -67,9 +74,28 @@ export interface LayoutOptions {
   padding: { top: number; right: number; bottom: number; left: number }
   /** Defaults to logarithmic; see citationScale for why it is a choice. */
   scale?: ScaleKind
+  /** Defaults to year across, citations up. */
+  xMetric?: AxisMetric
+  yMetric?: AxisMetric
 }
 
 export type ScaleKind = 'log' | 'linear'
+
+/** What an axis measures. Both axes take the same menu. */
+export type AxisMetric = 'year' | 'citations' | 'references'
+
+export const AXIS_METRICS: readonly AxisMetric[] = ['year', 'citations', 'references']
+
+function metricValue(node: GraphNode, metric: AxisMetric): number | null {
+  switch (metric) {
+    case 'year':
+      return node.year
+    case 'citations':
+      return node.citedByCount
+    case 'references':
+      return node.referenceCount
+  }
+}
 
 /**
  * Position a citation count on the vertical axis.
@@ -249,9 +275,58 @@ function assignLabels(nodes: PlacedNode[], width: number, height: number): void 
   }
 }
 
+/**
+ * One axis: where a value sits along it, and what to mark on it.
+ *
+ * Year and the two counts behave differently and the difference matters.
+ * A year axis spans the years present -- starting it at zero would push every
+ * paper into the right-hand pixel. A count axis starts at zero, because zero
+ * citations is a real and meaningful place to be, and it honours the log/linear
+ * choice, which a year axis cannot: the logarithm of 2019 is not a date.
+ */
+interface Axis {
+  fraction: (value: number) => number
+  ticks: { value: number; fraction: number; label: string }[]
+}
+
+function compact(value: number): string {
+  return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)
+}
+
+function buildAxis(metric: AxisMetric, values: number[], scale: ScaleKind): Axis {
+  if (metric === 'year') {
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    const span = Math.max(1, max - min)
+    const fraction = (value: number): number => (value - min) / span
+    return {
+      fraction,
+      ticks: niceYearTicks(min, max).map((year) => ({ value: year, fraction: fraction(year), label: String(year) })),
+    }
+  }
+
+  const max = Math.max(1, ...values)
+  const top = citationScale(max, scale)
+  const fraction = (value: number): number => citationScale(value, scale) / top
+  return {
+    fraction,
+    ticks: citationTickValues(max, scale).map((count) => ({
+      value: count,
+      fraction: fraction(count),
+      label: compact(count),
+    })),
+  }
+}
+
 export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOptions): GraphLayout | null {
-  const placeable = nodes.filter((node) => node.year !== null)
-  const droppedNoYear = nodes.length - placeable.length
+  const xMetric = options.xMetric ?? 'year'
+  const yMetric = options.yMetric ?? 'citations'
+
+  // A work missing either coordinate cannot be placed. Which works those are
+  // changes with the axes: swap the vertical to references and every paper
+  // Semantic Scholar knows nothing about the bibliography of drops out.
+  const placeable = nodes.filter((node) => metricValue(node, xMetric) !== null && metricValue(node, yMetric) !== null)
+  const dropped = nodes.length - placeable.length
   if (placeable.length === 0) return null
 
   const { width, height, padding } = options
@@ -259,39 +334,55 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
 
-  const years = placeable.map((node) => node.year as number)
-  const minYear = Math.min(...years)
-  const maxYear = Math.max(...years)
-  const yearSpan = Math.max(1, maxYear - minYear)
+  const xAxis = buildAxis(
+    xMetric,
+    placeable.map((node) => metricValue(node, xMetric) as number),
+    scale,
+  )
+  const yAxis = buildAxis(
+    yMetric,
+    placeable.map((node) => metricValue(node, yMetric) as number),
+    scale,
+  )
 
-  const maxCount = Math.max(1, ...placeable.map((node) => node.citedByCount ?? 0))
-  const maxScaled = citationScale(maxCount, scale)
-
-  const placed: PlacedNode[] = placeable.map((node) => {
-    const year = node.year as number
-    const x = padding.left + ((year - minYear) / yearSpan) * plotWidth
-    const y = padding.top + plotHeight - (citationScale(node.citedByCount ?? 0, scale) / maxScaled) * plotHeight
-    return { ...node, x, y, radius: radiusFor(node.referenceCount, node.role), label: null }
-  })
+  const placed: PlacedNode[] = placeable.map((node) => ({
+    ...node,
+    x: padding.left + xAxis.fraction(metricValue(node, xMetric) as number) * plotWidth,
+    y: padding.top + plotHeight - yAxis.fraction(metricValue(node, yMetric) as number) * plotHeight,
+    radius: radiusFor(node.referenceCount, node.role),
+    label: null,
+  }))
 
   assignLabels(placed, width, height)
 
   // The seed last so it paints over its neighbours rather than under them.
   placed.sort((a, b) => Number(a.role === 'seed') - Number(b.role === 'seed'))
 
-  const xTicks: AxisTick[] = niceYearTicks(minYear, maxYear).map((year) => ({
-    value: year,
-    position: padding.left + ((year - minYear) / yearSpan) * plotWidth,
-    label: String(year),
+  const xTicks: AxisTick[] = xAxis.ticks.map((tick) => ({
+    value: tick.value,
+    position: padding.left + tick.fraction * plotWidth,
+    label: tick.label,
   }))
 
-  const yTicks: AxisTick[] = citationTickValues(maxCount, scale).map((count) => ({
-    value: count,
-    position: padding.top + plotHeight - (citationScale(count, scale) / maxScaled) * plotHeight,
-    label: count >= 1000 ? `${Math.round(count / 1000)}k` : String(count),
+  const yTicks: AxisTick[] = yAxis.ticks.map((tick) => ({
+    value: tick.value,
+    position: padding.top + plotHeight - tick.fraction * plotHeight,
+    label: tick.label,
   }))
 
-  return { nodes: placed, xTicks, yTicks, width, height, droppedNoYear }
+  return { nodes: placed, xTicks, yTicks, width, height, xMetric, yMetric, dropped }
+}
+
+/**
+ * What to call the axes in the text alternative.
+ *
+ * Passed in rather than looked up: this module knows nothing of Fluent, and a
+ * screen reader being told "citations against year" is worth more than the
+ * metric keys it would otherwise fall back to.
+ */
+export interface AxisNames {
+  x: string
+  y: string
 }
 
 export interface GraphTheme {
@@ -318,7 +409,7 @@ function colorFor(role: GraphRole, theme: GraphTheme): string {
  * countable, and the seed a wider halo -- shape rather than hue, so the focal
  * point survives greyscale and colour blindness.
  */
-export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme): string {
+export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames?: AxisNames): string {
   const grid = layout.yTicks
     .map(
       (tick) =>
@@ -435,7 +526,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.width} ${layout.height}" ` +
     `width="100%" height="100%" role="img" ` +
-    `aria-label="Citations against publication year for ${layout.nodes.length} works">` +
+    `aria-label="${escapeXml(axisNames?.y ?? layout.yMetric)} against ` +
+    `${escapeXml(axisNames?.x ?? layout.xMetric)} for ${layout.nodes.length} works">` +
     arrowDefs +
     `<g>${grid}</g><g>${yLabels}${xLabels}</g><g>${edges}</g><g>${marks}</g><g>${labels}</g></svg>`
   )

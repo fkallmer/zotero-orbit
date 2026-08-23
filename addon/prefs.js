@@ -16,3 +16,5 @@ pref('semanticScholarApiKey', '')
 pref('debugLogging', false)
 // Remembered per user; see citationScale for why neither axis fits both cases.
 pref('graphScale', 'log')
+pref('graphAxisX', 'year')
+pref('graphAxisY', 'citations')

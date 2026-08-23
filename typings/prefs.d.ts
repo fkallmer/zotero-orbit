@@ -19,6 +19,8 @@ declare namespace _ZoteroTypes {
       "semanticScholarApiKey": string;
       "debugLogging": boolean;
       "graphScale": string;
+      "graphAxisX": string;
+      "graphAxisY": string;
     };
   }
 }

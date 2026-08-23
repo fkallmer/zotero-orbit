@@ -66,7 +66,7 @@ describe('buildGraphLayout', () => {
   it('reports works it cannot place instead of dropping them silently', () => {
     const layout = buildGraphLayout([node({ key: 'dated' }), node({ key: 'undated', year: null })], options)
     assert.equal(layout?.nodes.length, 1)
-    assert.equal(layout?.droppedNoYear, 1)
+    assert.equal(layout?.dropped, 1)
   })
 
   it('returns null when nothing can be placed at all', () => {
@@ -161,6 +161,69 @@ describe('renderGraphSvg', () => {
   it('omits the reference count rather than printing undefined for it', () => {
     const svg = renderGraphSvg(layout, theme)
     assert.ok(!svg.includes('undefined'))
+  })
+})
+
+describe('axis choice', () => {
+  const mixed: GraphNode[] = [
+    node({ key: 'a', year: 2000, citedByCount: 5, referenceCount: 80 }),
+    node({ key: 'b', year: 2020, citedByCount: 500, referenceCount: 8 }),
+  ]
+
+  it('puts year across and citations up unless told otherwise', () => {
+    const layout = buildGraphLayout(mixed, options)!
+    assert.equal(layout.xMetric, 'year')
+    assert.equal(layout.yMetric, 'citations')
+  })
+
+  it('plots references against citations when asked', () => {
+    const layout = buildGraphLayout(mixed, { ...options, xMetric: 'references', yMetric: 'citations' })!
+    const wide = layout.nodes.find((placed) => placed.key === 'a')!
+    const narrow = layout.nodes.find((placed) => placed.key === 'b')!
+    // 80 references against 8: the wide bibliography belongs to the right.
+    assert.ok(wide.x > narrow.x)
+    // And it is the less cited of the two, so it sits lower.
+    assert.ok(wide.y > narrow.y)
+  })
+
+  it('starts a count axis at zero but a year axis at the earliest year', () => {
+    // Zero on a year axis would push every paper into the right-hand pixel.
+    const years = buildGraphLayout(mixed, options)!
+    assert.equal(Math.round(years.nodes.find((placed) => placed.key === 'a')!.x), options.padding.left)
+    const counts = buildGraphLayout(mixed, { ...options, xMetric: 'citations' })!
+    assert.ok(counts.nodes.find((placed) => placed.key === 'a')!.x > options.padding.left)
+  })
+
+  it('labels a year axis in years and a count axis in counts', () => {
+    const years = buildGraphLayout(mixed, options)!
+    assert.ok(years.xTicks.every((tick) => tick.label.length === 4))
+    const counts = buildGraphLayout(mixed, { ...options, xMetric: 'references' })!
+    assert.ok(counts.xTicks.some((tick) => tick.label === '0'))
+  })
+
+  it('drops a work missing the value the chosen axis asks for', () => {
+    // Swapping to references excludes everything whose bibliography is unknown,
+    // which is a different set from the one a year axis excludes.
+    const partial = [...mixed, node({ key: 'c', referenceCount: null })]
+    assert.equal(buildGraphLayout(partial, options)!.dropped, 0)
+    assert.equal(buildGraphLayout(partial, { ...options, yMetric: 'references' })!.dropped, 1)
+  })
+
+  it('returns null rather than an empty plot when nothing can be placed', () => {
+    assert.equal(
+      buildGraphLayout([node({ key: 'x', referenceCount: null })], { ...options, xMetric: 'references' }),
+      null,
+    )
+  })
+
+  it('keeps the log scale off the year axis, where it would be meaningless', () => {
+    // log(2000) and log(2020) differ by a hair; the axis would collapse.
+    const linear = buildGraphLayout(mixed, { ...options, scale: 'linear' })!
+    const log = buildGraphLayout(mixed, { ...options, scale: 'log' })!
+    assert.deepEqual(
+      linear.nodes.map((placed) => Math.round(placed.x)),
+      log.nodes.map((placed) => Math.round(placed.x)),
+    )
   })
 })
 

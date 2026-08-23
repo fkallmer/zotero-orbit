@@ -18,13 +18,14 @@ import { readCache } from '../utils/recordCache'
 import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { Helpers } from './citationTally'
-import { buildGraphLayout, renderGraphSvg } from './graphModel.core.ts'
+import { AXIS_METRICS, buildGraphLayout, renderGraphSvg } from './graphModel.core.ts'
 import { fetchCitingWorks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
-import type { GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
+import type { AxisMetric, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { S2Details } from './semanticScholarClient.core'
+import type { FluentMessageId } from '../../typings/i10n'
 
 /** The item pane is a XUL document; so is this. See citationPane. */
 const XHTML_NS = 'http://www.w3.org/1999/xhtml'
@@ -370,6 +371,56 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
 
 const PADDING = { top: 18, right: 24, bottom: 26, left: 44 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/**
+ * A 16px line icon, built element by element.
+ *
+ * Not innerHTML: Zotero's sanitizer strips the SVG namespace off parsed markup
+ * and what comes back is no longer a drawing. Not a glyph either -- the tab
+ * inherits whatever font the platform gives it, and half of these have no
+ * character that reliably exists.
+ */
+function icon(doc: Document, paths: string[]): Element {
+  const svg = doc.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('width', '15')
+  svg.setAttribute('height', '15')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.4')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  for (const d of paths) {
+    const path = doc.createElementNS(SVG_NS, 'path')
+    path.setAttribute('d', d)
+    svg.append(path)
+  }
+  return svg
+}
+
+const MAGNIFIER = 'M11,6.5a4.5,4.5 0 1,1 -9,0a4.5,4.5 0 1,1 9,0'
+const HANDLE = 'M9.9,9.9 L14,14'
+const ICONS = {
+  zoomIn: [MAGNIFIER, HANDLE, 'M6.5,4.3v4.4', 'M4.3,6.5h4.4'],
+  zoomOut: [MAGNIFIER, HANDLE, 'M4.3,6.5h4.4'],
+  centre: ['M13,8a5,5 0 1,1 -10,0a5,5 0 1,1 10,0', 'M8,1.2v1.6', 'M8,13.2v1.6', 'M1.2,8h1.6', 'M13.2,8h1.6'],
+  fit: ['M2,6V2h4', 'M10,2h4v4', 'M14,10v4h-4', 'M6,14H2v-4'],
+}
+
+function railButton(doc: Document, paths: string[], tooltip: string, onClick: () => void): HTMLElement {
+  const button = el(doc, 'button')
+  button.style.cssText =
+    'display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;' +
+    'border:none;background:transparent;color:inherit;opacity:.55;cursor:pointer;border-radius:5px'
+  button.setAttribute('title', tooltip)
+  button.append(icon(doc, paths))
+  button.addEventListener('mouseenter', () => (button.style.opacity = '1'))
+  button.addEventListener('mouseleave', () => (button.style.opacity = '.55'))
+  button.addEventListener('click', onClick)
+  return button
+}
+
 function renderLegend(doc: Document, theme: GraphTheme, counts: Record<GraphNode['role'], number>): HTMLElement {
   const legend = el(doc, 'div')
   legend.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;padding:2px 0 8px'
@@ -391,6 +442,51 @@ function renderLegend(doc: Document, theme: GraphTheme, counts: Record<GraphNode
   return legend
 }
 
+const METRIC_LABEL: Record<AxisMetric, FluentMessageId> = {
+  year: 'graph-metric-year',
+  citations: 'graph-metric-citations',
+  references: 'graph-metric-references',
+}
+
+/**
+ * What "further along this axis" means, as a phrase.
+ *
+ * Tick numbers say where a mark is; this says what the direction means, which
+ * is the thing a reader needs first and the thing a numbered axis leaves them
+ * to work out. It sits outside the plot, so panning does not carry it away.
+ */
+const METRIC_DIRECTION: Record<AxisMetric, FluentMessageId> = {
+  year: 'graph-direction-year',
+  citations: 'graph-direction-citations',
+  references: 'graph-direction-references',
+}
+
+function metricSelect(doc: Document, current: AxisMetric, onChange: (metric: AxisMetric) => void): HTMLElement {
+  const select = el(doc, 'select') as HTMLSelectElement
+  select.style.cssText =
+    'font:inherit;font-size:11px;padding:1px 4px;border-radius:4px;' +
+    'border:1px solid currentColor;background:transparent;color:inherit;opacity:.75'
+  for (const metric of AXIS_METRICS) {
+    const option = el(doc, 'option', getString(METRIC_LABEL[metric])) as HTMLOptionElement
+    option.value = metric
+    if (metric === current) option.selected = true
+    select.append(option)
+  }
+  select.addEventListener('change', () => onChange(select.value as AxisMetric))
+  return select
+}
+
+function readMetricPref(name: 'graphAxisX' | 'graphAxisY', fallback: AxisMetric): AxisMetric {
+  const stored = String(getPref(name) ?? '')
+  return (AXIS_METRICS as readonly string[]).includes(stored) ? (stored as AxisMetric) : fallback
+}
+
+/** How much one wheel notch zooms. Small: a trackpad sends a stream of them. */
+const ZOOM_PER_PIXEL = 0.0022
+/** Per event, so one flick of a coarse wheel cannot cross the whole range. */
+const ZOOM_STEP_LIMIT = 0.22
+const ZOOM_BUTTON_STEP = 1.3
+
 function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
   const doc = win.document
   const theme = themeFor(win)
@@ -409,13 +505,12 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
   for (const node of nodes) counts[node.role]++
   root.append(renderLegend(doc, theme, counts))
 
-  const plot = el(doc, 'div')
-  plot.style.cssText = 'flex:1;min-height:0;position:relative'
-
   // Remembered, because which axis is right depends on the library rather than
   // on the moment: a field where everything sits between 40 and 90 citations
   // wants linear every time, one spanning four orders of magnitude wants log.
   let scale: ScaleKind = getPref('graphScale') === 'linear' ? 'linear' : 'log'
+  let xMetric = readMetricPref('graphAxisX', 'year')
+  let yMetric = readMetricPref('graphAxisY', 'citations')
 
   const toggle = el(doc, 'button', getString(scale === 'log' ? 'graph-scale-log' : 'graph-scale-linear'))
   toggle.style.cssText =
@@ -424,13 +519,83 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
   toggle.setAttribute('title', getString('graph-scale-hint'))
 
   const controls = el(doc, 'div')
-  controls.style.cssText = 'display:flex;align-items:center;gap:10px;padding-bottom:6px'
-  controls.append(toggle)
+  controls.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;padding-bottom:6px;flex-wrap:wrap'
 
-  root.append(controls, plot)
+  const axisLabel = (text: string): HTMLElement => {
+    const label = el(doc, 'span', text)
+    label.style.cssText = 'opacity:.6;padding-left:6px'
+    return label
+  }
+
+  // Declared before the selects, which call it; assigned after the plot exists.
+  let draw = (): void => {}
+
+  controls.append(
+    axisLabel(getString('graph-axis-x')),
+    metricSelect(doc, xMetric, (metric) => {
+      xMetric = metric
+      setPref('graphAxisX', metric)
+      draw()
+    }),
+    axisLabel(getString('graph-axis-y')),
+    metricSelect(doc, yMetric, (metric) => {
+      yMetric = metric
+      setPref('graphAxisY', metric)
+      draw()
+    }),
+    axisLabel(''),
+    toggle,
+  )
+
+  /**
+   * Plot, axis captions and the button rail, on a grid.
+   *
+   * The captions sit in their own tracks rather than floating over the drawing:
+   * the left gutter is already spoken for by the tick labels, and text laid on
+   * top of them would collide at exactly the sizes where it matters.
+   */
+  const frame = el(doc, 'div')
+  frame.style.cssText =
+    'flex:1;min-height:0;display:grid;grid-template-columns:16px 1fr 30px;grid-template-rows:1fr 16px;gap:2px'
+
+  const yCaption = el(doc, 'div')
+  yCaption.style.cssText =
+    'grid-column:1;grid-row:1;writing-mode:vertical-rl;transform:rotate(180deg);' +
+    'display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.55;white-space:nowrap'
+
+  const xCaption = el(doc, 'div')
+  xCaption.style.cssText =
+    'grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;' +
+    'font-size:11px;opacity:.55;white-space:nowrap'
+
+  const plot = el(doc, 'div')
+  plot.style.cssText = 'grid-column:2;grid-row:1;position:relative;min-width:0;min-height:0'
+
+  const rail = el(doc, 'div')
+  rail.style.cssText =
+    'grid-column:3;grid-row:1;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center'
+
+  frame.append(yCaption, plot, rail, xCaption)
+  root.append(controls, frame)
   container.replaceChildren(root)
 
-  // Measured after layout, not guessed: the tab is whatever size the window is.
+  /** The live view, replaced on every redraw. Null until the first one. */
+  let view: {
+    zoomBy: (factor: number, atX?: number, atY?: number) => void
+    reset: () => void
+    centre: (x: number, y: number) => void
+  } | null = null
+  let seedPoint: { x: number; y: number } | null = null
+
+  rail.append(
+    railButton(doc, ICONS.zoomIn, getString('graph-zoom-in'), () => view?.zoomBy(1 / ZOOM_BUTTON_STEP)),
+    railButton(doc, ICONS.zoomOut, getString('graph-zoom-out'), () => view?.zoomBy(ZOOM_BUTTON_STEP)),
+    railButton(doc, ICONS.centre, getString('graph-center-seed'), () => {
+      if (seedPoint) view?.centre(seedPoint.x, seedPoint.y)
+    }),
+    railButton(doc, ICONS.fit, getString('graph-zoom-reset'), () => view?.reset()),
+  )
+
   // Panning must not fire the click handler, so the two share this flag.
   let dragged = false
 
@@ -441,31 +606,42 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
    * coordinate system scales -- which is the point: at fifty works the plot is
    * denser than a fixed viewport can show, and zooming is how the crowded
    * middle becomes readable without dropping anything from it.
+   *
+   * The wheel scales by how far it actually turned, not by a fixed step per
+   * event. A trackpad sends a stream of two-pixel deltas, and a fixed step
+   * turned a light two-finger swipe into four levels of zoom.
    */
-  const installPanAndZoom = (svg: SVGSVGElement, width: number, height: number): void => {
+  const installPanAndZoom = (svg: SVGSVGElement, width: number, height: number): typeof view => {
     let box = { x: 0, y: 0, w: width, h: height }
     const apply = (): void => svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`)
+
+    /** factor > 1 zooms out; the anchor is a fraction of the viewport, 0 to 1. */
+    const zoomBy = (factor: number, atX = 0.5, atY = 0.5): void => {
+      // Clamped: far enough in to separate overlapping marks, not so far out
+      // that the plot becomes a speck.
+      const nextW = Math.min(width * 3, Math.max(width / 15, box.w * factor))
+      const change = nextW / box.w
+      box = {
+        x: box.x + box.w * atX * (1 - change),
+        y: box.y + box.h * atY * (1 - change),
+        w: nextW,
+        h: box.h * change,
+      }
+      apply()
+    }
 
     svg.addEventListener(
       'wheel',
       (event: WheelEvent) => {
         event.preventDefault()
-        const factor = event.deltaY > 0 ? 1.12 : 1 / 1.12
-        // Clamped: far enough in to separate overlapping marks, not so far out
-        // that the plot becomes a speck.
-        const nextW = Math.min(width * 4, Math.max(width / 12, box.w * factor))
-        const scaleChange = nextW / box.w
+        // deltaMode 1 counts lines and 2 counts pages; both must become pixels
+        // before a pixel-based sensitivity means anything.
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1
+        const raw = event.deltaY * unit * ZOOM_PER_PIXEL
+        const clamped = Math.max(-ZOOM_STEP_LIMIT, Math.min(ZOOM_STEP_LIMIT, raw))
         const rect = svg.getBoundingClientRect()
         // Zoom about the pointer, so the mark under it stays put.
-        const px = (event.clientX - rect.left) / rect.width
-        const py = (event.clientY - rect.top) / rect.height
-        box = {
-          x: box.x + box.w * px * (1 - scaleChange),
-          y: box.y + box.h * py * (1 - scaleChange),
-          w: nextW,
-          h: box.h * scaleChange,
-        }
-        apply()
+        zoomBy(Math.exp(clamped), (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
       },
       { passive: false },
     )
@@ -474,6 +650,7 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
     svg.addEventListener('mousedown', (event: MouseEvent) => {
       from = { x: event.clientX, y: event.clientY }
       dragged = false
+      svg.style.cursor = 'grabbing'
     })
     svg.addEventListener('mousemove', (event: MouseEvent) => {
       if (!from) return
@@ -487,24 +664,48 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
     })
     const release = (): void => {
       from = null
+      svg.style.cursor = 'grab'
     }
     svg.addEventListener('mouseup', release)
     svg.addEventListener('mouseleave', release)
     svg.style.cursor = 'grab'
+
+    return {
+      zoomBy,
+      reset: () => {
+        box = { x: 0, y: 0, w: width, h: height }
+        apply()
+      },
+      centre: (x: number, y: number) => {
+        box = { ...box, x: x - box.w / 2, y: y - box.h / 2 }
+        apply()
+      },
+    }
   }
 
-  const draw = (): void => {
+  draw = (): void => {
     const width = Math.max(320, plot.clientWidth)
     const height = Math.max(220, plot.clientHeight)
-    const layout = buildGraphLayout(nodes, { width, height, padding: PADDING, scale })
+    const layout = buildGraphLayout(nodes, { width, height, padding: PADDING, scale, xMetric, yMetric })
+    yCaption.textContent = getString(METRIC_DIRECTION[yMetric])
+    xCaption.textContent = getString(METRIC_DIRECTION[xMetric])
+    // Log or linear is a question about counts. With years on both axes there
+    // is nothing for it to act on, and an control that does nothing when
+    // pressed is worse than one that says it cannot.
+    const countAxis = xMetric !== 'year' || yMetric !== 'year'
+    ;(toggle as HTMLButtonElement).disabled = !countAxis
+    toggle.style.opacity = countAxis ? '.75' : '.3'
     if (!layout) {
-      plot.replaceChildren(el(doc, 'div', getString('graph-no-years')))
+      view = null
+      seedPoint = null
+      plot.replaceChildren(el(doc, 'div', getString('graph-no-values')))
       return
     }
 
     // Parsed and imported, never innerHTML: Zotero's sanitizer strips xmlns and
     // the result silently stops being SVG.
-    const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme), 'image/svg+xml')
+    const axisNames = { x: getString(METRIC_LABEL[xMetric]), y: getString(METRIC_LABEL[yMetric]) }
+    const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme, axisNames), 'image/svg+xml')
     const svg = parsed.documentElement
     if (!svg || svg.nodeName === 'parsererror') return
     const imported = doc.importNode(svg, true)
@@ -518,11 +719,13 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
       if (doi) Zotero.launchURL(`https://doi.org/${doi}`)
     })
 
-    installPanAndZoom(imported as unknown as SVGSVGElement, width, height)
+    view = installPanAndZoom(imported as unknown as SVGSVGElement, width, height)
+    const seedNode = layout.nodes.find((node) => node.role === 'seed')
+    seedPoint = seedNode ? { x: seedNode.x, y: seedNode.y } : null
 
     plot.replaceChildren(imported)
-    if (layout.droppedNoYear > 0) {
-      const note = el(doc, 'div', getString('graph-dropped-no-year', { args: { count: layout.droppedNoYear } }))
+    if (layout.dropped > 0) {
+      const note = el(doc, 'div', getString('graph-dropped-no-value', { args: { count: layout.dropped } }))
       note.style.cssText = 'position:absolute;right:0;bottom:0;font-size:11px;opacity:.6'
       plot.append(note)
     }
