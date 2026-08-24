@@ -22,6 +22,7 @@ pref('graphShowReferences', true)
 pref('graphShowCitations', true)
 pref('graphLibraryFilter', 'all')
 pref('graphHighlightHops', 1)
+pref('graphLinkDirection', 'both')
 
 // Set once the settings and cache from the Citation Tally name have been
 // taken over. See utils/adoptLegacyState.

@@ -121,7 +121,23 @@ export interface Chain {
  * Cycles are ordinary here -- two works can cite each other's preprints -- so
  * a work already reached at an equal or shorter distance is not walked again.
  */
-export function chainFrom(links: readonly GraphLink[], start: string, maxHops: number): Chain {
+/**
+ * Which way to follow the paths out of a mark.
+ *
+ * A link runs from the citing work to the cited one, so from a given mark
+ * `references` is what it cites and `citations` is what cites it -- the same
+ * two words the legend uses, about this mark instead of about the seed.
+ */
+export type LinkDirection = 'both' | 'references' | 'citations'
+
+export const LINK_DIRECTIONS: readonly LinkDirection[] = ['both', 'references', 'citations']
+
+export function chainFrom(
+  links: readonly GraphLink[],
+  start: string,
+  maxHops: number,
+  direction: LinkDirection = 'both',
+): Chain {
   const keys = new Set<string>([start])
   const edges = new Set<number>()
   if (maxHops < 1) return { keys, edges }
@@ -147,8 +163,8 @@ export function chainFrom(links: readonly GraphLink[], start: string, maxHops: n
     }
   }
 
-  walk(true)
-  walk(false)
+  if (direction !== 'citations') walk(true)
+  if (direction !== 'references') walk(false)
   return { keys, edges }
 }
 

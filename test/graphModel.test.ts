@@ -455,6 +455,24 @@ describe('chainFrom', () => {
     assert.deepEqual([...chainFrom(links, 'a', 2).edges].sort(), [0, 1])
   })
 
+  it('follows only what the mark cites, when asked for references', () => {
+    // From b: b -> c is what b cites; a -> b and d -> b are works citing it.
+    const refs = chainFrom(links, 'b', 3, 'references')
+    assert.deepEqual([...refs.keys].sort(), ['b', 'c'])
+  })
+
+  it('follows only what cites the mark, when asked for citations', () => {
+    const cites = chainFrom(links, 'b', 3, 'citations')
+    assert.deepEqual([...cites.keys].sort(), ['a', 'b', 'd'])
+  })
+
+  it('follows both by default, which is the union of the two', () => {
+    const both = chainFrom(links, 'b', 3)
+    const refs = chainFrom(links, 'b', 3, 'references')
+    const cites = chainFrom(links, 'b', 3, 'citations')
+    assert.deepEqual([...both.keys].sort(), [...new Set([...refs.keys, ...cites.keys])].sort())
+  })
+
   it('does not cross into a work that merely shares a neighbour', () => {
     // d and a both cite b, but neither descends from the other. Taking the
     // links as undirected would sweep them together -- and on a real graph it

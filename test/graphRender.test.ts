@@ -78,7 +78,7 @@ const { window, document, DOMParser } = parseHTML('<html><body><div id="tab"></d
   globals.ztoolkit = new Proxy({}, { get: () => noop })
 }
 // Imported after the globals exist: the module graph touches Zotero on load.
-const { renderGraph } = await import('../src/modules/graphTab.ts')
+const { renderGraph, renderProgress, LOAD_STEPS } = await import('../src/modules/graphTab.ts')
 
 let containers = 0
 
@@ -146,8 +146,10 @@ describe('the tab as the reader sees it', () => {
     // Scale toggle, four rail buttons, and one filter switch per group.
     assert.equal(container.querySelectorAll('button').length, 5 + container.querySelectorAll('[data-filter]').length)
     // One per axis, plus the highlight-depth control.
-    assert.equal(container.querySelectorAll('select').length, 3)
+    // One per axis, plus the two that govern the highlight.
+    assert.equal(container.querySelectorAll('select').length, 4)
     assert.ok(container.querySelector('[data-control="hops"]'), 'no highlight control')
+    assert.ok(container.querySelector('[data-control="direction"]'), 'no direction control')
   })
 
   it('survives a work with no year, no counts and no title', () => {
@@ -384,6 +386,22 @@ describe('the tab as the reader sees it', () => {
       assert.equal(edge('d').getAttribute('marker-end'), edge('d').getAttribute('data-arrow'))
     })
 
+    it('follows one direction only when the control says so', () => {
+      // a -> b: from b, a is a work citing it; from a, b is one it cites.
+      const container = draw()
+      const select = container.querySelector('[data-control="direction"]') as any
+      for (const option of select.querySelectorAll('option')) {
+        if (option.getAttribute('value') === 'citations') option.selected = true
+      }
+      fire(select, 'change')
+      // Pointing at a, whose only link runs away from it, lights nothing.
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      assert.equal(lit(container), 0, 'followed a reference while asked for citations only')
+      // Pointing at b, which a cites, lights that one.
+      fire(container.querySelector('[data-mark][data-key="b"]'), 'mouseover')
+      assert.equal(lit(container), 1)
+    })
+
     it('reaches further when the control asks for it', () => {
       const container = draw()
       const select = container.querySelector('[data-control="hops"]') as any
@@ -537,6 +555,41 @@ describe('the tab as the reader sees it', () => {
       assert.ok(!keys(container).includes('cite'))
       click(container, 'citing')
       assert.ok(keys(container).includes('cite'))
+    })
+  })
+
+  describe('the loading bar', () => {
+    // renderGraph is the finished state; the bar belongs to what runs before
+    // it, so it is exercised through renderProgress directly.
+    const seedArg = { kind: 'items', itemIDs: [1], name: 'x' } as any
+    const place = () => {
+      const container = document.createElement('div')
+      document.body.append(container)
+      return container
+    }
+    const widthAfter = (done: number, step: any) => {
+      const container = place()
+      renderProgress(document as any, container as any, seedArg, done, step)
+      return (container.querySelector('[data-progress] > div') as any)?.style.width
+    }
+
+    it('fills one step at a time and ends full', () => {
+      // Named steps, not a timer: the bar is only ever behind or exactly
+      // right, never ahead of the work.
+      assert.deepEqual(
+        LOAD_STEPS.map((step: any, index: number) => widthAfter(index + 1, step)),
+        ['20%', '40%', '60%', '80%', '100%'],
+      )
+    })
+
+    it('shows nothing filled before the first step finishes', () => {
+      assert.equal(widthAfter(0, 'record'), '0%')
+    })
+
+    it('names the step it is on, so the bar is not the only thing moving', () => {
+      const container = place()
+      renderProgress(document as any, container as any, seedArg, 2, 'citing')
+      assert.ok((container.textContent ?? '').includes('graph-step-citing'))
     })
   })
 

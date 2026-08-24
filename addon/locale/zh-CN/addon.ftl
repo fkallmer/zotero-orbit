@@ -148,7 +148,17 @@ graph-card-no-doi = No DOI, so there is nowhere to open it.
 graph-no-values = None of the surrounding works carry both values the axes ask for, so there is nothing to place.
 graph-dropped-no-value = { $count } not shown, missing a value
 graph-loading = Gathering references and citing works…
+graph-step-record = Looking this work up
+graph-step-references = Reading its references
+graph-step-citing = Finding what cites it
+graph-step-library = Checking your library
+graph-step-links = Tracing the paths between them
 graph-highlight = Highlight
+graph-links = Follow
+graph-links-both = References and citations
+graph-links-references = References only
+graph-links-citations = Citations only
+graph-links-hint = Which way to follow the paths out of the work under the pointer: what it cites, what cites it, or both.
 graph-highlight-hint = How far along the citation paths to light up from the work under the pointer. One link is what it is directly connected to.
 graph-highlight-hops = { $hops ->
     [one] 1 link

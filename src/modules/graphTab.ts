@@ -25,6 +25,7 @@ import {
   chainFrom,
   edgeEnds,
   LINE_HEIGHT,
+  LINK_DIRECTIONS,
   placeLabels,
   renderGraphSvg,
 } from './graphModel.core.ts'
@@ -33,7 +34,15 @@ import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecor
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { ItemIdentifier } from './citationTypes.ts'
-import type { AxisMetric, Chain, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
+import type {
+  AxisMetric,
+  Chain,
+  GraphLayout,
+  GraphNode,
+  GraphTheme,
+  LinkDirection,
+  ScaleKind,
+} from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { GraphLink } from './openAlexEnrichment'
 import type { S2Details } from './semanticScholarClient.core'
@@ -158,6 +167,51 @@ function renderPlaceholder(doc: Document, container: Element, seed: GraphSeed, n
   container.replaceChildren(root)
 }
 
+/**
+ * The steps a graph is built from, in the order they run.
+ *
+ * Named rather than counted as a percentage of nothing: the bar advances by
+ * one of these each time one finishes, and the caption says which. A bar that
+ * moves on a timer while the work takes as long as it takes is a decoration;
+ * this one is only ever behind or exactly right, never ahead.
+ */
+export const LOAD_STEPS = ['record', 'references', 'citing', 'library', 'links'] as const
+
+export type LoadStep = (typeof LOAD_STEPS)[number]
+
+const STEP_LABEL: Record<LoadStep, FluentMessageId> = {
+  record: 'graph-step-record',
+  references: 'graph-step-references',
+  citing: 'graph-step-citing',
+  library: 'graph-step-library',
+  links: 'graph-step-links',
+}
+
+/**
+ * The placeholder, with a bar across it.
+ *
+ * Replaces the whole container each time rather than keeping a handle to the
+ * bar: the steps are five, the frame is a dozen elements, and a rebuild is
+ * simpler than a lifetime.
+ */
+export function renderProgress(doc: Document, container: Element, seed: GraphSeed, done: number, step: LoadStep): void {
+  renderPlaceholder(doc, container, seed, getString(STEP_LABEL[step]))
+  const frame = container.querySelector('div > div')
+  if (!frame) return
+
+  const track = el(doc, 'div')
+  track.setAttribute('data-progress', String(done))
+  track.style.cssText =
+    'width:220px;height:4px;border-radius:2px;background:currentColor;opacity:.2;margin-top:10px;overflow:hidden'
+
+  const fill = el(doc, 'div')
+  fill.style.cssText =
+    `width:${Math.round((done / LOAD_STEPS.length) * 100)}%;height:100%;background:currentColor;` +
+    'border-radius:2px;transition:width .2s ease'
+  track.append(fill)
+  frame.append(track)
+}
+
 export function openGraphTab(seed: GraphSeed): void {
   const win = Zotero.getMainWindow()
   if (!win) return
@@ -206,9 +260,14 @@ export function openGraphTab(seed: GraphSeed): void {
    */
   const load = async (force: boolean): Promise<void> => {
     try {
-      renderPlaceholder(win.document, container, seed, getString('graph-loading'))
+      let done = 0
+      const step = (which: LoadStep): void => {
+        done++
+        renderProgress(win.document, container, seed, done, which)
+      }
+      renderProgress(win.document, container, seed, 0, 'record')
       const start = startingPoint(seed)
-      const nodes = start ? await collectNodes(start.identifiers, start.libraryID, start.title, force) : []
+      const nodes = start ? await collectNodes(start.identifiers, start.libraryID, start.title, force, step) : []
       if (nodes.length === 0) {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
@@ -219,6 +278,7 @@ export function openGraphTab(seed: GraphSeed): void {
       let links: GraphLink[] = []
       try {
         links = await fetchGraphLinks(nodes, { force })
+        step('links')
       } catch (err) {
         // Paths are an addition. Losing them must not cost the graph.
         Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
@@ -350,10 +410,12 @@ async function collectNodes(
   libraryID: number,
   fallbackTitle: string,
   force: boolean,
+  onStep: (step: LoadStep) => void = () => {},
 ): Promise<GraphNode[]> {
   if (identifiers.length === 0) return []
 
   const record = await fetchScholarlyRecord(identifiers, { force })
+  onStep('record')
   if (!record) return []
 
   // Semantic Scholar first for the backward direction: measured across five
@@ -373,12 +435,15 @@ async function collectNodes(
     referenceCount: ref.referenceCount,
   }))
   if (references.length === 0) references = await fetchReferences(record, { force })
+  onStep('references')
 
   const citing = await fetchCitingWorks(record, { force })
+  onStep('citing')
 
   // One pass over the library rather than a search per work; the index is
   // memoised and dropped when items change. See libraryIndex.
   const inLibrary = await getDoiIndex(libraryID)
+  onStep('library')
 
   const seen = new Set<string>()
   const nodes: GraphNode[] = []
@@ -652,6 +717,11 @@ function axesFor(event: WheelEvent): ZoomAxes {
 /** How far the highlight can reach. Past three it stops discriminating. */
 export const MAX_HOPS = 3
 
+export function readDirectionPref(): LinkDirection {
+  const stored = String(getPref('graphLinkDirection') ?? '')
+  return (LINK_DIRECTIONS as readonly string[]).includes(stored) ? (stored as LinkDirection) : 'both'
+}
+
 export function readHopsPref(): number {
   const stored = Number(getPref('graphHighlightHops'))
   return Number.isFinite(stored) ? Math.min(MAX_HOPS, Math.max(1, Math.round(stored))) : 1
@@ -869,8 +939,9 @@ export function renderGraph(
   const seedLibraryID =
     seed.kind === 'work' ? seed.libraryID : (itemsForSeed(seed)[0]?.libraryID ?? Zotero.Libraries.userLibraryID)
 
-  /** How far the highlight reaches. Remembered; nothing is fetched for it. */
+  /** How far the highlight reaches, and which way. Neither fetches anything. */
   let hops = readHopsPref()
+  let direction = readDirectionPref()
 
   const root = el(doc, 'div')
   root.style.cssText =
@@ -959,6 +1030,27 @@ export function renderGraph(
     showEmphasis()
   })
 
+  const DIRECTION_LABEL: Record<LinkDirection, FluentMessageId> = {
+    both: 'graph-links-both',
+    references: 'graph-links-references',
+    citations: 'graph-links-citations',
+  }
+  const directionSelect = el(doc, 'select') as HTMLSelectElement
+  directionSelect.style.cssText = hopsSelect.style.cssText
+  directionSelect.setAttribute('title', getString('graph-links-hint'))
+  directionSelect.setAttribute('data-control', 'direction')
+  for (const option of LINK_DIRECTIONS) {
+    const entry = el(doc, 'option', getString(DIRECTION_LABEL[option])) as HTMLOptionElement
+    entry.value = option
+    if (option === direction) entry.selected = true
+    directionSelect.append(entry)
+  }
+  directionSelect.addEventListener('change', () => {
+    direction = directionSelect.value as LinkDirection
+    setPref('graphLinkDirection', direction)
+    showEmphasis()
+  })
+
   // Top row, not the rail: the rail is where you move the plot, and this
   // replaces it.
   const reload = onReload
@@ -982,6 +1074,8 @@ export function renderGraph(
     toggle,
     axisLabel(getString('graph-highlight')),
     hopsSelect,
+    axisLabel(getString('graph-links')),
+    directionSelect,
     reload,
   )
 
@@ -1148,13 +1242,15 @@ export function renderGraph(
      */
     let chainFor: string | null = null
     let chainHops = hops
+    let chainDirection = direction
     let chain: Chain | null = null
     const currentChain = (): Chain | null => {
       const at = emphasised()
-      if (at !== chainFor || hops !== chainHops) {
+      if (at !== chainFor || hops !== chainHops || direction !== chainDirection) {
         chainFor = at
         chainHops = hops
-        chain = at === null ? null : chainFrom(layout.links, at, hops)
+        chainDirection = direction
+        chain = at === null ? null : chainFrom(layout.links, at, hops, direction)
       }
       return chain
     }
