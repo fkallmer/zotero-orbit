@@ -71,6 +71,8 @@ export interface GraphLayout {
   height: number
   xMetric: AxisMetric
   yMetric: AxisMetric
+  /** Only those whose endpoints both survived placement. */
+  links: GraphLink[]
   /** Works missing a value on either axis, which cannot be placed at all. */
   dropped: number
 }
@@ -84,6 +86,14 @@ export interface LayoutOptions {
   /** Defaults to year across, citations up. */
   xMetric?: AxisMetric
   yMetric?: AxisMetric
+  /** Citing/cited pairs among the surrounding works themselves. */
+  links?: readonly GraphLink[]
+}
+
+/** One work in the graph citing another work in the same graph. */
+export interface GraphLink {
+  from: string
+  to: string
 }
 
 export type ScaleKind = 'log' | 'linear'
@@ -556,7 +566,11 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
     label: tick.label,
   }))
 
-  return { nodes: placed, xTicks, yTicks, width, height, xMetric, yMetric, dropped }
+  // A path to a work that could not be placed is a line to nowhere.
+  const present = new Set(placed.map((node) => node.key))
+  const links = (options.links ?? []).filter((link) => present.has(link.from) && present.has(link.to))
+
+  return { nodes: placed, xTicks, yTicks, width, height, xMetric, yMetric, dropped, links }
 }
 
 /**
@@ -702,6 +716,33 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         .join('')
     : ''
 
+  /**
+   * The paths among the surrounding works, drawn but not shown.
+   *
+   * At fifty works these cross the plot in every direction, and all of them at
+   * once is a thicket rather than a finding. They are painted at zero and lit
+   * when one of their two ends is the mark being pointed at -- which is when
+   * the question "what did this one build on, here" is actually being asked.
+   */
+  const byKey = new Map(layout.nodes.map((node) => [node.key, node]))
+  const linkLines = layout.links
+    .map((link) => {
+      const from = byKey.get(link.from)
+      const to = byKey.get(link.to)
+      if (!from || !to) return ''
+      const ends = edgeEnds(from, to, FITTED(layout.width, layout.height))
+      return (
+        `<line data-edge="1" data-link="1" data-key="${escapeXml(link.from)}" ` +
+        `data-key2="${escapeXml(link.to)}" x1="${ends.x1.toFixed(1)}" y1="${ends.y1.toFixed(1)}" ` +
+        `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
+        `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
+        `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
+        `stroke="${theme.muted}" stroke-width="1" opacity="0" ` +
+        `marker-end="url(#${uid}-arrow-link)"/>`
+      )
+    })
+    .join('')
+
   const arrowDefs =
     `<defs>` +
     `<clipPath id="${uid}-plot-area"><rect x="${AXIS_GUTTER.left}" y="0" ` +
@@ -712,6 +753,11 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     `<marker id="${uid}-arrow-cite" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
     `markerUnits="userSpaceOnUse" orient="auto">` +
     `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.citing}" opacity="0.8"/></marker>` +
+    // Plain ink for the paths between the surrounding works: the three hues
+    // mean a work's relation to the seed, and these lines are about neither.
+    `<marker id="${uid}-arrow-link" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" ` +
+    `markerUnits="userSpaceOnUse" orient="auto">` +
+    `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.muted}" opacity="0.8"/></marker>` +
     `</defs>`
 
   /**
@@ -791,7 +837,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     // is the whole reason the gutters are reserved.
     `<g data-role="axis">${yTickGroups}${xTickGroups}</g>` +
     `<g data-role="content" clip-path="url(#${uid}-plot-area)">` +
-    `<g data-role="edges">${edges}</g><g data-role="marks">${marks}</g>` +
+    `<g data-role="edges">${edges}${linkLines}</g><g data-role="marks">${marks}</g>` +
     `<g data-role="labels">${labels}</g></g></svg>`
   )
 }

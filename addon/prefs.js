@@ -18,6 +18,9 @@ pref('debugLogging', false)
 pref('graphScale', 'log')
 pref('graphAxisX', 'year')
 pref('graphAxisY', 'citations')
+pref('graphShowReferences', true)
+pref('graphShowCitations', true)
+pref('graphShowInLibrary', true)
 
 // Set once the settings and cache from the Citation Tally name have been
 // taken over. See utils/adoptLegacyState.

@@ -95,6 +95,60 @@ export function buildCitingWorksUrl(openAlexId: string, perPage: number): string
   )
 }
 
+/**
+ * Just enough to draw the paths between the surrounding works.
+ *
+ * `referenced_works` is what says that one reference cites another, and it is
+ * asked for on its own rather than added to REFERENCE_SELECT: a bibliography
+ * of two hundred ids for each of fifty works is a large payload to carry on
+ * every reference lookup, and it is only ever needed once per graph.
+ */
+export const LINK_SELECT = 'id,doi,referenced_works'
+
+/**
+ * Resolve many works by DOI in one request.
+ *
+ * The graph's nodes arrive with DOIs, sometimes from Semantic Scholar and
+ * sometimes from OpenAlex, and a path between two of them can only be seen in
+ * OpenAlex ids. This is the one lookup that puts both on the same work.
+ */
+export function buildWorksByDoiUrl(dois: readonly string[]): string {
+  const bare = dois.map((doi) => doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase())
+  return (
+    `${API_ROOT}/works?filter=doi:${bare.map((doi) => encodeURIComponent(doi)).join('|')}` +
+    `&select=${encodeURIComponent(LINK_SELECT)}&per-page=${REFERENCE_CHUNK}` +
+    `&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+  )
+}
+
+/** A work, its DOI, and everything it cites -- all in OpenAlex ids. */
+export interface WorkLinks {
+  openAlexId: string
+  doi: string | null
+  referencedWorks: string[]
+}
+
+export function normalizeWorkLinks(json: unknown): WorkLinks[] {
+  const body = asRecord(json)
+  const results = Array.isArray(body?.results) ? body.results : []
+  const out: WorkLinks[] = []
+  for (const entry of results) {
+    const work = asRecord(entry)
+    const openAlexId = asNonEmptyString(work?.id)
+    if (!openAlexId) continue
+    const doi = asNonEmptyString(work?.doi)
+    out.push({
+      openAlexId: openAlexId.replace(/^https?:\/\/openalex\.org\//i, ''),
+      doi: doi ? doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase() : null,
+      referencedWorks: (Array.isArray(work?.referenced_works) ? work.referenced_works : [])
+        .map((id) => asNonEmptyString(id))
+        .filter((id): id is string => id !== null)
+        .map((id) => id.replace(/^https?:\/\/openalex\.org\//i, '')),
+    })
+  }
+  return out
+}
+
 export const SOURCE_SELECT = 'id,display_name,issn_l,is_in_doaj,is_oa,apc_usd,apc_prices,summary_stats'
 
 /**

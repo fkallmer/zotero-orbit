@@ -143,7 +143,8 @@ describe('the tab as the reader sees it', () => {
     const { container } = render(nodes)
     assert.ok(container.querySelectorAll('[data-axis="x"]').length > 0)
     assert.ok(container.querySelectorAll('[data-axis="y"]').length > 0)
-    assert.equal(container.querySelectorAll('button').length, 5) // scale toggle + four rail buttons
+    // Scale toggle, four rail buttons, and one filter switch per group.
+    assert.equal(container.querySelectorAll('button').length, 5 + container.querySelectorAll('[data-filter]').length)
     assert.equal(container.querySelectorAll('select').length, 2) // one per axis
   })
 
@@ -272,6 +273,52 @@ describe('the tab as the reader sees it', () => {
     const clipOf = (rendered: typeof first) =>
       rendered.container.querySelector('[data-role="content"]')?.getAttribute('clip-path')
     assert.notEqual(clipOf(first), clipOf(second))
+  })
+
+  describe('the legend as the filter', () => {
+    const filtered = [
+      makeNode({ key: 'seed', role: 'seed', year: 2019 }),
+      makeNode({ key: 'ref', year: 2005 }),
+      makeNode({ key: 'cite', role: 'citing', year: 2022 }),
+      makeNode({ key: 'filed', year: 2008, itemID: 7 }),
+    ]
+    const click = (container: any, which: string) => {
+      const button = container.querySelector(`[data-filter="${which}"]`)
+      assert.ok(button, `no ${which} switch`)
+      fire(button, 'click')
+    }
+    const keys = (container: any) =>
+      [...container.querySelectorAll('[data-mark]')].map((mark: any) => mark.getAttribute('data-key'))
+
+    it('offers one switch per group and none for the seed', () => {
+      const { container } = render(filtered)
+      const switches = [...container.querySelectorAll('[data-filter]')].map((b: any) => b.getAttribute('data-filter'))
+      assert.deepEqual(switches.sort(), ['citing', 'inLibrary', 'reference'])
+    })
+
+    it('takes a group out and leaves the seed', () => {
+      const { container } = render(filtered)
+      click(container, 'reference')
+      const left = keys(container)
+      assert.ok(left.includes('seed'), 'the seed must survive every filter')
+      assert.ok(!left.includes('ref'), 'the reference is still drawn')
+      assert.ok(left.includes('cite'), 'the wrong group went out')
+    })
+
+    it('hides what is already on the shelf, which is how you ask what is missing', () => {
+      const { container } = render(filtered)
+      click(container, 'inLibrary')
+      assert.ok(!keys(container).includes('filed'))
+      assert.ok(keys(container).includes('ref'))
+    })
+
+    it('puts the group back on a second click', () => {
+      const { container } = render(filtered)
+      click(container, 'citing')
+      assert.ok(!keys(container).includes('cite'))
+      click(container, 'citing')
+      assert.ok(keys(container).includes('cite'))
+    })
   })
 
   it('says so rather than drawing nothing when no work can be placed', () => {

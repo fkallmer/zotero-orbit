@@ -28,11 +28,12 @@ import {
   renderGraphSvg,
 } from './graphModel.core.ts'
 import { getDoiIndex, normalizeDoi } from './libraryIndex'
-import { fetchCitingWorks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
+import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { AxisMetric, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
+import type { GraphLink } from './openAlexEnrichment'
 import type { S2Details } from './semanticScholarClient.core'
 import type { FluentMessageId } from '../../typings/i10n'
 
@@ -190,8 +191,18 @@ export function openGraphTab(seed: GraphSeed): void {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
       }
-      renderGraph(win, container, seed, nodes)
-      Zotero.debug(`Orbit: graph rendered with ${nodes.length} nodes`)
+      // One more request, after the nodes are known and before the first
+      // paint: the placeholder is already up, and a graph that appears and
+      // then sprouts lines a second later reads as a glitch.
+      let links: GraphLink[] = []
+      try {
+        links = await fetchGraphLinks(nodes)
+      } catch (err) {
+        // Paths are an addition. Losing them must not cost the graph.
+        Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
+      }
+      renderGraph(win, container, seed, nodes, links)
+      Zotero.debug(`Orbit: graph rendered with ${nodes.length} nodes and ${links.length} paths`)
     } catch (err) {
       Zotero.debug(`Orbit: graph failed: ${String(err)}`)
       renderPlaceholder(win.document, container, seed, String(err))
@@ -434,13 +445,54 @@ function railButton(doc: Document, paths: string[], tooltip: string, onClick: ()
   return button
 }
 
-function renderLegend(doc: Document, theme: GraphTheme, nodes: readonly GraphNode[]): HTMLElement {
-  const legend = el(doc, 'div')
-  legend.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;padding:2px 0 8px'
+/** Which groups are drawn. The seed is not a group and is always drawn. */
+export interface GraphFilters {
+  reference: boolean
+  citing: boolean
+  inLibrary: boolean
+}
 
-  const row = (swatch: HTMLElement, label: string, count: number): HTMLElement => {
-    const line = el(doc, 'div')
-    line.style.cssText = 'display:flex;align-items:center;gap:6px'
+export function keepNode(node: GraphNode, filters: GraphFilters): boolean {
+  if (node.role === 'seed') return true
+  if (node.role === 'reference' && !filters.reference) return false
+  if (node.role === 'citing' && !filters.citing) return false
+  // Off means "hide what I already have", which is how you ask the graph what
+  // is missing from the shelf.
+  if (node.itemID !== null && !filters.inLibrary) return false
+  return true
+}
+
+/**
+ * The legend, which is also the filter.
+ *
+ * Two rows would say the same thing twice: the legend already names each group
+ * and counts it, and a separate row of switches beside it would repeat both
+ * and then disagree with it the moment one was flipped. Clicking an entry
+ * takes that group out; the count stays the group's size, not what survives.
+ */
+function renderLegend(
+  doc: Document,
+  theme: GraphTheme,
+  nodes: readonly GraphNode[],
+  filters: GraphFilters,
+  onToggle: (which: keyof GraphFilters) => void,
+): HTMLElement {
+  const legend = el(doc, 'div')
+  legend.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;font-size:12px;padding:2px 0 8px'
+
+  const row = (swatch: HTMLElement, label: string, count: number, which: keyof GraphFilters | null): HTMLElement => {
+    const line = el(doc, which === null ? 'div' : 'button')
+    const on = which === null || filters[which]
+    line.style.cssText =
+      'display:flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:inherit;' +
+      'border:1px solid transparent;border-radius:11px;padding:1px 8px 1px 6px;background:transparent;' +
+      (which === null ? '' : 'cursor:pointer;') +
+      (on ? '' : 'opacity:.4;border-color:currentColor;')
+    if (which !== null) {
+      line.setAttribute('data-filter', which)
+      line.setAttribute('aria-pressed', String(on))
+      line.addEventListener('click', () => onToggle(which))
+    }
     line.append(swatch, el(doc, 'span', `${label} (${count})`))
     return line
   }
@@ -457,7 +509,8 @@ function renderLegend(doc: Document, theme: GraphTheme, nodes: readonly GraphNod
   for (const [role, color, label] of entries) {
     const dot = el(doc, 'span')
     dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${color};flex:none`
-    legend.append(row(dot, label, nodes.filter((node) => node.role === role).length))
+    const which = role === 'seed' ? null : role === 'reference' ? 'reference' : 'citing'
+    legend.append(row(dot, label, nodes.filter((node) => node.role === role).length, which))
   }
 
   // The fourth entry is a ring rather than a dot, because that is what the
@@ -469,7 +522,7 @@ function renderLegend(doc: Document, theme: GraphTheme, nodes: readonly GraphNod
     ring.style.cssText =
       `width:11px;height:11px;border-radius:50%;border:1.6px solid ${theme.muted};` +
       'opacity:.85;background:transparent;flex:none'
-    legend.append(row(ring, getString('graph-in-library'), filed))
+    legend.append(row(ring, getString('graph-in-library'), filed, 'inLibrary'))
   }
   return legend
 }
@@ -702,7 +755,13 @@ function describeNode(node: GraphNode): string[] {
   return [parts.join(' · ')]
 }
 
-export function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
+export function renderGraph(
+  win: Window,
+  container: Element,
+  seed: GraphSeed,
+  nodes: GraphNode[],
+  links: GraphLink[] = [],
+): void {
   const doc = win.document
   const theme = themeFor(win)
 
@@ -720,7 +779,35 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     'white-space:nowrap;overflow:hidden;min-height:17px'
   root.append(title, strip)
 
-  root.append(renderLegend(doc, theme, nodes))
+  // Declared before the selects, which call it; assigned after the plot exists.
+  let draw = (): void => {}
+
+  const filters: GraphFilters = {
+    reference: getPref('graphShowReferences') !== false,
+    citing: getPref('graphShowCitations') !== false,
+    inLibrary: getPref('graphShowInLibrary') !== false,
+  }
+  const PREF_OF: Record<keyof GraphFilters, 'graphShowReferences' | 'graphShowCitations' | 'graphShowInLibrary'> = {
+    reference: 'graphShowReferences',
+    citing: 'graphShowCitations',
+    inLibrary: 'graphShowInLibrary',
+  }
+
+  let legend = el(doc, 'div')
+  const paintLegend = (): void => {
+    const next = renderLegend(doc, theme, nodes, filters, (which) => {
+      filters[which] = !filters[which]
+      setPref(PREF_OF[which], filters[which])
+      paintLegend()
+      draw()
+    })
+    legend.replaceWith(next)
+    legend = next
+  }
+  root.append(legend)
+  // replaceWith needs it in the tree first, so the first paint comes after the
+  // append rather than before it.
+  paintLegend()
 
   // Remembered, because which axis is right depends on the library rather than
   // on the moment: a field where everything sits between 40 and 90 citations
@@ -743,9 +830,6 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     label.style.cssText = 'opacity:.6;padding-left:6px'
     return label
   }
-
-  // Declared before the selects, which call it; assigned after the plot exists.
-  let draw = (): void => {}
 
   controls.append(
     axisLabel(getString('graph-axis-x')),
@@ -919,7 +1003,10 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
         line.setAttribute('y1', ends.y1.toFixed(1))
         line.setAttribute('x2', ends.x2.toFixed(1))
         line.setAttribute('y2', ends.y2.toFixed(1))
-        line.setAttribute('opacity', ends.hidden ? '0' : '0.4')
+        // Recorded rather than applied: the emphasis pass below decides what
+        // is visible, and it must not resurrect a line with no room to draw.
+        line.setAttribute('hidden-short', ends.hidden ? '1' : '0')
+        if (ends.hidden) line.setAttribute('opacity', '0')
       }
 
       // Re-laid out, not merely repositioned: the marks keep their size while
@@ -965,7 +1052,14 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
        */
       for (const mark of marks) mark.setAttribute('opacity', emphasis(keyOf(mark), 1, 0.22, 1))
       for (const line of edgeLines) {
-        if (line.getAttribute('opacity') === '0') continue // an edge too short to draw
+        if (line.getAttribute('hidden-short') === '1') continue // too short to draw
+        if (line.getAttribute('data-link') === '1') {
+          // A path between two surrounding works, shown only while one of its
+          // ends is being pointed at. All of them at once is a thicket.
+          const ends = keyOf(line) === hovered || line.getAttribute('data-key2') === hovered
+          line.setAttribute('opacity', ends ? '0.6' : '0')
+          continue
+        }
         const touched = hovered !== null && (keyOf(line) === hovered || hovered === seedKey)
         line.setAttribute('opacity', hovered === null ? '0.4' : touched ? '0.75' : '0.07')
       }
@@ -1114,7 +1208,8 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     const span = (measured: number, floor: number): number => Math.max(floor, Number.isFinite(measured) ? measured : 0)
     const width = span(plot.clientWidth, 320)
     const height = span(plot.clientHeight, 220)
-    const layout = buildGraphLayout(nodes, { width, height, padding: PADDING, scale, xMetric, yMetric })
+    const shown = nodes.filter((node) => keepNode(node, filters))
+    const layout = buildGraphLayout(shown, { width, height, padding: PADDING, scale, xMetric, yMetric, links })
     yCaption.textContent = getString(METRIC_DIRECTION[yMetric])
     xCaption.textContent = getString(METRIC_DIRECTION[xMetric])
     // Log or linear is a question about counts. With years on both axes there

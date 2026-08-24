@@ -19,11 +19,13 @@ import { lookupFetch, RateLimitManager, REQUEST_HEADERS } from './citationTally'
 import {
   buildCitingWorksUrl,
   buildSourceUrl,
+  buildWorksByDoiUrl,
   buildWorksByIdUrl,
   buildWorkUrl,
   normalizeReferences,
   normalizeSource,
   normalizeWork,
+  normalizeWorkLinks,
   OPENALEX_DATABASE,
   openAlexRecordCacheKey,
   REFERENCE_CHUNK,
@@ -32,7 +34,7 @@ import {
 } from './openAlexClient.core.ts'
 
 import type { ItemIdentifier } from './citationTypes.ts'
-import type { JournalMetrics, ResolvedReference, ScholarlyRecord } from './openAlexClient.core.ts'
+import type { JournalMetrics, ResolvedReference, ScholarlyRecord, WorkLinks } from './openAlexClient.core.ts'
 
 /** Journals change far more slowly than works, and there are few of them. */
 const SOURCE_TTL_MS = 60 * 24 * 60 * 60 * 1000
@@ -195,4 +197,84 @@ export async function fetchCitingWorks(
   const resolved = normalizeReferences(json)
   if (resolved.length > 0) writeCache(key, resolved)
   return resolved
+}
+
+/** One work in the graph citing another work in the same graph. */
+export interface GraphLink {
+  from: string
+  to: string
+}
+
+/** Stable across runs, and short enough for a cache key. */
+function digest(text: string): string {
+  let hash = 5381
+  for (let at = 0; at < text.length; at++) hash = ((hash << 5) + hash + text.charCodeAt(at)) | 0
+  return (hash >>> 0).toString(36)
+}
+
+/**
+ * The paths between the surrounding works themselves.
+ *
+ * The graph already draws what the seed cites and what cites the seed. It said
+ * nothing about the far more common case in a real bibliography: that the
+ * references cite each other, often in a chain that is the actual line of
+ * descent the reader is looking for.
+ *
+ * Seeing it needs both a DOI and an OpenAlex id on every node -- references
+ * arrive from Semantic Scholar with only the first, `referenced_works` speaks
+ * only the second -- so this is one batched lookup that puts them on the same
+ * work. One request for a graph of fifty; the edge list is cached, not the
+ * bibliographies, which are two orders of magnitude larger and of no use once
+ * the crossings are known.
+ */
+export async function fetchGraphLinks(
+  nodes: readonly { key: string; doi: string | null; role: string }[],
+  options: { force?: boolean } = {},
+): Promise<GraphLink[]> {
+  const withDoi = nodes.filter((node) => node.doi !== null)
+  if (withDoi.length < 2) return []
+
+  const seedKey = nodes.find((node) => node.role === 'seed')?.key ?? null
+  const key = `links:${digest(
+    withDoi
+      .map((node) => node.key)
+      .sort()
+      .join(','),
+  )}`
+  if (options.force) dropCache(key)
+  else {
+    const cached = readCache<GraphLink[]>(key)
+    if (cached) return cached
+  }
+
+  const byDoi = new Map(withDoi.map((node) => [(node.doi as string).toLowerCase(), node.key]))
+  const collected: WorkLinks[] = []
+  for (let at = 0; at < withDoi.length; at += REFERENCE_CHUNK) {
+    const chunk = withDoi.slice(at, at + REFERENCE_CHUNK).map((node) => node.doi as string)
+    const json = await fetchJson(buildWorksByDoiUrl(chunk))
+    if (json === null) return [] // a partial map would invent absences
+    collected.push(...normalizeWorkLinks(json))
+  }
+
+  const keyOfOpenAlexId = new Map<string, string>()
+  for (const work of collected) {
+    const nodeKey = work.doi === null ? undefined : byDoi.get(work.doi)
+    if (nodeKey) keyOfOpenAlexId.set(work.openAlexId, nodeKey)
+  }
+
+  const links: GraphLink[] = []
+  for (const work of collected) {
+    const from = work.doi === null ? undefined : byDoi.get(work.doi)
+    if (!from) continue
+    for (const cited of work.referencedWorks) {
+      const to = keyOfOpenAlexId.get(cited)
+      // Self-links are noise, and anything touching the seed is already drawn
+      // as one of the main edges.
+      if (!to || to === from || to === seedKey || from === seedKey) continue
+      links.push({ from, to })
+    }
+  }
+
+  writeCache(key, links)
+  return links
 }

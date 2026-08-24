@@ -377,6 +377,46 @@ describe('work the reader already has', () => {
   })
 })
 
+describe('paths between the surrounding works', () => {
+  const three = [
+    node({ key: 'seed', role: 'seed', year: 2019, citedByCount: 6 }),
+    node({ key: 'a', year: 2005, citedByCount: 900 }),
+    node({ key: 'b', year: 2010, citedByCount: 40 }),
+  ]
+  const links = [{ from: 'b', to: 'a' }]
+
+  it('draws them, but paints them at zero', () => {
+    // All of them at once is a thicket rather than a finding; the tab lights
+    // one when its end is pointed at.
+    const svg = renderGraphSvg(buildGraphLayout(three, { ...options, links })!, theme)
+    assert.equal(svg.match(/data-link="1"/g)?.length, 1)
+    assert.ok(/data-link="1"[^>]*opacity="0"/.test(svg))
+  })
+
+  it('names both ends, so either can light it', () => {
+    const svg = renderGraphSvg(buildGraphLayout(three, { ...options, links })!, theme)
+    assert.ok(/data-link="1" data-key="b" data-key2="a"/.test(svg))
+  })
+
+  it('uses plain ink rather than a fourth hue', () => {
+    // The three hues mean a work's relation to the seed, and a path between
+    // two of the surrounding works is about neither of them.
+    const svg = renderGraphSvg(buildGraphLayout(three, { ...options, links })!, theme)
+    assert.ok(svg.includes(`<marker id="orbit-graph-arrow-link"`))
+    assert.ok(/data-link="1"[^>]*stroke="#5c5c5c"/.test(svg))
+  })
+
+  it('drops a path to a work that could not be placed', () => {
+    // A line to nowhere is worse than no line.
+    const withGhost = buildGraphLayout(three, { ...options, links: [{ from: 'a', to: 'missing' }] })!
+    assert.deepEqual(withGhost.links, [])
+  })
+
+  it('keeps a path whose ends both survived', () => {
+    assert.deepEqual(buildGraphLayout(three, { ...options, links })!.links, links)
+  })
+})
+
 describe('a fixed frame around a moving plot', () => {
   const layout = buildGraphLayout(
     [
