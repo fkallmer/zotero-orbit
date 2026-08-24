@@ -844,7 +844,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
       const halo =
         node.role === 'seed'
           ? `<circle r="${(node.radius + 7).toFixed(1)}" fill="none" stroke="${fill}" ` +
-            `stroke-width="1" opacity="0.35"/>`
+            `stroke-width="1" opacity="0.35" pointer-events="none"/>`
           : ''
 
       /**
@@ -861,7 +861,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         node.itemID === null
           ? ''
           : `<circle r="${(node.radius + 2.6).toFixed(1)}" fill="none" stroke="${theme.muted}" ` +
-            `stroke-width="1.6" opacity="0.85"/>`
+            `stroke-width="1.6" opacity="0.85" pointer-events="none"/>`
 
       // The geometry sits at the origin and the group carries the position, so
       // zoom moves the mark without resizing it. Litmaps' behaviour, and the

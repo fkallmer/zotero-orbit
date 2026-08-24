@@ -362,6 +362,14 @@ describe('work the reader already has', () => {
     assert.equal(svg.match(/stroke="#ffffff" stroke-width="2"/g)?.length, 2)
   })
 
+  it('lets the decoration alone take no clicks', () => {
+    // The collar's ring sits outside the mark it decorates, so aiming at it
+    // used to hit a circle that answers to nothing.
+    const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme)
+    assert.equal(svg.match(/pointer-events="none"/g)?.length, 1)
+    assert.ok(/stroke-width="1.6"[^>]*pointer-events="none"/.test(svg))
+  })
+
   it('carries the item id, so the mark can lead back to the item', () => {
     const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme)
     assert.ok(svg.includes('data-item="42"'))

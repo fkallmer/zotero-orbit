@@ -32,6 +32,7 @@ import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
+import type { ItemIdentifier } from './citationTypes.ts'
 import type { AxisMetric, Chain, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { GraphLink } from './openAlexEnrichment'
@@ -97,6 +98,8 @@ function tabIDFor(seed: GraphSeed): string {
       return `orbit-graph-items-${seed.itemIDs.slice().sort().join('-')}`
     case 'library':
       return `orbit-graph-library-${seed.libraryID}`
+    case 'work':
+      return `orbit-graph-work-${seed.doi.toLowerCase()}`
   }
 }
 
@@ -104,6 +107,15 @@ export type GraphSeed =
   | { kind: 'collection'; collectionID: number; name: string }
   | { kind: 'items'; itemIDs: number[]; name: string }
   | { kind: 'library'; libraryID: number; name: string }
+  /**
+   * A work identified only by its DOI, filed or not.
+   *
+   * The graph puts a paper's surroundings on screen, and the reader wants to
+   * step into one of them and look around from there. Requiring it to be in
+   * the library first would refuse exactly the case the graph exists to
+   * surface: the work you do not have yet.
+   */
+  | { kind: 'work'; doi: string; name: string; libraryID: number }
 
 function el(doc: Document, tag: string, text?: string): HTMLElement {
   const node = doc.createElementNS(XHTML_NS, tag) as HTMLElement
@@ -186,8 +198,8 @@ export function openGraphTab(seed: GraphSeed): void {
 
   void (async () => {
     try {
-      const item = itemsForSeed(seed)[0]
-      const nodes = item ? await collectNodes(item, false) : []
+      const start = startingPoint(seed)
+      const nodes = start ? await collectNodes(start.identifiers, start.libraryID, start.title, false) : []
       if (nodes.length === 0) {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
@@ -322,8 +334,12 @@ function themeFor(win: Window): GraphTheme {
  * item that has been tallied, so a graph over familiar items costs little. The
  * citing direction is the one genuinely new request.
  */
-async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNode[]> {
-  const identifiers = Helpers.getAllItemIdentifiers(item)
+async function collectNodes(
+  identifiers: ItemIdentifier[],
+  libraryID: number,
+  fallbackTitle: string,
+  force: boolean,
+): Promise<GraphNode[]> {
   if (identifiers.length === 0) return []
 
   const record = await fetchScholarlyRecord(identifiers, { force })
@@ -351,7 +367,7 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
 
   // One pass over the library rather than a search per work; the index is
   // memoised and dropped when items change. See libraryIndex.
-  const inLibrary = await getDoiIndex(item.libraryID)
+  const inLibrary = await getDoiIndex(libraryID)
 
   const seen = new Set<string>()
   const nodes: GraphNode[] = []
@@ -377,7 +393,7 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
   }
 
   push(
-    record.title ?? item.getField('title'),
+    record.title ?? fallbackTitle,
     identifiers.find((id) => id.type === 'doi')?.id ?? null,
     record.publicationYear,
     record.citedByCount,
@@ -650,11 +666,24 @@ const ROLE_LABEL: Record<GraphNode['role'], FluentMessageId> = {
  *
  * Everything shown is already in hand, so the card costs no request.
  */
+/**
+ * Semantic Scholar's own page for a work, reached by DOI.
+ *
+ * Through the api host, which redirects to the canonical paper page. The
+ * obvious `semanticscholar.org/paper/<doi>` does not: it answers, with a page
+ * that is not the paper. Checked, both of them, because a link that looks
+ * right and is not is worse than no link.
+ */
+export function semanticScholarUrl(doi: string): string {
+  return `https://api.semanticscholar.org/${doi}`
+}
+
 function buildMarkCard(
   doc: Document,
   node: GraphNode,
   theme: GraphTheme,
   onClose: () => void,
+  onGraph: (node: GraphNode) => void,
 ): { card: HTMLElement; width: number } {
   const card = el(doc, 'div')
   card.style.cssText =
@@ -730,6 +759,12 @@ function buildMarkCard(
   }
   if (node.doi) {
     actions.append(
+      // Ahead of the DOI: stepping into a work's own surroundings is what the
+      // reader is doing here, and it does not need the work to be filed.
+      action(getString('graph-card-graph'), () => onGraph(node)),
+      action(getString('graph-card-source'), () => {
+        Zotero.launchURL(semanticScholarUrl(node.doi ?? ''))
+      }),
       action(getString('graph-card-doi'), () => {
         Zotero.launchURL(`https://doi.org/${node.doi ?? ''}`)
       }),
@@ -808,6 +843,16 @@ export function renderGraph(
 ): void {
   const doc = win.document
   const theme = themeFor(win)
+
+  /**
+   * Which library a graph opened from here checks membership against.
+   *
+   * The one this graph used, so a work's ring means the same thing on both.
+   * Falls back to the user library, which is where a graph opened from a menu
+   * with nothing selected would have looked anyway.
+   */
+  const seedLibraryID =
+    seed.kind === 'work' ? seed.libraryID : (itemsForSeed(seed)[0]?.libraryID ?? Zotero.Libraries.userLibraryID)
 
   /** How far the highlight reaches. Remembered; nothing is fetched for it. */
   let hops = readHopsPref()
@@ -1005,7 +1050,16 @@ export function renderGraph(
 
   const openCard = (node: GraphNode, event: MouseEvent): void => {
     closeCard()
-    const built = buildMarkCard(doc, node, theme, closeCard)
+    const built = buildMarkCard(doc, node, theme, closeCard, (from) => {
+      // A tab of its own, keyed on the DOI, so the graph it came from stays
+      // open behind it.
+      openGraphTab({
+        kind: 'work',
+        doi: from.doi ?? '',
+        name: from.title || getString('graph-card-title'),
+        libraryID: seedLibraryID,
+      })
+    })
     card = built.card
 
     // Placed against the plot, and kept inside it: a card that opens half
@@ -1154,7 +1208,17 @@ export function renderGraph(
         slot.setAttribute('x', x)
         slot.setAttribute('y', placement.y.toFixed(1))
         slot.setAttribute('text-anchor', placement.anchor)
-        slot.setAttribute('opacity', emphasis(placement.key, 0.9, 0.2, 1))
+        // Names of unrelated works go out rather than dim.
+        //
+        // A dimmed name is still a name, and twenty of them around the one
+        // being read is exactly the crowding the emphasis exists to clear. The
+        // marks stay -- they are the shape of the field and dimming is enough
+        // for them -- but their captions are what makes it unreadable.
+        const related = placement.key === emphasised() || (currentChain()?.keys.has(placement.key) ?? false)
+        slot.setAttribute(
+          'opacity',
+          emphasised() === null ? '0.9' : related ? emphasis(placement.key, 0.9, 0.55, 1) : '0',
+        )
       })
 
       /**
@@ -1369,7 +1433,11 @@ export function renderGraph(
     imported.addEventListener('click', (event) => {
       // A drag that ends over a mark is panning, not a click on it.
       if (dragged) return
-      const target = (event.target as Element | null)?.closest?.('circle')
+      // The group, not the circle: a mark is drawn as up to three circles --
+      // the seed's halo, the library collar, the mark itself -- and only the
+      // innermost carries the key. Aiming at the collar's ring, which sits
+      // outside the mark, used to hit a circle that answered to nothing.
+      const target = (event.target as Element | null)?.closest?.('[data-mark]')
       // Anywhere else in the plot lets go of whatever is held.
       if (!target) {
         closeCard()
@@ -1416,6 +1484,30 @@ export function renderGraph(
   win.addEventListener('resize', draw)
 }
 
+/**
+ * What to look up, and which library to check membership against.
+ *
+ * A seed is either an item in the library, whose identifiers Zotero already
+ * holds, or a bare DOI from a mark on another graph. Both end up as the same
+ * list, so nothing downstream has to know which it was.
+ */
+function startingPoint(seed: GraphSeed): { identifiers: ItemIdentifier[]; libraryID: number; title: string } | null {
+  if (seed.kind === 'work') {
+    return {
+      identifiers: [{ type: 'doi', id: seed.doi, source: 'Graph' }],
+      libraryID: seed.libraryID,
+      title: seed.name,
+    }
+  }
+  const item = itemsForSeed(seed)[0]
+  if (!item) return null
+  return {
+    identifiers: Helpers.getAllItemIdentifiers(item),
+    libraryID: item.libraryID,
+    title: item.getField('title'),
+  }
+}
+
 /** The items a seed stands for. Collections and libraries are seeded by content. */
 function itemsForSeed(seed: GraphSeed): Zotero.Item[] {
   switch (seed.kind) {
@@ -1439,6 +1531,8 @@ function itemsForSeed(seed: GraphSeed): Zotero.Item[] {
         : []
     }
     case 'library':
+    case 'work':
+      // Handled by startingPoint, which does not need a Zotero item.
       return []
   }
 }

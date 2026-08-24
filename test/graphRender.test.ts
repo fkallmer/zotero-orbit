@@ -106,8 +106,8 @@ function fire(target: any, type: string, extra: Record<string, unknown> = {}): v
 describe('the tab as the reader sees it', () => {
   const nodes = [
     makeNode({ key: 'seed', role: 'seed', year: 2019, citedByCount: 6, doi: '10.1/seed' }),
-    makeNode({ key: 'ref', year: 2005, citedByCount: 1822, itemID: 42 }),
-    makeNode({ key: 'cite', role: 'citing', year: 2022, citedByCount: 3 }),
+    makeNode({ key: 'ref', year: 2005, citedByCount: 1822, itemID: 42, doi: '10.1/ref' }),
+    makeNode({ key: 'cite', role: 'citing', year: 2022, citedByCount: 3, doi: '10.1/cite' }),
   ]
 
   it('places every mark at a real coordinate', () => {
@@ -324,6 +324,36 @@ describe('the tab as the reader sees it', () => {
       assert.equal(opacityOf(container, 'c'), opacityOf(container, 'd'), 'a second hop was lit')
     })
 
+    it('takes the other names off the plot rather than dimming them', () => {
+      // Twenty dimmed names around the one being read is exactly the crowding
+      // the emphasis exists to clear. The marks stay; the captions do not.
+      const container = draw()
+      const showing = () =>
+        [...container.querySelectorAll('[data-label]')]
+          .filter((slot: any) => slot.getAttribute('opacity') !== '0')
+          .map((slot: any) => slot.textContent)
+      assert.ok(showing().length > 2, 'the resting plot should carry several names')
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      const left = showing()
+      // The mark itself and the one it links to; c and d are neither.
+      assert.ok(
+        left.some((text: string) => text.includes('a')),
+        'the pointed-at name went too',
+      )
+      assert.equal(left.length, 2, `expected the mark and its one link, got: ${left.join(' | ')}`)
+    })
+
+    it('brings the names back when the pointer leaves', () => {
+      const container = draw()
+      const showing = () =>
+        [...container.querySelectorAll('[data-label]')].filter((s: any) => s.getAttribute('opacity') !== '0').length
+      const atRest = showing()
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      assert.ok(showing() < atRest)
+      fire(container.querySelector('svg[role="img"]'), 'mouseleave')
+      assert.equal(showing(), atRest)
+    })
+
     it('reaches further when the control asks for it', () => {
       const container = draw()
       const select = container.querySelector('[data-control="hops"]') as any
@@ -477,6 +507,38 @@ describe('the tab as the reader sees it', () => {
       assert.ok(!keys(container).includes('cite'))
       click(container, 'citing')
       assert.ok(keys(container).includes('cite'))
+    })
+  })
+
+  describe('what the card offers', () => {
+    const labelsIn = (container: any) =>
+      [...container.querySelectorAll('button')].map((b: any) => b.textContent).filter(Boolean)
+
+    it('offers a graph from that work, whether or not it is filed', () => {
+      // The graph exists to surface work the reader does not have. Requiring
+      // it to be in the library first would refuse exactly that case.
+      const { container } = render(nodes)
+      const unfiled = container.querySelector('[data-mark][data-key="cite"] circle')
+      fire(unfiled, 'click', { clientX: 30, clientY: 30 })
+      const buttons = labelsIn(container).join(' | ')
+      assert.ok(buttons.includes('graph-card-graph'), `no graph action: ${buttons}`)
+    })
+
+    it('offers the work at its source as well as at the publisher', () => {
+      const { container } = render(nodes)
+      fire(container.querySelector('[data-mark][data-key="ref"]'), 'click', { clientX: 30, clientY: 30 })
+      const buttons = labelsIn(container).join(' | ')
+      assert.ok(buttons.includes('graph-card-source'), `no source link: ${buttons}`)
+      assert.ok(buttons.includes('graph-card-doi'))
+    })
+
+    it('offers none of the three for a work with no DOI', () => {
+      const bare = [makeNode({ key: 'seed', role: 'seed' }), makeNode({ key: 'nodoi', year: 2011 })]
+      const { container } = render(bare)
+      fire(container.querySelector('[data-mark][data-key="nodoi"]'), 'click', { clientX: 30, clientY: 30 })
+      const buttons = labelsIn(container).join(' | ')
+      assert.ok(!buttons.includes('graph-card-graph'), `offered a graph with nothing to look up: ${buttons}`)
+      assert.ok(!buttons.includes('graph-card-source'))
     })
   })
 

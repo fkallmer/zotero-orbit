@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
+import { semanticScholarUrl } from '../src/modules/graphTab.ts'
+
 import {
   buildSourceUrl,
   buildWorkUrl,
@@ -202,5 +204,14 @@ describe('normalizeSource', () => {
 
   it('returns null when there is no id to key on', () => {
     assert.equal(normalizeSource({ display_name: 'Nameless' }), null)
+  })
+})
+
+describe('semanticScholarUrl', () => {
+  it('goes through the host that redirects to the paper page', () => {
+    // `semanticscholar.org/paper/<doi>` answers with a page that is not the
+    // paper; the api host redirects to the canonical one. Both were checked,
+    // because a link that looks right and is not is worse than no link.
+    assert.equal(semanticScholarUrl('10.3390/s19133005'), 'https://api.semanticscholar.org/10.3390/s19133005')
   })
 })
