@@ -11,6 +11,19 @@ count.
 
 Requires Zotero 10.
 
+## Building
+
+`yarn build` produces `.scaffold/build/orbit.xpi`. Every build raises the patch
+version, because Zotero keys an installed plugin by version and two builds
+sharing one are, to it, the same plugin.
+
+OpenAlex offers a faster request pool to callers who identify themselves. Put
+an address in `.orbit-contact` (untracked) or set `ORBIT_CONTACT`, and it is
+substituted into the build. Leave it unset and Orbit uses the common pool,
+which is slower but works. The address is deliberately not in this repository:
+it identifies whoever runs the build, and a fork must not go on sending an
+address that is not theirs.
+
 ## Origin
 
 Orbit is a fork of [Citation Tally](https://github.com/daeh/zotero-citation-tally)

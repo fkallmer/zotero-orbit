@@ -1,5 +1,21 @@
+import { existsSync, readFileSync } from 'node:fs'
+import process from 'node:process'
+
 import { defineConfig } from 'zotero-plugin-scaffold'
+
 import pkg from './package.json' with { type: 'json' }
+
+/**
+ * The address OpenAlex is given for its polite pool.
+ *
+ * Read from the environment or from an untracked `.orbit-contact`, never from
+ * a file in the repository: it identifies whoever runs the build, and anyone
+ * forking this must not go on sending an address that is not theirs. Unset is
+ * a supported state -- OpenAlex answers from the common pool, more slowly.
+ */
+const contact = (
+  process.env.ORBIT_CONTACT ?? (existsSync('.orbit-contact') ? readFileSync('.orbit-contact', 'utf8') : '')
+).trim()
 
 export default defineConfig({
   source: ['src', 'addon'],
@@ -34,6 +50,7 @@ export default defineConfig({
         entryPoints: ['src/index.ts'],
         define: {
           __env__: `"${process.env.NODE_ENV}"`,
+          __contact__: JSON.stringify(contact),
         },
         bundle: true,
         target: 'firefox140',

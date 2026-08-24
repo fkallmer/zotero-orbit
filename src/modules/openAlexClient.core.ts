@@ -28,7 +28,28 @@ const API_ROOT = 'https://api.openalex.org'
  * OpenAlex reads the contact from a `mailto` query parameter, not from the
  * User-Agent, and only then routes the request into its polite pool.
  */
-export const OPENALEX_CONTACT = 'dev@daeh.info'
+/**
+ * Substituted at build time; absent everywhere else, including the tests.
+ *
+ * Kept out of the source because it identifies whoever runs the build, and a
+ * fork published from this repository must not go on sending someone else's
+ * address. See `.orbit-contact` and zotero-plugin.config.ts.
+ */
+declare const __contact__: string | undefined
+
+export const OPENALEX_CONTACT = typeof __contact__ === 'string' ? __contact__ : ''
+
+/**
+ * The polite-pool parameter, or nothing at all.
+ *
+ * OpenAlex asks for a contact address and gives faster, higher limits in
+ * return. Without one it still answers, from the common pool -- so an unset
+ * address must produce a URL with no `mailto` rather than one with an empty
+ * one, which would claim a contact and name nobody.
+ */
+export function mailtoSuffix(contact: string): string {
+  return contact.trim() === '' ? '' : `&mailto=${encodeURIComponent(contact.trim())}`
+}
 
 /** Fields the citation-count path needs. Kept minimal; it runs per item in bulk. */
 export const WORK_COUNT_SELECT = 'cited_by_count'
@@ -75,7 +96,7 @@ export function buildWorksByIdUrl(openAlexIds: readonly string[]): string {
   return (
     `${API_ROOT}/works?filter=openalex_id:${bare.join('|')}` +
     `&select=${encodeURIComponent(REFERENCE_SELECT)}&per-page=${REFERENCE_CHUNK}` +
-    `&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+    `${mailtoSuffix(OPENALEX_CONTACT)}`
   )
 }
 
@@ -91,7 +112,7 @@ export function buildCitingWorksUrl(openAlexId: string, perPage: number): string
   return (
     `${API_ROOT}/works?filter=cites:${encodeURIComponent(bare)}` +
     `&select=${encodeURIComponent(REFERENCE_SELECT)}&per-page=${perPage}` +
-    `&sort=cited_by_count:desc&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+    `&sort=cited_by_count:desc${mailtoSuffix(OPENALEX_CONTACT)}`
   )
 }
 
@@ -117,7 +138,7 @@ export function buildWorksByDoiUrl(dois: readonly string[]): string {
   return (
     `${API_ROOT}/works?filter=doi:${bare.map((doi) => encodeURIComponent(doi)).join('|')}` +
     `&select=${encodeURIComponent(LINK_SELECT)}&per-page=${REFERENCE_CHUNK}` +
-    `&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+    `${mailtoSuffix(OPENALEX_CONTACT)}`
   )
 }
 
@@ -173,7 +194,7 @@ function encodePath(id: string): string {
 export function buildWorkUrl(lookupDoi: string, select: string): string {
   return (
     `${API_ROOT}/works/doi:${encodePath(lookupDoi)}` +
-    `?select=${encodeURIComponent(select)}&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+    `?select=${encodeURIComponent(select)}${mailtoSuffix(OPENALEX_CONTACT)}`
   )
 }
 
@@ -182,7 +203,7 @@ export function buildSourceUrl(sourceId: string): string {
   const bare = sourceId.replace(/^https?:\/\/openalex\.org\//i, '')
   return (
     `${API_ROOT}/sources/${encodeURIComponent(bare)}` +
-    `?select=${encodeURIComponent(SOURCE_SELECT)}&mailto=${encodeURIComponent(OPENALEX_CONTACT)}`
+    `?select=${encodeURIComponent(SOURCE_SELECT)}${mailtoSuffix(OPENALEX_CONTACT)}`
   )
 }
 

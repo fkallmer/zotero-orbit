@@ -6,6 +6,7 @@ import {
   buildSourceUrl,
   buildWorkUrl,
   normalizeSource,
+  mailtoSuffix,
   normalizeWork,
   toChronologicalSeries,
   toLookupDoi,
@@ -39,14 +40,36 @@ describe('buildWorkUrl', () => {
     assert.equal(url.searchParams.get('select'), 'cited_by_count')
   })
 
-  it('carries the mailto that selects OpenAlex’s polite pool', () => {
+  it('carries no mailto when the build was given no contact', () => {
+    // The address is substituted at build time and absent here, which is the
+    // state a fork of this repository builds in.
     const url = new URL(buildWorkUrl('10.1/x', 'cited_by_count'))
-    assert.ok((url.searchParams.get('mailto') ?? '').includes('@'))
+    assert.equal(url.searchParams.get('mailto'), null)
   })
 
   it('escapes a DOI suffix containing a query character', () => {
     const url = new URL(buildWorkUrl('10.1234/a?b=c', 'cited_by_count'))
     assert.ok(url.pathname.includes('a%3Fb%3Dc'))
+  })
+})
+
+describe('mailtoSuffix', () => {
+  it('names the contact when there is one', () => {
+    // OpenAlex gives faster, higher limits to a request that identifies its
+    // operator.
+    assert.equal(mailtoSuffix('someone@example.org'), '&mailto=someone%40example.org')
+  })
+
+  it('produces nothing at all rather than an empty mailto', () => {
+    // `&mailto=` claims a contact and names nobody, which is worse than not
+    // claiming one.
+    assert.equal(mailtoSuffix(''), '')
+    assert.equal(mailtoSuffix('   '), '')
+  })
+
+  it('does not carry surrounding whitespace into the URL', () => {
+    // The address comes from a file, and files end in a newline.
+    assert.equal(mailtoSuffix('\n someone@example.org \n'), '&mailto=someone%40example.org')
   })
 })
 

@@ -57,3 +57,8 @@ logs
 # Yarn's local link cache. It records absolute paths, so it changes on every
 # install and whenever the checkout moves -- machine state, not source.
 .yarn/install-state.gz
+
+# The contact address sent to OpenAlex for its polite pool. Kept out of the
+# repository on purpose: it identifies whoever runs this build, and a fork
+# published from here must not carry someone else's address.
+.orbit-contact

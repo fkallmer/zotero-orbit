@@ -43,6 +43,7 @@ import { getIgnorePolicy } from './ignorePolicy'
 import {
   buildWorkUrl,
   normalizeWork,
+  OPENALEX_CONTACT,
   OPENALEX_DATABASE,
   openAlexRecordCacheKey,
   toLookupDoi,
@@ -84,7 +85,12 @@ const REQUEST_TIMEOUT_MS = 20_000
  * "polite pool", which is better resourced than the anonymous one; the project
  * URL serves as that contact.
  */
-const USER_AGENT = `Orbit/${version} (+https://github.com/fkallmer/zotero-orbit; mailto:dev@daeh.info)`
+// The contact is appended only when the build was given one, for the same
+// reason the OpenAlex mailto is: naming somebody else is worse than naming
+// nobody. See OPENALEX_CONTACT.
+const USER_AGENT =
+  `Orbit/${version} (+https://github.com/fkallmer/zotero-orbit` +
+  `${OPENALEX_CONTACT.trim() === '' ? '' : `; mailto:${OPENALEX_CONTACT.trim()}`})`
 
 /** Headers every provider request sends. */
 const REQUEST_HEADERS: Readonly<Record<string, string>> = { 'User-Agent': USER_AGENT }
