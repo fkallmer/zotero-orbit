@@ -21,6 +21,7 @@ declare namespace _ZoteroTypes {
       "graphScale": string;
       "graphAxisX": string;
       "graphAxisY": string;
+      "adoptedLegacyState": boolean;
     };
   }
 }

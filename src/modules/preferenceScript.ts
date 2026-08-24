@@ -59,7 +59,7 @@ function getApiKeyInput(window: Window): HTMLInputElement | null {
  */
 function localization(window: Window) {
   const l10n = window.document?.l10n
-  if (!l10n) throw new Error('Citation Tally: the preferences document has no Fluent localization')
+  if (!l10n) throw new Error('Orbit: the preferences document has no Fluent localization')
   return l10n
 }
 

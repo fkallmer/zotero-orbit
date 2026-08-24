@@ -24,6 +24,7 @@ import {
   isSemanticScholarAvailable,
   shutdownSemanticScholarClient,
 } from './modules/semanticScholarClient'
+import { adoptLegacyState } from './utils/adoptLegacyState'
 import { getString, initLocale } from './utils/locale'
 import { flushCache, loadCache } from './utils/recordCache'
 
@@ -37,6 +38,10 @@ async function onStartup() {
   addon.data.runtimeBridge = _globalThis.__runtimeBridgeReport
 
   BasicRegistrar.registerPrefs()
+
+  // Before anything reads a preference: the plugin was installed under a
+  // different name, and its settings and cache are still filed under it.
+  await adoptLegacyState()
 
   // Key changes must be observed before any lookup can start. In the degraded
   // runtime the client is never constructed, but startup still has to finish.
@@ -75,13 +80,13 @@ async function onStartup() {
     registerCitationPane()
   } catch (err) {
     Zotero.logError(err as Error)
-    Zotero.debug(`Citation Tally: item pane section failed to register: ${String(err)}`)
+    Zotero.debug(`Orbit: item pane section failed to register: ${String(err)}`)
   }
 
   // The cache only feeds the item pane, so a slow read must not hold up
   // startup; the pane's first async render awaits it anyway.
   loadCache().catch((err: unknown) => {
-    Zotero.debug(`Citation Tally: cache load failed: ${String(err)}`)
+    Zotero.debug(`Orbit: cache load failed: ${String(err)}`)
   })
 
   await Promise.all(Zotero.getMainWindows().map((win) => onMainWindowLoad(win)))
@@ -163,7 +168,7 @@ function runTeardownSteps(steps: readonly (() => void)[]): void {
     try {
       step()
     } catch (e) {
-      ztoolkit.log('Citation Tally teardown step failed', e)
+      ztoolkit.log('Orbit teardown step failed', e)
     }
   }
 }

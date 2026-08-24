@@ -27,7 +27,7 @@ import { s2DetailsCacheKey } from './s2Details'
 import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
 import type { S2Details } from './semanticScholarClient.core'
 
-const PANE_ID = 'citationtally-pane'
+const PANE_ID = 'orbit-pane'
 
 /**
  * Flag the sources as disagreeing once the largest is this many times the
@@ -75,7 +75,7 @@ function el(doc: Document, tag: string, className?: string, text?: string): HTML
 }
 
 /** Marks the explanation blocks the info toggle shows and hides. */
-const HINT_ATTR = 'data-citationtally-hint'
+const HINT_ATTR = 'data-orbit-hint'
 
 /**
  * A `label: value` line, optionally with an explanation.
@@ -88,7 +88,7 @@ const HINT_ATTR = 'data-citationtally-hint'
 function row(doc: Document, label: string, value: string, hint?: string): HTMLElement {
   const wrap = el(doc, 'div')
 
-  const line = el(doc, 'div', 'citationtally-row')
+  const line = el(doc, 'div', 'orbit-row')
   line.style.display = 'flex'
   line.style.justifyContent = 'space-between'
   line.style.gap = '8px'
@@ -119,7 +119,7 @@ function row(doc: Document, label: string, value: string, hint?: string): HTMLEl
 function headingWithInfo(doc: Document, text: string, body: HTMLElement): HTMLElement {
   // The label goes in its own span: a bare text node beside an element in a
   // flex row becomes an anonymous item and lays out unpredictably.
-  const node = el(doc, 'div', 'citationtally-heading')
+  const node = el(doc, 'div', 'orbit-heading')
   node.style.cssText = 'display:flex;align-items:center;gap:6px;font-weight:600;margin:10px 0 3px'
   node.append(el(doc, 'span', undefined, text))
 
@@ -148,7 +148,7 @@ function headingWithInfo(doc: Document, text: string, body: HTMLElement): HTMLEl
 }
 
 function heading(doc: Document, text: string): HTMLElement {
-  const node = el(doc, 'div', 'citationtally-heading', text)
+  const node = el(doc, 'div', 'orbit-heading', text)
   node.style.fontWeight = '600'
   node.style.marginTop = '10px'
   node.style.marginBottom = '3px'
@@ -642,17 +642,17 @@ export function registerCitationPane(): void {
     },
     sectionButtons: [
       {
-        // The DOM dump showed `extra-buttons=citationtally-refresh` present on
+        // The DOM dump showed `extra-buttons=orbit-refresh` present on
         // the section all along, so this was never what kept the header from
         // building -- that was the Fluent message shape.
-        type: 'citationtally-refresh',
+        type: 'orbit-refresh',
         icon: 'chrome://zotero/skin/16/universal/sync.svg',
         l10nID: getLocaleID('pane-refresh'),
         onClick: ({ doc, body, item, setSectionSummary, setSectionButtonStatus }) => {
           void (async () => {
             // Disabled for the duration: these are network round trips to four
             // providers, and a second click would start a second set of them.
-            setSectionButtonStatus('citationtally-refresh', { disabled: true })
+            setSectionButtonStatus('orbit-refresh', { disabled: true })
             body.replaceChildren(el(doc, 'div', undefined, getString('pane-refreshing')))
             try {
               // Both halves, in the order the pane reads them. Refetching only
@@ -670,7 +670,7 @@ export function registerCitationPane(): void {
               debugLog('Citation debug - Item pane refresh failed:', err)
               body.replaceChildren(el(doc, 'div', undefined, getString('pane-refresh-failed')))
             } finally {
-              setSectionButtonStatus('citationtally-refresh', { disabled: false })
+              setSectionButtonStatus('orbit-refresh', { disabled: false })
             }
           })()
         },
@@ -698,7 +698,7 @@ export function registerCitationPane(): void {
   // Unconditional: registerSection returns false on a rejected option set and
   // only logs to the debug output, so without this a silent failure looks
   // exactly like a section that renders nothing.
-  Zotero.debug(`Citation Tally: registerSection returned ${String(registeredPaneID)}`)
+  Zotero.debug(`Orbit: registerSection returned ${String(registeredPaneID)}`)
 }
 
 export function unregisterCitationPane(): void {

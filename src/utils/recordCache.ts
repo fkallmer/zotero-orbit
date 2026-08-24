@@ -16,7 +16,7 @@
 
 import { debugLog } from './log'
 
-const CACHE_FILE = 'citationtally-cache.json'
+const CACHE_FILE = 'orbit-cache.json'
 /**
  * Bump whenever a cached shape changes.
  *

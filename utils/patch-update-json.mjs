@@ -11,31 +11,17 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
-export const LEGACY_ENTRIES = [
-  {
-    version: '0.0.16',
-    update_link: 'https://github.com/daeh/zotero-citation-tally/releases/download/v0.0.16/citation-tally.xpi',
-    update_hash:
-      'sha512:2af6f782ad5a5360ab2914c8c42c9d915f11fd65f52207930dfea1f9b48fb472008fd63accf68c8466efe5a295ac495ba54f8d969cbd8ef0e613d4cb4afb9841',
-    applications: {
-      zotero: { strict_min_version: '8.999', strict_max_version: '9.*' },
-    },
-  },
-  {
-    version: '0.0.12',
-    update_link: 'https://github.com/daeh/zotero-citation-tally/releases/download/v0.0.12/citation-tally.xpi',
-    applications: {
-      zotero: { strict_min_version: '7.999', strict_max_version: '8.*' },
-    },
-  },
-  {
-    version: '0.0.11',
-    update_link: 'https://github.com/daeh/zotero-citation-tally/releases/download/v0.0.11/citation-tally.xpi',
-    applications: {
-      zotero: { strict_min_version: '6.999', strict_max_version: '7.*' },
-    },
-  },
-]
+/**
+ * Older Zotero versions get nothing from Orbit.
+ *
+ * This list used to carry three Citation Tally releases, so a user on Zotero
+ * 7, 8 or 9 would be offered the last build that ran there. Those are another
+ * project's artefacts under another add-on id: served from Orbit's update
+ * feed they would point at files that do not exist in this repository, and
+ * with a different id Zotero would never have treated them as an update
+ * anyway. Orbit requires Zotero 10 and has no history before it.
+ */
+export const LEGACY_ENTRIES = []
 
 function patchBuiltManifests() {
   const root = resolve(import.meta.dirname, '..')

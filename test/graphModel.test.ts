@@ -159,8 +159,8 @@ describe('renderGraphSvg', () => {
     // The seed cites its references, so those edges leave the seed; the citing
     // works cite the seed, so theirs arrive at it. Without the heads the plot
     // shows two clusters and leaves the direction to be guessed.
-    assert.ok(svg.includes('marker-end="url(#citationtally-graph-arrow-ref)"'))
-    assert.ok(svg.includes('marker-end="url(#citationtally-graph-arrow-cite)"'))
+    assert.ok(svg.includes('marker-end="url(#orbit-graph-arrow-ref)"'))
+    assert.ok(svg.includes('marker-end="url(#orbit-graph-arrow-cite)"'))
   })
 
   it('says how many works a mark cites, since that is what its size means', () => {
@@ -391,8 +391,8 @@ describe('a fixed frame around a moving plot', () => {
 
   it('clips the plot out of the gutters the tick numbers live in', () => {
     const svg = renderGraphSvg(layout, theme)
-    assert.ok(svg.includes('clip-path="url(#citationtally-graph-plot-area)"'))
-    assert.ok(svg.includes('<clipPath id="citationtally-graph-plot-area">'))
+    assert.ok(svg.includes('clip-path="url(#orbit-graph-plot-area)"'))
+    assert.ok(svg.includes('<clipPath id="orbit-graph-plot-area">'))
   })
 
   it('namespaces its defs, so two open graphs cannot clip each other', () => {

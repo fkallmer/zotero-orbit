@@ -19,7 +19,7 @@ function ok(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)
 }
 
-describe('Citation Tally runtime', function () {
+describe('Orbit runtime', function () {
   this.timeout(30000)
 
   it('initializes fully', () => {

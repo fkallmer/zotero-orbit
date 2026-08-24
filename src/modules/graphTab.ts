@@ -51,9 +51,9 @@ const XHTML_NS = 'http://www.w3.org/1999/xhtml'
 const GRAPH_MENU_ICON = 'chrome://zotero/skin/16/universal/related.svg'
 
 /** The `data-item-type` token the tab icon rule keys on. */
-const TAB_ICON_TYPE = 'citationtally-graph'
+const TAB_ICON_TYPE = 'orbit-graph'
 
-const TAB_ICON_STYLE_ID = 'citationtally-tab-icon-style'
+const TAB_ICON_STYLE_ID = 'orbit-tab-icon-style'
 
 /**
  * Supply the CSS rule for our tab icon.
@@ -89,11 +89,11 @@ export function removeTabIconStyle(win: Window): void {
 function tabIDFor(seed: GraphSeed): string {
   switch (seed.kind) {
     case 'collection':
-      return `citationtally-graph-collection-${seed.collectionID}`
+      return `orbit-graph-collection-${seed.collectionID}`
     case 'items':
-      return `citationtally-graph-items-${seed.itemIDs.slice().sort().join('-')}`
+      return `orbit-graph-items-${seed.itemIDs.slice().sort().join('-')}`
     case 'library':
-      return `citationtally-graph-library-${seed.libraryID}`
+      return `orbit-graph-library-${seed.libraryID}`
   }
 }
 
@@ -163,7 +163,7 @@ export function openGraphTab(seed: GraphSeed): void {
 
   const { container } = tabs.add({
     id,
-    type: 'citationtally-graph',
+    type: 'orbit-graph',
     title: getString('graph-tab-title', { args: { name: seed.name } }),
     // The tab bar reads its icon from data.icon; `related` is Zotero's own
     // linked-rings glyph, which is the concept exactly.
@@ -179,7 +179,7 @@ export function openGraphTab(seed: GraphSeed): void {
   // Something on screen before any fetching starts, so an empty tab always
   // means a failure rather than a wait.
   renderPlaceholder(win.document, container, seed, getString('graph-loading'))
-  Zotero.debug(`Citation Tally: graph tab opened for ${seed.kind} "${seed.name}"`)
+  Zotero.debug(`Orbit: graph tab opened for ${seed.kind} "${seed.name}"`)
 
   void (async () => {
     try {
@@ -190,9 +190,9 @@ export function openGraphTab(seed: GraphSeed): void {
         return
       }
       renderGraph(win, container, seed, nodes)
-      Zotero.debug(`Citation Tally: graph rendered with ${nodes.length} nodes`)
+      Zotero.debug(`Orbit: graph rendered with ${nodes.length} nodes`)
     } catch (err) {
-      Zotero.debug(`Citation Tally: graph failed: ${String(err)}`)
+      Zotero.debug(`Orbit: graph failed: ${String(err)}`)
       renderPlaceholder(win.document, container, seed, String(err))
     }
   })()
@@ -1104,7 +1104,7 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     }
     // The tab's own id namespaces the SVG defs, so two open graphs cannot
     // reach into each other's clip path.
-    const uid = container.id || 'citationtally-graph'
+    const uid = container.id || 'orbit-graph'
     const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme, text, uid), 'image/svg+xml')
     const svg = parsed.documentElement
     if (!svg || svg.nodeName === 'parsererror') return

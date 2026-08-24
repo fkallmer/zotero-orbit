@@ -1,29 +1,29 @@
 {
-  "name": "zotero-citation-tally",
+  "name": "zotero-orbit",
   "version": "0.1.0",
   "private": true,
-  "description": "Plugin that tallies citation counts for Zotero items",
-  "author": "Dae Houlihan <dev@daeh.info> (https://daeh.info)",
+  "description": "Citation counts, context and a citation graph for Zotero items",
+  "author": "Falk Kallmer",
   "license": "AGPL-3.0",
   "type": "module",
   "engines": {
     "node": ">=26 <27"
   },
   "config": {
-    "addonName": "Citation Tally",
-    "addonID": "citation-hybrid@fkallmer.dev",
-    "addonRef": "citationtally",
-    "addonInstance": "CitationTally",
-    "prefsPrefix": "extensions.zotero.citationtally"
+    "addonName": "Orbit",
+    "addonID": "orbit@fkallmer.dev",
+    "addonRef": "orbit",
+    "addonInstance": "Orbit",
+    "prefsPrefix": "extensions.zotero.orbit"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/daeh/zotero-citation-tally.git"
+    "url": "git+https://github.com/fkallmer/zotero-orbit.git"
   },
   "bugs": {
-    "url": "https://github.com/daeh/zotero-citation-tally/issues"
+    "url": "https://github.com/fkallmer/zotero-orbit/issues"
   },
-  "homepage": "https://github.com/daeh/zotero-citation-tally#readme",
+  "homepage": "https://github.com/fkallmer/zotero-orbit#readme",
   "scripts": {
     "start": "zotero-plugin serve",
     "build": "zotero-plugin build && tsc --noEmit && node utils/patch-update-json.mjs && node utils/copy-xpi.mjs",

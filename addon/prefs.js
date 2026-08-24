@@ -11,10 +11,14 @@ pref('googleScholarEndpoint', 'https://scholar.google.com')
 pref('semanticScholarApiKey', '')
 // Diagnostics. A real boolean, not the 'true'/'false' strings the older prefs
 // above use -- that is a wart worth not extending. No UI: set it in Zotero's
-// Config Editor (extensions.zotero.citationtally.debugLogging) when asked for
+// Config Editor (extensions.zotero.orbit.debugLogging) when asked for
 // a log.
 pref('debugLogging', false)
 // Remembered per user; see citationScale for why neither axis fits both cases.
 pref('graphScale', 'log')
 pref('graphAxisX', 'year')
 pref('graphAxisY', 'citations')
+
+// Set once the settings and cache from the Citation Tally name have been
+// taken over. See utils/adoptLegacyState.
+pref('adoptedLegacyState', false)

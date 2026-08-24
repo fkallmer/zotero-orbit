@@ -1,11 +1,11 @@
-startup-begin = Citation Tally is loading
-startup-finish = Citation Tally is ready
+startup-begin = Orbit is loading
+startup-finish = Orbit is ready
 startup-progress = [{ $percent }%] { $message }
 menuitem-update-citation-tallies =
     .label = Update Citation Tallies
 menuitem-retally-outdated-citations =
     .label = Retally outdated item citations
-prefs-title = Citation Tally
+prefs-title = Orbit
 
 # Progress window messages
 progress-getting-citation-tallies = Getting citation tallies
@@ -29,7 +29,7 @@ database-openalex = OpenAlex
 database-semanticscholar = SemanticScholar
 
 # Semantic Scholar API key
-semantic-scholar-key-rejected = Semantic Scholar rejected your API key. Citation Tally has stopped using it and will try again later.
+semantic-scholar-key-rejected = Semantic Scholar rejected your API key. Orbit has stopped using it and will try again later.
 semantic-scholar-unavailable = Semantic Scholar isn't available and has been turned off. The other citation databases still work.
 
 # Column and tooltip

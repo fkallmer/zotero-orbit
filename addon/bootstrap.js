@@ -15,7 +15,7 @@ var chromeHandle
 var runtimeCapabilityNames = ['AbortController', 'DOMException']
 
 /** Dev-only escape hatch: force the degraded path without editing source. */
-var forceDegradedPref = 'extensions.zotero.citationtally.forceDegradedRuntime'
+var forceDegradedPref = 'extensions.zotero.orbit.forceDegradedRuntime'
 
 function isForcedDegraded() {
   // `__buildEnv__` is substituted at build time; the branch is inert in production builds.
@@ -102,7 +102,7 @@ function resolveRuntimeCapabilities() {
     try {
       Components.utils.importGlobalProperties(absent)
     } catch (e) {
-      Zotero.debug('Citation Tally: importGlobalProperties failed: ' + String(e))
+      Zotero.debug('Orbit: importGlobalProperties failed: ' + String(e))
     }
     var imported = verifyCapabilityPair(classifyGlobal('AbortController').value, classifyGlobal('DOMException').value)
     if (imported) return { provider: 'import-global-properties', capabilities: imported }
@@ -113,7 +113,7 @@ function resolveRuntimeCapabilities() {
 
 function makeUnavailableStub(name) {
   return function citationTallyUnavailableCapability() {
-    throw new Error('Citation Tally: ' + name + ' is unavailable in this Zotero runtime')
+    throw new Error('Orbit: ' + name + ' is unavailable in this Zotero runtime')
   }
 }
 
@@ -156,10 +156,10 @@ function installRuntimeBridge(context) {
     semanticScholarAvailable: capabilities !== null,
   }
 
-  Zotero.debug('Citation Tally runtime bridge provider: ' + resolution.provider)
+  Zotero.debug('Orbit runtime bridge provider: ' + resolution.provider)
   if (!capabilities) {
     Zotero.logError(
-      new Error('Citation Tally: runtime Web API capabilities unavailable; Semantic Scholar features are disabled'),
+      new Error('Orbit: runtime Web API capabilities unavailable; Semantic Scholar features are disabled'),
     )
   }
 }

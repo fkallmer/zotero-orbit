@@ -12,8 +12,8 @@ import console from 'node:console'
 import { copyFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const source = resolve('.scaffold/build/citation-tally.xpi')
-const target = resolve('..', 'citation-tally.xpi')
+const source = resolve('.scaffold/build/orbit.xpi')
+const target = resolve('..', 'orbit.xpi')
 
 copyFileSync(source, target)
 console.log(`XPI -> ${target}`)

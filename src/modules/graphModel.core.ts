@@ -589,12 +589,7 @@ function colorFor(role: GraphRole, theme: GraphTheme): string {
  *   first one's rectangle, which sits in a hidden tab and has collapsed to
  *   nothing, so the second tab draws an empty box until the first is closed.
  */
-export function renderGraphSvg(
-  layout: GraphLayout,
-  theme: GraphTheme,
-  text?: GraphText,
-  uid = 'citationtally-graph',
-): string {
+export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: GraphText, uid = 'orbit-graph'): string {
   /**
    * Each tick is its own group, tagged with where it started.
    *

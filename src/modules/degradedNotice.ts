@@ -28,7 +28,7 @@ function semanticScholarConfigured(): boolean {
 function logDegradedOnce(): void {
   if (degradedLogged) return
   degradedLogged = true
-  Zotero.logError(new Error('Citation Tally: Semantic Scholar is unavailable in this Zotero runtime'))
+  Zotero.logError(new Error('Orbit: Semantic Scholar is unavailable in this Zotero runtime'))
 }
 
 function showNoticeToast(): boolean {
@@ -59,7 +59,7 @@ export function maybeShowProactiveDegradedNotice(): void {
     logDegradedOnce()
     if (showNoticeToast()) proactiveNoticeShown = true
   } catch (e) {
-    ztoolkit.log(`Citation Tally: degraded notice failed: ${String(e)}`)
+    ztoolkit.log(`Orbit: degraded notice failed: ${String(e)}`)
   }
 }
 
@@ -74,7 +74,7 @@ export function notifySemanticScholarUnavailable(): void {
     logDegradedOnce()
     showNoticeToast()
   } catch (e) {
-    ztoolkit.log(`Citation Tally: degraded notice failed: ${String(e)}`)
+    ztoolkit.log(`Orbit: degraded notice failed: ${String(e)}`)
   }
 }
 

@@ -43,7 +43,7 @@ const PROBE_PAPER_ID = '649def34f8be52c8b66281af98ae884c09aef38b'
  */
 const PROBE_MAX_RETRIES = 1
 /** Identifies the client to Semantic Scholar. `name/version` must be one token. */
-const USER_AGENT = `Citation-Tally/${version} (+https://github.com/daeh/zotero-citation-tally)`
+const USER_AGENT = `Orbit/${version} (+https://github.com/daeh/zotero-zotero-orbit)`
 
 export type { ValidationStatus }
 

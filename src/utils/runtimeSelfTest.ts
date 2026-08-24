@@ -30,7 +30,7 @@ export async function runtimeSelfTest(): Promise<RuntimeSelfTestResult> {
     aborted.abort(new DOMException('self-test', 'AbortError'))
     let fetchRejected = false
     try {
-      await fetch('https://example.invalid/citation-tally-self-test', { signal: aborted.signal })
+      await fetch('https://example.invalid/orbit-self-test', { signal: aborted.signal })
     } catch (e) {
       fetchRejected = getErrorName(e) === 'AbortError'
     }

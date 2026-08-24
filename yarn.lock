@@ -2929,9 +2929,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zotero-citation-tally@workspace:.":
+"zotero-orbit@workspace:.":
   version: 0.0.0-use.local
-  resolution: "zotero-citation-tally@workspace:."
+  resolution: "zotero-orbit@workspace:."
   dependencies:
     "@stylistic/eslint-plugin": "npm:^5.10.0"
     "@types/node": "npm:^26.2.0"

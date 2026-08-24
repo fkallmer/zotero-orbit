@@ -1,14 +1,23 @@
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/daeh/zotero-citation-tally?style=for-the-badge)](https://github.com/daeh/zotero-citation-tally/releases/latest) [![GitHub Downloads all releases](https://img.shields.io/github/downloads/daeh/zotero-citation-tally/total?style=for-the-badge&color=forestgreen)](https://github.com/daeh/zotero-citation-tally/releases/latest) [![GitHub Downloads (latest release)](https://img.shields.io/github/downloads/daeh/zotero-citation-tally/latest/total?style=for-the-badge)](https://github.com/daeh/zotero-citation-tally/releases/latest)
+# Orbit
 
-# Citation Tally
+Citation counts, context and a citation graph for Zotero items.
 
-[![zotero target version](https://img.shields.io/badge/Zotero-10-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org) [![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
+Orbit shows how often a work has been cited according to Crossref, INSPIRE,
+OpenAlex, Semantic Scholar and Google Scholar side by side — the disagreement
+between them is often the interesting part. It adds an item pane section with
+the OpenAlex record behind those numbers, the works a paper cites, and a graph
+tab plotting a paper's references and citing works against year and citation
+count.
 
-**_Displays citation counts for Zotero library items._**
+Requires Zotero 10.
 
-![Screenshot](docs/assets/readme/screenshot.png)
+## Origin
 
-This is a plugin for [Zotero](https://www.zotero.org), a research source management tool. The _Citation Tally_ plugin automatically fetches and displays citation counts for research papers in your library from multiple academic databases.
+Orbit is a fork of [Citation Tally](https://github.com/daeh/zotero-citation-tally)
+by Dae Houlihan, and is licensed AGPL-3.0 like the original. The citation-count
+column, the provider framework and the preferences are that project's work; the
+OpenAlex and Google Scholar providers, the item pane section and the graph tab
+are added here.
 
 ## Plugin Functions
 

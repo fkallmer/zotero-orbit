@@ -1,4 +1,4 @@
-groupbox.citationtally-pref-section-box {
+groupbox.orbit-pref-section-box {
   border: 2px solid black;
   border-radius: 10px;
   padding-bottom: 10px;
@@ -7,7 +7,7 @@ groupbox.citationtally-pref-section-box {
   /*max-width: 100%;*/
 }
 
-hbox.citationtally-pref-hbox-indent {
+hbox.orbit-pref-hbox-indent {
   display: inline-flex;
   flex-wrap: nowrap; /* Prevents flex items from wrapping */
   overflow: visible; /* Makes overflow content visible */
@@ -21,37 +21,37 @@ hbox.citationtally-pref-hbox-indent {
   max-width: 100%;
 }
 
-label.citationtally-pref-label-hone {
+label.orbit-pref-label-hone {
   font-size: 18px;
   font-weight: 700;
   text-align: center;
 }
 
-caption.citationtally-pref-section-title {
+caption.orbit-pref-section-title {
   padding: 15px 0 5px 10px;
   font-size: 18px;
   font-weight: 700;
 }
 
-label.citationtally-pref-subsection-title {
+label.orbit-pref-subsection-title {
   padding: 15px 0 1px 10px;
   font-size: 16px;
   font-weight: 500;
 }
 
-description.citationtally-pref-description-indent {
+description.orbit-pref-description-indent {
   padding-left: 10px;
 }
 
-input.citationtally-pref-textbox-flex1 {
+input.orbit-pref-textbox-flex1 {
   -moz-box-flex: 1;
 }
 
-/*input.citationtally-pref-textbox-fullwidth {*/
+/*input.orbit-pref-textbox-fullwidth {*/
 /*  width: 100%;*/
 /*}*/
 
-input[type='text'].citationtally-pref-textbox-partialwidth {
+input[type='text'].orbit-pref-textbox-partialwidth {
   min-width: 80px;
   width: 100px;
   /*-moz-box-flex: 1;*/
@@ -62,33 +62,33 @@ input[type='text'].citationtally-pref-textbox-partialwidth {
   font-family: monospace;
 }
 
-radio.citationtally-pref-radio-main {
+radio.orbit-pref-radio-main {
   padding: 18px 0 1px 2px;
   font-size: 16px;
   font-weight: 700;
 }
 
-.citationtally-pref-explication-minor {
+.orbit-pref-explication-minor {
   font-size: 11px;
 }
 
-.citationtally-pref-text-center {
+.orbit-pref-text-center {
   text-align: center;
 }
 
-.citationtally-pref-width-full {
+.orbit-pref-width-full {
   /*width: 100%;*/
   width: 600px;
 }
 
-hr.citationtally-pref-hr {
+hr.orbit-pref-hr {
   border: 2px solid darkslategrey;
   margin-top: 10px;
   opacity: 20%;
   border-radius: 5px;
 }
 
-div.citationtally-pref-options-div {
+div.orbit-pref-options-div {
   background-color: #e5e5e5;
   border: 2px solid rgba(0, 0, 0, 0.5);
   padding: 5px;
@@ -104,16 +104,16 @@ div.citationtally-pref-options-div {
    longer than the field paints right under it. Padding the text away would push
    the button inward and leave a gap at the edge, so instead give the button the
    field's own background and let it cover the overflow. */
-input.citationtally-pref-apikey-input {
+input.orbit-pref-apikey-input {
   padding: 4px;
 }
 
-input.citationtally-pref-apikey-input::-moz-reveal {
+input.orbit-pref-apikey-input::-moz-reveal {
   background-color: inherit;
 }
 
 /* Separates the label from the monospace token list beside it. */
-span.citationtally-pref-options-label {
+span.orbit-pref-options-label {
   margin-inline-end: 0.35em;
 }
 
@@ -121,32 +121,32 @@ span.citationtally-pref-options-label {
    message, and a localized note. Keeping them apart avoids concatenating them.
    The gap has to be a margin rather than whitespace between the elements, since
    Fluent's text substitution wouldn't preserve whitespace. */
-span.citationtally-status-part {
+span.orbit-status-part {
   margin-inline-start: 0.35em;
 }
 
-span.citationtally-pref-options-code-span {
+span.orbit-pref-options-code-span {
   font-family: monospace;
   font-weight: 600;
 }
-span.citationtally-pref-options-span-first {
+span.orbit-pref-options-span-first {
   text-align: left;
 }
-span.citationtally-pref-options-span-left {
+span.orbit-pref-options-span-left {
   padding-left: 4px;
   text-align: right;
   padding-right: 0;
   margin-right: 0;
   font-size: 13px;
 }
-span.citationtally-pref-options-span-right {
+span.orbit-pref-options-span-right {
   flex-grow: 1;
   text-align: left;
   padding-left: 0;
   margin-left: 0;
   font-size: 13px;
 }
-code.citationtally-pref-code-indent {
+code.orbit-pref-code-indent {
   padding-left: 10px;
 }
 
@@ -164,7 +164,7 @@ code.citationtally-pref-code-indent {
 
 /* Dark theme font color */
 @media (prefers-color-scheme: dark) {
-  div.citationtally-pref-options-div {
+  div.orbit-pref-options-div {
     background-color: #212121;
     border: 2px solid rgba(255, 255, 255, 0.5);
   }

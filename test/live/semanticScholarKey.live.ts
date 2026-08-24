@@ -47,7 +47,7 @@ const execFileAsync = promisify(execFile)
 const PROBE_PAPER_ID = 'CorpusID:259065118'
 const PROBE_DOI = '10.1098/rsta.2022.0047'
 
-const USER_AGENT = 'Citation-Tally/live-test (+https://github.com/daeh/zotero-citation-tally)'
+const USER_AGENT = 'Orbit/live-test (+https://github.com/fkallmer/zotero-orbit)'
 const VAULT_TIMEOUT_MS = 20_000
 /** Comfortably above the keyed budget, so assertions land on answers not throttles. */
 const KEYED_SPACING_MS = 2_000
