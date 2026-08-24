@@ -445,20 +445,36 @@ function railButton(doc: Document, paths: string[], tooltip: string, onClick: ()
   return button
 }
 
+/**
+ * Whether library membership narrows the view, and which way.
+ *
+ * Three states rather than two, because there are two questions and hiding
+ * one group answers only one of them: "which of these do I already have" and
+ * "which am I missing" are asked as often as each other, and a plain on/off
+ * can serve one at a time.
+ */
+export type LibraryFilter = 'all' | 'only' | 'missing'
+
+export const LIBRARY_FILTERS: readonly LibraryFilter[] = ['all', 'only', 'missing']
+
+/** The three switches the legend offers. */
+export type FilterKey = 'reference' | 'citing' | 'library'
+
 /** Which groups are drawn. The seed is not a group and is always drawn. */
 export interface GraphFilters {
   reference: boolean
   citing: boolean
-  inLibrary: boolean
+  library: LibraryFilter
 }
 
 export function keepNode(node: GraphNode, filters: GraphFilters): boolean {
+  // The seed is what the graph is of. A view of a work without the work is
+  // not one anyone asked for.
   if (node.role === 'seed') return true
   if (node.role === 'reference' && !filters.reference) return false
   if (node.role === 'citing' && !filters.citing) return false
-  // Off means "hide what I already have", which is how you ask the graph what
-  // is missing from the shelf.
-  if (node.itemID !== null && !filters.inLibrary) return false
+  if (filters.library === 'only' && node.itemID === null) return false
+  if (filters.library === 'missing' && node.itemID !== null) return false
   return true
 }
 
@@ -480,17 +496,24 @@ function renderLegend(
   const legend = el(doc, 'div')
   legend.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;font-size:12px;padding:2px 0 8px'
 
-  const row = (swatch: HTMLElement, label: string, count: number, which: keyof GraphFilters | null): HTMLElement => {
+  const row = (swatch: HTMLElement, label: string, count: number, which: FilterKey | null): HTMLElement => {
     const line = el(doc, which === null ? 'div' : 'button')
-    const on = which === null || filters[which]
+    // "Resting" rather than "on": the library switch has three states and only
+    // the first of them leaves the view unnarrowed.
+    const resting = which === null || (which === 'library' ? filters.library === 'all' : filters[which])
     line.style.cssText =
       'display:flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:inherit;' +
       'border:1px solid transparent;border-radius:11px;padding:1px 8px 1px 6px;background:transparent;' +
       (which === null ? '' : 'cursor:pointer;') +
-      (on ? '' : 'opacity:.4;border-color:currentColor;')
+      // A narrowed view keeps full contrast on the library switch, which is
+      // still showing works; the two group switches fade, because theirs are
+      // gone.
+      (resting ? '' : 'border-color:currentColor;') +
+      (resting || which === 'library' ? '' : 'opacity:.4;')
     if (which !== null) {
       line.setAttribute('data-filter', which)
-      line.setAttribute('aria-pressed', String(on))
+      line.setAttribute('data-state', which === 'library' ? filters.library : String(resting))
+      line.setAttribute('aria-pressed', String(!resting))
       line.addEventListener('click', () => onToggle(which))
     }
     line.append(swatch, el(doc, 'span', `${label} (${count})`))
@@ -509,7 +532,7 @@ function renderLegend(
   for (const [role, color, label] of entries) {
     const dot = el(doc, 'span')
     dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${color};flex:none`
-    const which = role === 'seed' ? null : role === 'reference' ? 'reference' : 'citing'
+    const which: FilterKey | null = role === 'seed' ? null : role === 'reference' ? 'reference' : 'citing'
     legend.append(row(dot, label, nodes.filter((node) => node.role === role).length, which))
   }
 
@@ -518,11 +541,23 @@ function renderLegend(
   // role, and it sits across all three.
   const filed = nodes.filter((node) => node.itemID !== null).length
   if (filed > 0) {
+    // The ring fills in when the view is narrowed to what is filed and stays
+    // hollow when it is narrowed to what is not, so the swatch says what the
+    // label says.
     const ring = el(doc, 'span')
     ring.style.cssText =
-      `width:11px;height:11px;border-radius:50%;border:1.6px solid ${theme.muted};` +
-      'opacity:.85;background:transparent;flex:none'
-    legend.append(row(ring, getString('graph-in-library'), filed, 'inLibrary'))
+      `width:11px;height:11px;border-radius:50%;border:1.6px solid ${theme.muted};flex:none;opacity:.85;` +
+      (filters.library === 'only' ? `background:${theme.muted}` : 'background:transparent')
+    const label =
+      filters.library === 'only'
+        ? getString('graph-library-only')
+        : filters.library === 'missing'
+          ? getString('graph-library-missing')
+          : getString('graph-in-library')
+    // The count follows the label. Asking what is missing and being told how
+    // many you have would answer the other question.
+    const count = filters.library === 'missing' ? nodes.length - filed : filed
+    legend.append(row(ring, label, count, 'library'))
   }
   return legend
 }
@@ -782,22 +817,24 @@ export function renderGraph(
   // Declared before the selects, which call it; assigned after the plot exists.
   let draw = (): void => {}
 
+  const stored = String(getPref('graphLibraryFilter') ?? '')
   const filters: GraphFilters = {
     reference: getPref('graphShowReferences') !== false,
     citing: getPref('graphShowCitations') !== false,
-    inLibrary: getPref('graphShowInLibrary') !== false,
-  }
-  const PREF_OF: Record<keyof GraphFilters, 'graphShowReferences' | 'graphShowCitations' | 'graphShowInLibrary'> = {
-    reference: 'graphShowReferences',
-    citing: 'graphShowCitations',
-    inLibrary: 'graphShowInLibrary',
+    library: (LIBRARY_FILTERS as readonly string[]).includes(stored) ? (stored as LibraryFilter) : 'all',
   }
 
   let legend = el(doc, 'div')
   const paintLegend = (): void => {
     const next = renderLegend(doc, theme, nodes, filters, (which) => {
-      filters[which] = !filters[which]
-      setPref(PREF_OF[which], filters[which])
+      if (which === 'library') {
+        // all -> only -> missing -> all. One control, both questions.
+        filters.library = LIBRARY_FILTERS[(LIBRARY_FILTERS.indexOf(filters.library) + 1) % LIBRARY_FILTERS.length]
+        setPref('graphLibraryFilter', filters.library)
+      } else {
+        filters[which] = !filters[which]
+        setPref(which === 'reference' ? 'graphShowReferences' : 'graphShowCitations', filters[which])
+      }
       paintLegend()
       draw()
     })

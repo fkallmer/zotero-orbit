@@ -20,7 +20,7 @@ pref('graphAxisX', 'year')
 pref('graphAxisY', 'citations')
 pref('graphShowReferences', true)
 pref('graphShowCitations', true)
-pref('graphShowInLibrary', true)
+pref('graphLibraryFilter', 'all')
 
 // Set once the settings and cache from the Citation Tally name have been
 // taken over. See utils/adoptLegacyState.

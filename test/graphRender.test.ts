@@ -293,7 +293,7 @@ describe('the tab as the reader sees it', () => {
     it('offers one switch per group and none for the seed', () => {
       const { container } = render(filtered)
       const switches = [...container.querySelectorAll('[data-filter]')].map((b: any) => b.getAttribute('data-filter'))
-      assert.deepEqual(switches.sort(), ['citing', 'inLibrary', 'reference'])
+      assert.deepEqual(switches.sort(), ['citing', 'library', 'reference'])
     })
 
     it('takes a group out and leaves the seed', () => {
@@ -305,11 +305,46 @@ describe('the tab as the reader sees it', () => {
       assert.ok(left.includes('cite'), 'the wrong group went out')
     })
 
-    it('hides what is already on the shelf, which is how you ask what is missing', () => {
+    it('narrows to the shelf, then to what is missing from it, then back', () => {
+      // Two questions, one control: "which of these do I have" and "which am
+      // I missing" are asked as often as each other.
       const { container } = render(filtered)
-      click(container, 'inLibrary')
-      assert.ok(!keys(container).includes('filed'))
+      const state = () => container.querySelector('[data-filter="library"]')?.getAttribute('data-state')
+      assert.equal(state(), 'all')
+      assert.ok(keys(container).includes('filed') && keys(container).includes('ref'))
+
+      click(container, 'library')
+      assert.equal(state(), 'only')
+      assert.ok(keys(container).includes('filed'), 'the filed work should be the one left')
+      assert.ok(!keys(container).includes('ref'), 'an unfiled work survived "only"')
+
+      click(container, 'library')
+      assert.equal(state(), 'missing')
+      assert.ok(!keys(container).includes('filed'), 'a filed work survived "missing"')
       assert.ok(keys(container).includes('ref'))
+
+      click(container, 'library')
+      assert.equal(state(), 'all')
+      assert.ok(keys(container).includes('filed') && keys(container).includes('ref'))
+    })
+
+    it('keeps the seed through every state of the library switch', () => {
+      const { container } = render(filtered)
+      for (const _ of ['only', 'missing', 'all']) {
+        click(container, 'library')
+        assert.ok(keys(container).includes('seed'), 'the seed must survive every filter')
+      }
+    })
+
+    it('counts what its label names', () => {
+      const { container } = render(filtered)
+      const text = () => container.querySelector('[data-filter="library"]')?.textContent ?? ''
+      assert.ok(text().includes('(1)'), `one work is filed: ${text()}`)
+      click(container, 'library')
+      assert.ok(text().includes('(1)'))
+      click(container, 'library')
+      // Now it names the ones that are not filed, and must count those.
+      assert.ok(text().includes('(3)'), `three are not filed: ${text()}`)
     })
 
     it('puts the group back on a second click', () => {

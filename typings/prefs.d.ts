@@ -23,7 +23,7 @@ declare namespace _ZoteroTypes {
       "graphAxisY": string;
       "graphShowReferences": boolean;
       "graphShowCitations": boolean;
-      "graphShowInLibrary": boolean;
+      "graphLibraryFilter": string;
       "adoptedLegacyState": boolean;
     };
   }

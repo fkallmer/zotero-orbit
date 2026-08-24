@@ -36,6 +36,8 @@ export type FluentMessageId =
   | 'graph-legend-citing'
   | 'graph-legend-reference'
   | 'graph-legend-seed'
+  | 'graph-library-missing'
+  | 'graph-library-only'
   | 'graph-loading'
   | 'graph-metric-citations'
   | 'graph-metric-references'
