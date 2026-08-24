@@ -138,13 +138,24 @@ describe('renderGraphSvg', () => {
     assert.equal(svg.match(/<circle /g)?.length, 4)
   })
 
-  it('names title, year and citations on hover', () => {
+  it('emits no native tooltip, since the label already carries the title', () => {
+    // Two answers to one question is one too many: the browser's tooltip put
+    // the title in a box at the pointer while the label carried it at the mark.
     const svg = renderGraphSvg(layout, theme)
-    assert.ok(svg.includes('<title>held · 2010 · 80 citations</title>'))
+    assert.ok(!svg.includes('<title>'))
   })
 
   it('escapes a title that would otherwise break the markup', () => {
-    const nasty = buildGraphLayout([node({ key: 'x', title: 'A <b> & "quote"' })], options)!
+    // A work with neither author nor year falls back to its title as the
+    // label, which is where an unescaped angle bracket would land.
+    const nasty = buildGraphLayout(
+      [node({ key: 'x', author: null, year: null, referenceCount: 5, title: 'A <b> & "quote"' })],
+      {
+        ...options,
+        xMetric: 'citations',
+        yMetric: 'references',
+      },
+    )!
     const svg = renderGraphSvg(nasty, theme)
     assert.ok(svg.includes('&lt;b&gt;'))
     assert.ok(!svg.includes('<b>'))
@@ -163,12 +174,7 @@ describe('renderGraphSvg', () => {
     assert.ok(svg.includes('marker-end="url(#orbit-graph-arrow-cite)"'))
   })
 
-  it('says how many works a mark cites, since that is what its size means', () => {
-    const sized = buildGraphLayout([node({ key: 'r', title: 'R', referenceCount: 42 })], options)!
-    assert.ok(renderGraphSvg(sized, theme).includes('cites 42 works'))
-  })
-
-  it('omits the reference count rather than printing undefined for it', () => {
+  it('never prints undefined for a field a caller left out', () => {
     const svg = renderGraphSvg(layout, theme)
     assert.ok(!svg.includes('undefined'))
   })
@@ -361,14 +367,13 @@ describe('work the reader already has', () => {
     assert.ok(svg.includes('data-item=""'))
   })
 
-  it('says so on hover, and only for the filed one', () => {
-    const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme, {
-      x: 'Year',
-      y: 'Citations',
-      inLibrary: 'in your library',
-    })
-    assert.ok(svg.includes('<title>Filed · 2020 · 20 citations · in your library</title>'))
-    assert.ok(svg.includes('<title>Not filed · 2015 · 5 citations</title>'))
+  it('leaves saying so to the caller, which is the one that can translate it', () => {
+    // The fact reaches the reader through the detail line under the pointed-at
+    // mark, and that line is built where the localised strings are.
+    const layout = buildGraphLayout(mixed, options)!
+    const describe = (node: { itemID: number | null }) => (node.itemID === null ? ['plain'] : ['in your library'])
+    const filed = placeLabels(layout.nodes, FITTED(options.width, options.height), 'filed', describe)
+    assert.ok(filed.find((placement) => placement.key === 'filed')?.lines.includes('in your library'))
   })
 })
 
@@ -553,7 +558,8 @@ describe('labels', () => {
       options,
     )!
     const [pointed] = placeLabels(layout.nodes, FITTED(options.width, options.height), 's')
-    assert.equal(pointed.text, 'Soleimani 2019 · Magnetic induction')
+    // Title first, wrapped rather than cut, then whatever the caller adds.
+    assert.deepEqual(pointed.lines, ['Magnetic induction', 'Soleimani 2019'])
   })
 
   it('drops back to the plain name when the title will not fit anywhere', () => {
@@ -564,7 +570,7 @@ describe('labels', () => {
     const target = node({ key: 't', author: 'Target', year: 2000, citedByCount: 60, title: 'x'.repeat(200) })
     const layout = buildGraphLayout([...wall, target], { ...options, width: 260, height: 160 })!
     const pointed = placeLabels(layout.nodes, FITTED(260, 160), 't').find((placement) => placement.key === 't')
-    if (pointed) assert.ok(!pointed.text.includes('xxx'), `kept the title: ${pointed.text}`)
+    if (pointed) assert.ok(!pointed.lines.join(' ').includes('xxx'), `kept the title: ${pointed.lines.join(' / ')}`)
   })
 
   it('gives the pointed-at mark first refusal on a spot', () => {

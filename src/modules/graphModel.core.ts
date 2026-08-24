@@ -203,6 +203,8 @@ const TITLE_CHARS = 46
 /** Rough width of a character at the label's font size. */
 const CHAR_WIDTH = 5.4
 const LABEL_HEIGHT = 12
+/** Baseline-to-baseline for a wrapped label. Matches LABEL_HEIGHT by design. */
+export const LINE_HEIGHT = LABEL_HEIGHT
 
 /**
  * Give every mark a label that does not sit on another one.
@@ -259,10 +261,39 @@ export const FITTED = (width: number, height: number): Viewport => ({
 
 export interface LabelPlacement {
   key: string
-  text: string
+  /** One entry per rendered line. At rest always exactly one. */
+  lines: string[]
   x: number
+  /** Baseline of the first line; each further line sits LINE_HEIGHT below. */
   y: number
   anchor: 'start' | 'middle' | 'end'
+}
+
+/**
+ * The extra lines the pointed-at mark carries, supplied by the caller.
+ *
+ * This module knows nothing of Fluent, and the detail line is the one part of
+ * a label that has to be translated.
+ */
+export type Describe = (node: GraphNode) => string[]
+
+/** Where a long title breaks. Wide enough to read, narrow enough to place. */
+const WRAP_CHARS = 44
+
+/** Break on spaces, never mid-word, and never drop anything. */
+export function wrapTitle(title: string, maxChars = WRAP_CHARS): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of title.split(/\s+/).filter(Boolean)) {
+    if (line === '') line = word
+    else if (line.length + 1 + word.length <= maxChars) line += ` ${word}`
+    else {
+      lines.push(line)
+      line = word
+    }
+  }
+  if (line !== '') lines.push(line)
+  return lines.length > 0 ? lines : ['']
 }
 
 /**
@@ -283,6 +314,7 @@ export function placeLabels(
   nodes: readonly PlacedNode[],
   view: Viewport,
   emphasis: string | null = null,
+  describe?: Describe,
 ): LabelPlacement[] {
   const at = (node: PlacedNode): { x: number; y: number } => ({
     x: node.x * view.kx + view.tx,
@@ -322,22 +354,29 @@ export function placeLabels(
      * because the field is crowded answers the question nobody could ask
      * another way. Every other mark takes a clear spot or goes without.
      */
-    const attempts: { text: string; overNeighbours: boolean }[] = pointed
-      ? [
-          { text: labelFor(node, true), overNeighbours: false },
-          { text: labelFor(node, true), overNeighbours: true },
-          { text: labelFor(node, false), overNeighbours: true },
-        ]
-      : [{ text: labelFor(node, false), overNeighbours: false }]
+    // The title in full, wrapped rather than cut, with everything else on a
+    // line beneath it. A truncated title answers half the question, and the
+    // question is only ever asked about one mark at a time.
+    const full = pointed ? [...wrapTitle(node.title), ...(describe?.(node) ?? [labelFor(node, false)])] : []
+    const brief = [labelFor(node, false)]
 
-    for (const { text, overNeighbours } of attempts) {
-      if (!text) continue
+    const attempts: { lines: string[]; overNeighbours: boolean }[] = pointed
+      ? [
+          { lines: full, overNeighbours: false },
+          { lines: full, overNeighbours: true },
+          { lines: brief, overNeighbours: true },
+        ]
+      : [{ lines: brief, overNeighbours: false }]
+
+    for (const { lines, overNeighbours } of attempts) {
+      if (lines.join('').trim() === '') continue
       const point = at(node)
       // A mark off-screen needs no name, and testing it would waste the spot.
       if (point.x < -node.radius || point.x > view.width + node.radius) continue
       if (point.y < -node.radius || point.y > view.height + node.radius) continue
 
-      const textWidth = text.length * CHAR_WIDTH
+      const textWidth = Math.max(...lines.map((line) => line.length)) * CHAR_WIDTH
+      const blockHeight = lines.length * LABEL_HEIGHT
 
       /**
        * Below, above, right, left -- in that order.
@@ -349,21 +388,31 @@ export function placeLabels(
        */
       const place = (x: number, y: number, anchor: 'start' | 'middle' | 'end', top: number): LabelSpot => {
         const left = anchor === 'start' ? x : anchor === 'end' ? x - textWidth : x - textWidth / 2
-        return { x, y, anchor, box: { x1: left, y1: top, x2: left + textWidth, y2: top + LABEL_HEIGHT } }
+        return { x, y, anchor, box: { x1: left, y1: top, x2: left + textWidth, y2: top + blockHeight } }
       }
       const spotsAt = (gap: number): LabelSpot[] => {
         const diagonal = gap * 0.75
         return [
           place(point.x, point.y + gap + LABEL_HEIGHT - 3, 'middle', point.y + gap),
-          place(point.x, point.y - gap - 3, 'middle', point.y - gap - LABEL_HEIGHT),
-          place(point.x + gap, point.y + 3.5, 'start', point.y - LABEL_HEIGHT / 2),
-          place(point.x - gap, point.y + 3.5, 'end', point.y - LABEL_HEIGHT / 2),
+          place(point.x, point.y - gap - 3 - (blockHeight - LABEL_HEIGHT), 'middle', point.y - gap - blockHeight),
+          place(point.x + gap, point.y + 3.5 - (blockHeight - LABEL_HEIGHT) / 2, 'start', point.y - blockHeight / 2),
+          place(point.x - gap, point.y + 3.5 - (blockHeight - LABEL_HEIGHT) / 2, 'end', point.y - blockHeight / 2),
           // The diagonals are what keep a mark in a dense cluster from going
           // nameless when all four sides happen to be occupied.
           place(point.x + diagonal, point.y + diagonal + LABEL_HEIGHT, 'start', point.y + diagonal),
           place(point.x - diagonal, point.y + diagonal + LABEL_HEIGHT, 'end', point.y + diagonal),
-          place(point.x + diagonal, point.y - diagonal - 3, 'start', point.y - diagonal - LABEL_HEIGHT),
-          place(point.x - diagonal, point.y - diagonal - 3, 'end', point.y - diagonal - LABEL_HEIGHT),
+          place(
+            point.x + diagonal,
+            point.y - diagonal - 3 - (blockHeight - LABEL_HEIGHT),
+            'start',
+            point.y - diagonal - blockHeight,
+          ),
+          place(
+            point.x - diagonal,
+            point.y - diagonal - 3 - (blockHeight - LABEL_HEIGHT),
+            'end',
+            point.y - diagonal - blockHeight,
+          ),
         ]
       }
 
@@ -392,7 +441,7 @@ export function placeLabels(
       if (!fits) continue
 
       taken.push(fits.box)
-      placed.push({ key: node.key, text, x: fits.x, y: fits.y, anchor: fits.anchor })
+      placed.push({ key: node.key, lines, x: fits.x, y: fits.y, anchor: fits.anchor })
       break
     }
   }
@@ -405,7 +454,7 @@ function assignLabels(nodes: PlacedNode[], width: number, height: number): void 
   for (const placement of placeLabels(nodes, FITTED(width, height))) {
     const node = byKey.get(placement.key)
     if (!node) continue
-    node.label = placement.text
+    node.label = placement.lines.join(' ')
     node.labelX = placement.x
     node.labelY = placement.y
     node.labelAnchor = placement.anchor
@@ -517,11 +566,10 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
  * screen reader being told "citations against year" is worth more than the
  * metric keys it would otherwise fall back to.
  */
+/** What to call the axes in the text alternative. */
 export interface GraphText {
   x: string
   y: string
-  /** Appended to the tooltip of a work that is already filed. */
-  inLibrary: string
 }
 
 export interface GraphTheme {
@@ -691,18 +739,6 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
   const marks = layout.nodes
     .map((node) => {
       const fill = colorFor(node.role, theme)
-      const detail = [
-        node.title,
-        node.year === null ? null : String(node.year),
-        node.citedByCount == null ? null : `${node.citedByCount} citations`,
-        // == null, not === null: a caller that simply omits the field would
-        // otherwise get "cites undefined" printed at it.
-        node.referenceCount == null ? null : `cites ${node.referenceCount} works`,
-        node.itemID === null ? null : (text?.inLibrary ?? 'in your library'),
-      ]
-        .filter(Boolean)
-        .join(' · ')
-
       const halo =
         node.role === 'seed'
           ? `<circle r="${(node.radius + 7).toFixed(1)}" fill="none" stroke="${fill}" ` +
@@ -736,7 +772,10 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         `<circle r="${node.radius.toFixed(1)}" fill="${fill}" stroke="${theme.surface}" stroke-width="2" ` +
         `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
         `data-item="${node.itemID ?? ''}" ` +
-        `style="cursor:pointer"><title>${escapeXml(detail)}</title></circle></g>`
+        // No <title>: the native tooltip would put the same title in a box at
+        // the pointer while the label already carries it at the mark, and two
+        // answers to one question is one too many.
+        `style="cursor:pointer"/></g>`
       )
     })
     .join('')

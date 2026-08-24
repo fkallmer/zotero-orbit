@@ -124,9 +124,14 @@ graph-zoom-in = Zoom in
 graph-zoom-out = Zoom out
 graph-zoom-reset = Fit everything back into view
 graph-center-seed = Centre on this work
+# Singular: labels one work in the card and the detail strip.
 graph-role-seed = This work
-graph-role-reference = Cited by it
-graph-role-citing = Citing it
+graph-role-reference = Reference
+graph-role-citing = Citation
+# Plural: the legend, where each carries a count.
+graph-legend-seed = This work
+graph-legend-reference = References
+graph-legend-citing = Citations
 graph-in-library = In your library
 graph-card-title = Untitled work
 graph-card-citations = { $count } citations

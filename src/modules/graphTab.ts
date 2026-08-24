@@ -23,6 +23,7 @@ import {
   AXIS_METRICS,
   buildGraphLayout,
   edgeEnds,
+  LINE_HEIGHT,
   placeLabels,
   renderGraphSvg,
 } from './graphModel.core.ts'
@@ -446,10 +447,12 @@ function renderLegend(doc: Document, theme: GraphTheme, nodes: readonly GraphNod
 
   // Three series, so a legend is present rather than optional -- and the roles
   // are named, so identity never rests on colour alone.
+  // Plural here, singular in the card and the strip: the legend counts works,
+  // those two label one.
   const entries: [GraphNode['role'], string, string][] = [
-    ['seed', theme.seed, getString('graph-role-seed')],
-    ['reference', theme.reference, getString('graph-role-reference')],
-    ['citing', theme.citing, getString('graph-role-citing')],
+    ['seed', theme.seed, getString('graph-legend-seed')],
+    ['reference', theme.reference, getString('graph-legend-reference')],
+    ['citing', theme.citing, getString('graph-legend-citing')],
   ]
   for (const [role, color, label] of entries) {
     const dot = el(doc, 'span')
@@ -681,6 +684,24 @@ function fillDetailStrip(doc: Document, strip: HTMLElement, node: GraphNode | nu
   strip.replaceChildren(dot, title, detail)
 }
 
+/**
+ * The line under the wrapped title of the mark being pointed at.
+ *
+ * Everything the card would say except the title itself, which is already the
+ * lines above it.
+ */
+function describeNode(node: GraphNode): string[] {
+  const parts = [
+    getString(ROLE_LABEL[node.role]),
+    node.author,
+    node.year === null ? null : String(node.year),
+    node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
+    node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
+    node.itemID === null ? null : getString('graph-in-library'),
+  ].filter(Boolean)
+  return [parts.join(' · ')]
+}
+
 export function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
   const doc = win.document
   const theme = themeFor(win)
@@ -906,15 +927,29 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
       // view often can once there is room. Zooming reveals labels rather than
       // magnifying the ones already there, which is the point of zooming.
       // The hovered mark goes down first and carries its title.
-      const placements = placeLabels(layout.nodes, view, hovered)
+      const placements = placeLabels(layout.nodes, view, hovered, describeNode)
       labelSlots.forEach((slot, index) => {
         const placement = placements[index]
         if (!placement) {
           slot.setAttribute('opacity', '0')
           return
         }
-        slot.textContent = placement.text
-        slot.setAttribute('x', placement.x.toFixed(1))
+        const x = placement.x.toFixed(1)
+        // One line is the overwhelming case and costs a single assignment;
+        // only the pointed-at mark is ever wrapped, and only that one pays for
+        // the tspans it needs.
+        if (placement.lines.length === 1) slot.textContent = placement.lines[0]
+        else {
+          slot.textContent = ''
+          placement.lines.forEach((line, row) => {
+            const tspan = doc.createElementNS(SVG_NS, 'tspan')
+            tspan.setAttribute('x', x)
+            if (row > 0) tspan.setAttribute('dy', String(LINE_HEIGHT))
+            tspan.textContent = line
+            slot.append(tspan)
+          })
+        }
+        slot.setAttribute('x', x)
         slot.setAttribute('y', placement.y.toFixed(1))
         slot.setAttribute('text-anchor', placement.anchor)
         slot.setAttribute('opacity', emphasis(placement.key, 0.9, 0.2, 1))
@@ -1097,11 +1132,7 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
 
     // Parsed and imported, never innerHTML: Zotero's sanitizer strips xmlns and
     // the result silently stops being SVG.
-    const text = {
-      x: getString(METRIC_LABEL[xMetric]),
-      y: getString(METRIC_LABEL[yMetric]),
-      inLibrary: getString('graph-in-library'),
-    }
+    const text = { x: getString(METRIC_LABEL[xMetric]), y: getString(METRIC_LABEL[yMetric]) }
     // The tab's own id namespaces the SVG defs, so two open graphs cannot
     // reach into each other's clip path.
     const uid = container.id || 'orbit-graph'

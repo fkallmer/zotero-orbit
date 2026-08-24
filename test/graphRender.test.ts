@@ -66,7 +66,9 @@ const { window, document, DOMParser } = parseHTML('<html><body><div id="tab"></d
   window.requestAnimationFrame = globals.requestAnimationFrame
   // linkedom lays nothing out, and the wheel handler divides by the viewport
   // width. Without a box every anchor becomes NaN and the transform with it.
-  const box = { left: 0, top: 0, right: 600, bottom: 300, width: 600, height: 300, x: 0, y: 0 }
+  // A tab-sized plot. Too small a one leaves the pointed-at mark's wrapped
+  // label nowhere to go, and the test would be measuring the fallback.
+  const box = { left: 0, top: 0, right: 900, bottom: 500, width: 900, height: 500, x: 0, y: 0 }
   window.Element.prototype.getBoundingClientRect = () => box
   // And a size. Without one the layout is built on NaN and every assertion
   // below counts elements that are drawn at nowhere.
@@ -213,16 +215,22 @@ describe('the tab as the reader sees it', () => {
       assert.ok(opacityOf(container, 'seed') < 0.5)
     })
 
-    it('adds the title to that mark and to nothing else', () => {
+    it('adds the title to that mark, on its own lines, and to nothing else', () => {
       const { container } = render(nodes)
-      const labels = () =>
-        [...container.querySelectorAll('[data-label]')]
-          .filter((slot: any) => slot.getAttribute('opacity') !== '0')
-          .map((slot: any) => slot.textContent)
-      const atRest = labels()
-      assert.ok(!atRest.some((text: string) => text.includes('·')), `a title at rest: ${atRest.join(' | ')}`)
+      const showing = () =>
+        [...container.querySelectorAll('[data-label]')].filter((slot: any) => slot.getAttribute('opacity') !== '0')
+
+      // At rest every label is a single line of author and year.
+      for (const slot of showing()) assert.equal(slot.querySelectorAll('tspan').length, 0)
+
       hover(container, 'ref')
-      assert.equal(labels().filter((text: string) => text.includes('·')).length, 1)
+      const wrapped = showing().filter((slot: any) => slot.querySelectorAll('tspan').length > 0)
+      assert.equal(wrapped.length, 1, 'exactly one label should be wrapped')
+      const lines = [...wrapped[0].querySelectorAll('tspan')].map((line: any) => line.textContent)
+      assert.ok(lines.length >= 2, `expected a title line and a detail line, got ${lines.length}`)
+      // The title in full, and the details beneath it.
+      assert.ok(lines.join(' ').includes('ref'))
+      assert.ok(lines.at(-1)?.includes('·'), `no detail line: ${lines.join(' / ')}`)
     })
 
     it('names it in the strip above the plot, and gives the strip back on leaving', () => {
