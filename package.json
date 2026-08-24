@@ -37,6 +37,7 @@
     "update-deps": "yarn set version stable && yarn upgrade-interactive",
     "test": "zotero-plugin test",
     "test:unit": "node --import ./test/register.mjs --test 'test/**/*.test.ts'",
+    "test:coverage": "node --import ./test/register.mjs --experimental-test-coverage --test 'test/**/*.test.ts' | node utils/coverage-badges.mjs",
     "test:live": "node --test 'test/live/**/*.live.ts'"
   },
   "dependencies": {

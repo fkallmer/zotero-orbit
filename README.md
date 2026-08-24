@@ -1,21 +1,155 @@
 # Orbit
 
-Citation counts, context and a citation graph for Zotero items.
+> A Zotero plugin that puts a paper in context: how often it has been cited, according to whom, what it builds on, and what has built on it since.
 
-Orbit shows how often a work has been cited according to Crossref, INSPIRE,
-OpenAlex, Semantic Scholar and Google Scholar side by side — the disagreement
-between them is often the interesting part. It adds an item pane section with
-the OpenAlex record behind those numbers, the works a paper cites, and a graph
-tab plotting a paper's references and citing works against year and citation
-count.
+[![Zotero 10](https://img.shields.io/badge/Zotero-10-CC2936?logo=zotero&logoColor=CC2936)](https://www.zotero.org/)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-brightgreen.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Google Scholar client: MPL-2.0](https://img.shields.io/badge/Scholar%20client-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+![Test Coverage - Lines](https://img.shields.io/badge/lines-70.47%25-yellow.svg)
+![Test Coverage - Branches](https://img.shields.io/badge/branches-87.90%25-brightgreen.svg)
+![Test Coverage - Functions](https://img.shields.io/badge/functions-59.86%25-red.svg)
 
-Requires Zotero 10.
+![The graph tab, with one work pointed at](docs/assets/readme/graph.png)
+
+Five sources disagree about how often a paper has been cited, and the
+disagreement is often the interesting part. Orbit shows them side by side,
+puts the record behind the numbers in the item pane, and draws a paper's
+surroundings as a graph you can walk.
+
+## What it adds
+
+### A Citations column
+
+Counts from Crossref, OpenAlex, Semantic Scholar, INSPIRE and Google Scholar,
+in the order you choose, each in its own colour. Hovering a cell says which
+number came from where.
+
+![The Citations column](docs/assets/readme/screenshot.png)
+
+There is a second, sortable column for OpenAlex's field-weighted citation
+impact — how a paper compares to others of its field, year and type, where 1.0
+is average.
+
+### An item pane section
+
+The OpenAlex record behind the numbers: citations per year as a chart with a
+running total, the field-weighted impact and its percentile, open-access status
+with a link to the full text, journal metrics, authors with their ORCIDs,
+institutions with their RORs, funding, and a retraction warning where there is
+one.
+
+Underneath, the works this paper cites, resolved through Semantic Scholar,
+which finds consistently more of them than OpenAlex does. Each is marked if it
+is already in your library, and clicking it goes there.
+
+### A graph tab
+
+Right-click an item → **Citation graph**. It plots what the paper cites and
+what cites it, and the picture above is what that looks like.
+
+- **Both axes are yours to choose** — publication year, citations, or
+  references cited. Logarithmic or linear, where the axis is a count.
+- **Mark size** is how many works each one cites, so a review stands apart from
+  a letter. Citations already own an axis; size says something else.
+- **Arrows run from the citing work to the cited one**, so the direction of
+  influence is drawn rather than inferred.
+- **A ring** means the work is already in your library. The legend doubles as a
+  filter: click an entry to take that group out, or cycle the ring between all
+  works, only the ones you have, and only the ones you do not.
+- **Pointing at a mark** dims the rest, spells out its title, fills the strip
+  above the plot, and lights the paths between it and its neighbours — the
+  citations *among* the surrounding works, which is where a line of descent
+  becomes visible. How far the highlight reaches, and in which direction, are
+  both settings.
+- **Clicking a mark** holds that state and opens a card: the full record, a
+  link to the work at Semantic Scholar and at its publisher, and a button to
+  open a graph from that work — whether or not you have it.
+- Scroll to zoom, drag to pan, Shift or Alt to stretch one axis alone. Marks
+  keep their size, so zooming pulls a crowded field apart instead of
+  magnifying it, and names appear as room is made for them.
+
+## Requirements
+
+Zotero 10. Orbit has no releases before it; for Zotero 7, 8 or 9 use
+[Citation Tally](https://github.com/daeh/zotero-citation-tally/releases),
+which Orbit is forked from.
+
+## Installation
+
+1. Download `orbit.xpi` from the [latest release](https://github.com/fkallmer/zotero-orbit/releases/latest).
+2. In Zotero: `Tools → Plugins`, then `Install Plugin From File…` from the gear icon ⛭.
+3. Choose the file, and restart Zotero.
+
+If the Citations column does not appear, right-click the column headers and
+tick **Citations**.
+
+![Showing the Citations column](docs/assets/readme/show-column.png)
+
+## Settings
+
+`Zotero → Settings → Orbit` on macOS, `Edit → Settings → Orbit` elsewhere.
+
+| | |
+|---|---|
+| **Databases** | Which sources to use and in what order. Default `crossref, semanticscholar`; for physics, `inspire, crossref, semanticscholar` is usually better. |
+| **Fetch for new items** | On. Counts are looked up as you add items. |
+| **Automatic updates** | Off. Turn on to refresh missing and outdated counts at the next start. |
+| **Outdated after** | 3, 6, 12 or 24 months. Default 6. |
+| **Colours** | On. Each source gets its own colour when more than one is shown. |
+| **Semantic Scholar API key** | Optional but worth having. Without one you share an anonymous pool with every other client, so lookups are slower and fail more. Request one at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api). Zotero stores it unencrypted in its preferences; Orbit sends it only to Semantic Scholar. |
+
+Orbit looks work up **by DOI or arXiv ID only** — never by title, ISBN or PMID.
+Journal articles and conference papers usually carry a DOI; web pages, theses
+and datasets often carry neither. The DOI field is read first, then Archive ID,
+Report Number, Extra, URL and Call Number for an arXiv ID.
+
+New items are tallied as they arrive; existing ones are not backfilled. To
+catch up, run `Tools → Retally outdated item citations`, or select items,
+right-click, and choose **Update Citation Tallies**.
+
+## How it behaves under load
+
+Every source paces itself, so a large update takes a while by design.
+
+Crossref and INSPIRE start at one request per second and are throttled
+independently: a rate-limit error multiplies the delay by 1.5 up to ten times
+the base, and each success eases it back by 0.9, never below the base.
+Semantic Scholar runs its own scheduler — at least 1 second between keyed
+requests, 3 seconds without a key — and backs off exponentially with full
+jitter on a transient failure, never sooner than the server's `Retry-After`.
+OpenAlex is asked politely: give it a contact address (see *Building*) and it
+raises the limits.
+
+A source that comes up empty for an item is not asked again immediately: 7
+days after the first failure, then 30, then 90, then 180. Selected-item updates
+bypass that schedule. A library scan will not start if Zotero is offline, and
+stops between items if it goes offline part way.
+
+Records are cached on disk. The graph's reload button is the way past that,
+when a paper has picked up citations or the library has gained the work.
+
+## Sources
+
+| | |
+|---|---|
+| [Crossref](https://www.crossref.org/) | DOI registration agency; broad coverage of journals and conferences |
+| [OpenAlex](https://openalex.org/) | Open catalogue of works; the record behind the item pane, and the graph |
+| [Semantic Scholar](https://www.semanticscholar.org/) | AI2's index; the reference lists, and influential-citation counts |
+| [INSPIRE](https://inspirehep.net/) | High-energy physics |
+| Google Scholar | Broadest coverage, no API; scraped, and rate-limited accordingly |
 
 ## Building
 
-`yarn build` produces `.scaffold/build/orbit.xpi`. Every build raises the patch
-version, because Zotero keys an installed plugin by version and two builds
-sharing one are, to it, the same plugin.
+```sh
+yarn install
+yarn build          # → .scaffold/build/orbit.xpi
+yarn test:unit
+yarn test:coverage  # runs the suite and rewrites the coverage badges above
+```
+
+Every build raises the patch version. Zotero keys an installed plugin by
+version, and two builds sharing one are the same plugin as far as it is
+concerned — reinstalling can leave the old code in place.
 
 OpenAlex offers a faster request pool to callers who identify themselves. Put
 an address in `.orbit-contact` (untracked) or set `ORBIT_CONTACT`, and it is
@@ -27,22 +161,22 @@ address that is not theirs.
 ## Credit
 
 Orbit is not written from nothing. Two projects carry most of what makes it
-work, and both are named here because a licence file is a legal minimum and
-not the same thing as saying who did the work.
+work, and both are named here because a licence file is a legal minimum and not
+the same thing as saying who did the work.
 
 ### Citation Tally — Dae Houlihan
 
 [daeh/zotero-citation-tally](https://github.com/daeh/zotero-citation-tally),
 AGPL-3.0. Orbit is a fork of it and inherits its licence.
 
-That project is the whole foundation: the citation-count column, the provider
+That project is the foundation: the citation-count column, the provider
 framework the sources plug into, the rate limiting with its backoff ladder and
 circuit breaker, the preferences, the storage in the item's Extra field, and
 the build. Everything Orbit adds sits on top of it.
 
 Added here: the OpenAlex and Google Scholar providers, the item pane section
-with the OpenAlex record and the yearly chart, the reference list from Semantic
-Scholar, and the graph tab.
+with the record and the yearly chart, the reference list from Semantic Scholar,
+the field-weighted-impact column, and the graph tab.
 
 ### Google Scholar Citation Count — Justin Ribeiro
 
@@ -54,177 +188,20 @@ MPL-2.0 while the rest of Orbit is AGPL-3.0; section 3.3 of the MPL expressly
 allows that combination. The file was rewritten in TypeScript, but the
 substance is that project's: which markers in Scholar's HTML identify a result
 and its citation count, and the distinction between a page carrying a result
-but no count, which means zero, and a page carrying no result, which means
-unknown. Scholar publishes no API and no schema for any of this; it was worked
-out against the live site, and that is the expensive part.
+but no count, which means zero, and a page carrying no result at all, which
+means unknown. Scholar publishes no API and no schema for any of this; it was
+worked out against the live site, and that is the expensive part.
 
 ### Also
 
 Built on [zotero-plugin-scaffold and zotero-plugin-toolkit](https://github.com/windingwind)
-by windingwind. The data comes from [OpenAlex](https://openalex.org),
-[Crossref](https://www.crossref.org), [Semantic Scholar](https://www.semanticscholar.org),
-[INSPIRE-HEP](https://inspirehep.net) and Google Scholar.
-
-## Plugin Functions
-
-- **Automatic Citation Tracking** - Fetches citation counts when new items are added to your library
-- **Smart Auto-Updates** - Keeps citation data current with configurable update schedules
-- **Visual Integration** - Adds a sortable "Citations" column to your Zotero library view
-- **Multiple Databases** - Shows counts from Crossref, OpenAlex, Semantic Scholar, Google Scholar and INSPIRE side by side
-- **Intelligent Rate Limiting** - Respects API limits with adaptive throttling
-- **Persistent Storage** - Stores citation data in item's Extra field for sync compatibility
-
-Please post any bugs, questions, or feature requests in [Orbit's issues](https://github.com/fkallmer/zotero-orbit/issues). They do not belong on Citation Tally's tracker: the two are separate plugins now, and its maintainer did not write the parts you are most likely to be reporting on.
-
-## Installation
-
-- Download the plugin (the `.xpi` file) from the [latest release](https://github.com/fkallmer/zotero-orbit/releases/latest)
-- Open Zotero
-- From `Tools → Plugins`
-- Select `Install Plugin From File...` from the gear icon ⛭
-- Choose the `.xpi` file you downloaded (e.g. `orbit.xpi`)
-- Restart Zotero
-
-> [!NOTE]
-> Orbit requires Zotero 10 and has no releases before it. For Zotero 7, 8 or 9,
-> use [Citation Tally](https://github.com/daeh/zotero-citation-tally/releases),
-> which Orbit is forked from -- without the OpenAlex and Google Scholar
-> providers, the item pane section or the graph tab, which are added here.
-
-## Setup and Configuration
-
-Citation Tally tallies bibliographic items as you add them. It does not automatically backfill items already in your libraries. To update existing items in My Library, run `Tools → Retally outdated item citations`, which scans for counts that are missing or older than the configured cutoff. For editable items in other libraries, select them, right-click, and choose "Update Citation Tallies".
-
-### Initial Setup
-
-- After installation, restart the Zotero app. The plugin adds a "Citations" column to your Zotero library view.
-
-  - If you don't see the column, right-click the column titles and check "Citations".
-
-    ![show Citations column](docs/assets/readme/show-column.png)
-
-- Configure the plugin from `Zotero → Settings → Citation Tally` on macOS, or `Edit → Settings → Citation Tally` on Windows and Linux.
-
-### Automatic Behavior
-
-- **New Items**: Citation counts are fetched for newly added bibliographic items with DOIs or arXiv IDs, in My Library or a group library you can edit. Feed items are skipped. This is on by default.
-- **Auto-Updates**: Missing and outdated counts in My Library can be refreshed the next time Zotero starts. This is off by default.
-
-### Manual Actions
-
-- **Update Selected Items**: Right-click → "Update Citation Tallies"
-
-  - **_NB_** Selected-item updates bypass the retry schedule, and can update editable items outside My Library
-
-- **Update All Outdated**: Tools menu → "Retally outdated item citations"
-
-  - Scans My Library for counts that are missing or older than the configured cutoff. This runs whether or not automatic updates are switched on.
-
-### Configuration Options
-
-<details>
-
-<summary>Citation Databases</summary>
-
-- **Databases**: Which databases to use. Their counts appear in the Citations column in the order you list them, separated by `|`. Hover a cell to see which database each number came from.
-  - Default: `crossref, semanticscholar`
-  - For physics papers you might prefer `inspire, crossref, semanticscholar`
-
-</details>
-
-<details>
-
-<summary>Automatic Updates</summary>
-
-- **Fetch tallies for new items**: On by default. Turn it off to stop counts being fetched as you add items.
-- **Automatic updates**: Off by default. Set it to refresh missing and outdated counts in My Library the next time Zotero starts.
-- **Consider citations outdated after**: How old a count can be before it is considered outdated — 3, 6, 12, or 24 months. The default is 6. This applies both to startup updates and to `Tools → Retally outdated item citations`.
-
-</details>
-
-<details>
-
-<summary>Display Options</summary>
-
-- **Colors**: On by default. Each database's count gets its own color when more than one database is shown; turn it off to display every count in the default color.
-
-</details>
-
-<details>
-
-<summary>API Keys</summary>
-
-- **Semantic Scholar API key** (optional, but recommended): Enter a key under `Settings → Citation Tally → API keys`. Without one, requests share Semantic Scholar's anonymous pool with every other client using it, so lookups are slower and less reliable.
-  - Request a key at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api).
-  - Zotero stores the key unencrypted in its local preferences. Citation Tally sends it only to Semantic Scholar.
-  - If Semantic Scholar rejects the key twice in a row, the plugin stops using it, carries on anonymously, and tries it again after a cooldown. A single rejection triggers one confirming request rather than pausing the key.
-
-</details>
-
-### Troubleshooting
-
-<details>
-
-<summary>Common Issues</summary>
-
-- **No citation data found**: Citation Tally looks items up by DOI or arXiv ID only, not by title, ISBN, PMID, or a database's own record ID. Journal articles and conference papers usually carry a DOI; web pages, theses, and datasets often carry neither identifier.
-- **Updates are slow**: Each database paces its own requests and the plugin backs off further when a server throttles it, so a large update can take a while. See [Rate Limiting](#rate-limiting) and [Retries](#retries).
-- **Semantic Scholar has been turned off**: If Zotero's plugin runtime doesn't provide the web APIs the Semantic Scholar client needs, Citation Tally disables that database, shows a notice, and carries on with the other databases you have configured.
-- **Network issues**: Ensure Zotero has internet access and your firewall isn't blocking requests to academic databases.
-
-</details>
-
-### Advanced Behavior
-
-<details>
-
-<summary>Retries, rate limiting, and identifiers</summary>
-
-#### Retries
-
-Startup updates and `Tools → Retally outdated item citations` both scan My Library, and both back off when a database comes up empty: 7 days after the first failure, then 30, then 90, then 180 days for every attempt after that. API errors hit during a scan follow the same schedule.
-
-#### Rate Limiting
-
-Crossref and INSPIRE each start at one request per second, and are throttled independently. A rate-limit error multiplies the delay by 1.5, up to ten times the base; each success eases it back by 0.9, never below the base.
-
-Semantic Scholar runs its own scheduler: at least 1 second between requests made with an API key, and at least 3 seconds without one. Transient failures back off exponentially with full jitter, never sooner than the server's `Retry-After`.
-
-#### Other Behavior
-
-- If an item has no usable identifier for a database, a library scan skips that item–database pair for the rest of the Zotero session. Selected-item updates do not consult this cache.
-- A library scan does not start updating items if Zotero is already offline, and stops before the next item if Zotero goes offline during the run.
-- Retry records for deleted items are cleared out shortly after startup and every 30 days. Counts already written to the Extra field are left alone.
-
-#### Supported Identifiers
-
-Crossref needs a DOI. INSPIRE and Semantic Scholar can also use an arXiv ID.
-
-Citation Tally reads the DOI field, then looks for an arXiv ID in Archive ID, Report Number, Extra, URL, and Call Number, in that order.
-
-</details>
-
-## Supported Databases
-
-- **[Crossref](https://www.crossref.org/)**: DOI registration agency; broad coverage of journal and conference publications
-- **[Semantic Scholar](https://www.semanticscholar.org/)**: Academic search index run by AI2, with citation graph data
-- **[INSPIRE](https://inspirehep.net/)**: High-energy physics literature
-
-## Related Projects
-
-- **[ZoteroCitationCountsManager](https://github.com/FrLars21/ZoteroCitationCountsManager)** by FrLars21
-- **[zotero-citationcounts](https://github.com/eschnett/zotero-citationcounts)** by eschnett
-
-## Notes
-
-[GitHub](https://github.com/fkallmer/zotero-orbit): Source code repository, forked from [Citation Tally](https://github.com/daeh/zotero-citation-tally)
-
-This extension uses the [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template).
+by windingwind. Related work worth knowing about:
+[ZoteroCitationCountsManager](https://github.com/FrLars21/ZoteroCitationCountsManager)
+by FrLars21 and [zotero-citationcounts](https://github.com/eschnett/zotero-citationcounts)
+by eschnett.
 
 ## License
 
-Distributed under the GNU Affero General Public License v3.0.
-
-## Author
-
-[![Personal Website](https://img.shields.io/badge/personal%20website-daeh.info-orange?style=for-the-badge)](https://daeh.info) [![Bluesky](https://img.shields.io/badge/bsky-@dae.bsky.social-skyblue?style=for-the-badge&logo=bluesky)](https://bsky.app/profile/dae.bsky.social)
+GNU Affero General Public License v3.0, with one exception:
+`src/modules/googleScholarClient.core.ts` is under the Mozilla Public License
+2.0. See `LICENSE` and `LICENSE-MPL-2.0`.
