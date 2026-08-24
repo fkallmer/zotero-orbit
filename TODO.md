@@ -5,8 +5,6 @@ items were about Citation Tally.
 
 ## Before this can be published
 
-- **The plugin icon is not ours.** `addon/content/icons/favicon.png` is Citation
-  Tally's, and it is what Zotero shows beside "Orbit" in the plugin list.
 - **The repository is private**, so the update feed in `manifest.json` resolves
   to a 404 and Zotero will never find an update. Going public also needs a
   release tagged `v<version>` with `orbit.xpi` attached, and one tagged
