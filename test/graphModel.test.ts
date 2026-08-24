@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { buildGraphLayout, citationScale, renderGraphSvg } from '../src/modules/graphModel.core.ts'
+import { AXIS_GUTTER, buildGraphLayout, citationScale, renderGraphSvg } from '../src/modules/graphModel.core.ts'
 
 import type { GraphNode } from '../src/modules/graphModel.core.ts'
 
@@ -161,6 +161,58 @@ describe('renderGraphSvg', () => {
   it('omits the reference count rather than printing undefined for it', () => {
     const svg = renderGraphSvg(layout, theme)
     assert.ok(!svg.includes('undefined'))
+  })
+})
+
+describe('a fixed frame around a moving plot', () => {
+  const layout = buildGraphLayout(
+    [
+      node({ key: 'seed', role: 'seed', year: 2019, citedByCount: 6 }),
+      node({ key: 'old', year: 1998, citedByCount: 900 }),
+    ],
+    options,
+  )!
+
+  it('separates the plot from the frame so only one of them can be moved', () => {
+    const svg = renderGraphSvg(layout, theme)
+    // Zoom transforms this group. Without the split it moved the axis too, and
+    // zooming in far enough left the scale off-screen entirely.
+    assert.ok(svg.includes('<g data-role="content"'))
+    assert.ok(svg.includes('<g data-role="axis">'))
+  })
+
+  it('clips the plot out of the gutters the tick numbers live in', () => {
+    const svg = renderGraphSvg(layout, theme)
+    assert.ok(svg.includes('clip-path="url(#plot-area)"'))
+    assert.ok(svg.includes('<clipPath id="plot-area">'))
+  })
+
+  it('tags every tick with where it started, so it can slide back onto its value', () => {
+    const svg = renderGraphSvg(layout, theme)
+    for (const tick of [...layout.yTicks, ...layout.xTicks]) {
+      assert.ok(svg.includes(`data-pos="${tick.position.toFixed(1)}"`), `no data-pos for ${tick.label}`)
+    }
+    assert.equal(svg.match(/data-axis="y"/g)?.length, layout.yTicks.length)
+    assert.equal(svg.match(/data-axis="x"/g)?.length, layout.xTicks.length)
+  })
+
+  it('keeps labels out of the gutters, where they would be cut in half', () => {
+    const crowded = Array.from({ length: 14 }, (_, index) =>
+      node({ key: `n${index}`, author: 'Author', year: 1990 + index, citedByCount: index }),
+    )
+    const placed = buildGraphLayout(crowded, options)!
+    for (const mark of placed.nodes) {
+      if (mark.label === null) continue
+      const width = mark.label.length * 5.4
+      const left =
+        mark.labelAnchor === 'start'
+          ? mark.labelX!
+          : mark.labelAnchor === 'end'
+            ? mark.labelX! - width
+            : mark.labelX! - width / 2
+      assert.ok(left >= AXIS_GUTTER.left, `${mark.key} label starts at ${left}`)
+      assert.ok(mark.labelY! <= options.height - AXIS_GUTTER.bottom, `${mark.key} label sits in the bottom gutter`)
+    }
   })
 })
 

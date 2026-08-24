@@ -18,7 +18,7 @@ import { readCache } from '../utils/recordCache'
 import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { Helpers } from './citationTally'
-import { AXIS_METRICS, buildGraphLayout, renderGraphSvg } from './graphModel.core.ts'
+import { AXIS_GUTTER, AXIS_METRICS, buildGraphLayout, renderGraphSvg } from './graphModel.core.ts'
 import { fetchCitingWorks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
@@ -600,33 +600,68 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
   let dragged = false
 
   /**
-   * Wheel to zoom, drag to pan, by moving the viewBox.
+   * Wheel to zoom, drag to pan, by transforming the plot inside a fixed frame.
    *
-   * Labels and marks keep their size in screen terms because the whole
-   * coordinate system scales -- which is the point: at fifty works the plot is
+   * The transform lands on the content group alone rather than on the viewBox,
+   * which is what keeps the axis still. Moving the viewBox moved everything,
+   * axis included, so zooming in far enough left the scale off-screen and the
+   * marks unreadable in the other sense: big, and about nothing.
+   *
+   * Marks and labels do scale, which is the point -- at fifty works the plot is
    * denser than a fixed viewport can show, and zooming is how the crowded
-   * middle becomes readable without dropping anything from it.
+   * middle becomes legible without dropping anything from it. The ticks scale
+   * only in position, sliding along their own axis to stay on the value they
+   * name.
    *
    * The wheel scales by how far it actually turned, not by a fixed step per
    * event. A trackpad sends a stream of two-pixel deltas, and a fixed step
    * turned a light two-finger swipe into four levels of zoom.
    */
   const installPanAndZoom = (svg: SVGSVGElement, width: number, height: number): typeof view => {
-    let box = { x: 0, y: 0, w: width, h: height }
-    const apply = (): void => svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`)
+    // Annotated, not inferred: Zotero's ambient DOM typings hand these back as
+    // `any`, and every setAttribute downstream inherits it.
+    const content: Element | null = svg.querySelector('[data-role="content"]')
+    const ticksOn = (axis: 'x' | 'y'): Element[] => {
+      const found = svg.querySelectorAll(`[data-axis="${axis}"]`) as unknown as ArrayLike<Element>
+      return Array.from(found)
+    }
+    const yTicks = ticksOn('y')
+    const xTicks = ticksOn('x')
+    if (!content) return null
+
+    let k = 1
+    let tx = 0
+    let ty = 0
+
+    const apply = (): void => {
+      content.setAttribute('transform', `translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})`)
+      // A tick whose value has moved out of the plot is hidden rather than
+      // stacked against the edge, where it would name a place nobody can see.
+      for (const tick of yTicks) {
+        const home = Number(tick.getAttribute('data-pos'))
+        const at = home * k + ty
+        tick.setAttribute('transform', `translate(0,${(at - home).toFixed(2)})`)
+        tick.setAttribute('opacity', at > 8 && at < height - AXIS_GUTTER.bottom ? '1' : '0')
+      }
+      for (const tick of xTicks) {
+        const home = Number(tick.getAttribute('data-pos'))
+        const at = home * k + tx
+        tick.setAttribute('transform', `translate(${(at - home).toFixed(2)},0)`)
+        tick.setAttribute('opacity', at > AXIS_GUTTER.left && at < width - 4 ? '1' : '0')
+      }
+    }
 
     /** factor > 1 zooms out; the anchor is a fraction of the viewport, 0 to 1. */
     const zoomBy = (factor: number, atX = 0.5, atY = 0.5): void => {
       // Clamped: far enough in to separate overlapping marks, not so far out
       // that the plot becomes a speck.
-      const nextW = Math.min(width * 3, Math.max(width / 15, box.w * factor))
-      const change = nextW / box.w
-      box = {
-        x: box.x + box.w * atX * (1 - change),
-        y: box.y + box.h * atY * (1 - change),
-        w: nextW,
-        h: box.h * change,
-      }
+      const next = Math.min(15, Math.max(1 / 3, k / factor))
+      const anchorX = atX * width
+      const anchorY = atY * height
+      // Hold the point under the anchor still while the scale changes around it.
+      tx = anchorX - (anchorX - tx) * (next / k)
+      ty = anchorY - (anchorY - ty) * (next / k)
+      k = next
       apply()
     }
 
@@ -655,10 +690,10 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
     svg.addEventListener('mousemove', (event: MouseEvent) => {
       if (!from) return
       const rect = svg.getBoundingClientRect()
-      const dx = ((event.clientX - from.x) / rect.width) * box.w
-      const dy = ((event.clientY - from.y) / rect.height) * box.h
+      // Screen pixels are not user units once the viewport is scaled to fit.
+      tx += ((event.clientX - from.x) / rect.width) * width
+      ty += ((event.clientY - from.y) / rect.height) * height
       if (Math.abs(event.clientX - from.x) > 3 || Math.abs(event.clientY - from.y) > 3) dragged = true
-      box = { ...box, x: box.x - dx, y: box.y - dy }
       from = { x: event.clientX, y: event.clientY }
       apply()
     })
@@ -673,11 +708,14 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
     return {
       zoomBy,
       reset: () => {
-        box = { x: 0, y: 0, w: width, h: height }
+        k = 1
+        tx = 0
+        ty = 0
         apply()
       },
       centre: (x: number, y: number) => {
-        box = { ...box, x: x - box.w / 2, y: y - box.h / 2 }
+        tx = width / 2 - x * k
+        ty = height / 2 - y * k
         apply()
       },
     }

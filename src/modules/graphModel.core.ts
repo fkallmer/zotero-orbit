@@ -166,6 +166,15 @@ function citationTickValues(maxCount: number, kind: ScaleKind): number[] {
   return ticks
 }
 
+/**
+ * The strips along the left and bottom edges that belong to the axis alone.
+ *
+ * The marks are clipped out of them, which is what lets the tick numbers stay
+ * put while the plot moves underneath: without the clip, a work panned into
+ * the corner would be painted straight over the scale that explains it.
+ */
+export const AXIS_GUTTER = { left: 26, bottom: 16 }
+
 const LABEL_CHARS = 34
 /** Rough width of a character at the label's font size. */
 const CHAR_WIDTH = 5.4
@@ -259,10 +268,12 @@ function assignLabels(nodes: PlacedNode[], width: number, height: number): void 
       .flatMap((factor) => spotsAt((node.radius + 4) * factor))
       .find(
         (candidate) =>
-          candidate.box.x1 >= 2 &&
+          // Inside the plot, not the gutters: a label there would be clipped
+          // in half the moment anything moved.
+          candidate.box.x1 >= AXIS_GUTTER.left + 2 &&
           candidate.box.x2 <= width - 2 &&
           candidate.box.y1 >= 0 &&
-          candidate.box.y2 <= height - 2 &&
+          candidate.box.y2 <= height - AXIS_GUTTER.bottom - 2 &&
           !taken.some((other) => overlaps(candidate.box, other)),
       )
     if (!fits) continue
@@ -410,27 +421,31 @@ function colorFor(role: GraphRole, theme: GraphTheme): string {
  * point survives greyscale and colour blindness.
  */
 export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames?: AxisNames): string {
-  const grid = layout.yTicks
+  /**
+   * Each tick is its own group, tagged with where it started.
+   *
+   * Zoom moves the plot, not the frame around it: the numbers keep their size
+   * and their place along the edge, and only slide along their own axis to stay
+   * on the value they name. Reading that off `data-pos` is what lets one
+   * attribute write per tick do it, rather than re-rendering the axis.
+   */
+  const yTickGroups = layout.yTicks
     .map(
       (tick) =>
-        `<line x1="0" y1="${tick.position.toFixed(1)}" x2="${layout.width}" y2="${tick.position.toFixed(1)}" ` +
-        `stroke="${theme.muted}" stroke-width="1" opacity="0.15"/>`,
-    )
-    .join('')
-
-  const yLabels = layout.yTicks
-    .map(
-      (tick) =>
+        `<g data-axis="y" data-pos="${tick.position.toFixed(1)}">` +
+        `<line x1="${AXIS_GUTTER.left}" y1="${tick.position.toFixed(1)}" x2="${layout.width}" ` +
+        `y2="${tick.position.toFixed(1)}" stroke="${theme.muted}" stroke-width="1" opacity="0.15"/>` +
         `<text x="4" y="${(tick.position - 3).toFixed(1)}" font-size="10" fill="${theme.muted}" ` +
-        `opacity="0.75">${tick.label}</text>`,
+        `opacity="0.75">${tick.label}</text></g>`,
     )
     .join('')
 
-  const xLabels = layout.xTicks
+  const xTickGroups = layout.xTicks
     .map(
       (tick) =>
-        `<text x="${tick.position.toFixed(1)}" y="${layout.height - 6}" font-size="10" fill="${theme.muted}" ` +
-        `text-anchor="middle" opacity="0.75">${tick.label}</text>`,
+        `<g data-axis="x" data-pos="${tick.position.toFixed(1)}">` +
+        `<text x="${tick.position.toFixed(1)}" y="${layout.height - 4}" font-size="10" fill="${theme.muted}" ` +
+        `text-anchor="middle" opacity="0.75">${tick.label}</text></g>`,
     )
     .join('')
 
@@ -474,6 +489,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames
 
   const arrowDefs =
     `<defs>` +
+    `<clipPath id="plot-area"><rect x="${AXIS_GUTTER.left}" y="0" ` +
+    `width="${layout.width - AXIS_GUTTER.left}" height="${layout.height - AXIS_GUTTER.bottom}"/></clipPath>` +
     `<marker id="arrow-ref" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
     `markerUnits="userSpaceOnUse" orient="auto">` +
     `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.reference}" opacity="0.8"/></marker>` +
@@ -529,6 +546,11 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames
     `aria-label="${escapeXml(axisNames?.y ?? layout.yMetric)} against ` +
     `${escapeXml(axisNames?.x ?? layout.xMetric)} for ${layout.nodes.length} works">` +
     arrowDefs +
-    `<g>${grid}</g><g>${yLabels}${xLabels}</g><g>${edges}</g><g>${marks}</g><g>${labels}</g></svg>`
+    // The frame first, the plot over it. The numbers survive that order only
+    // because the clip keeps the marks out of the gutters they live in -- which
+    // is the whole reason the gutters are reserved.
+    `<g data-role="axis">${yTickGroups}${xTickGroups}</g>` +
+    `<g data-role="content" clip-path="url(#plot-area)">` +
+    `<g>${edges}</g><g>${marks}</g><g>${labels}</g></g></svg>`
   )
 }
