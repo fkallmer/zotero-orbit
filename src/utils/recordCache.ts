@@ -151,16 +151,3 @@ export async function flushCache(): Promise<void> {
   }
   await flush()
 }
-
-/** Test seam: reset module state without touching disk. */
-export function __resetCacheForTests(): void {
-  memory = new Map()
-  loaded = false
-  dirty = false
-  if (flushTimer !== null) {
-    clearTimeout(flushTimer)
-    flushTimer = null
-  }
-}
-
-export const CACHE_TUNING = { DEFAULT_TTL_MS, MAX_ENTRIES, FLUSH_DELAY_MS } as const
