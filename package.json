@@ -1,10 +1,10 @@
 {
   "name": "zotero-orbit",
-  "version": "0.2.9",
+  "version": "0.2.12",
   "private": true,
   "description": "Citation counts, context and a citation graph for Zotero items",
   "author": "Falk Kallmer",
-  "license": "AGPL-3.0",
+  "license": "AGPL-3.0 AND MPL-2.0",
   "type": "module",
   "engines": {
     "node": ">=26 <27"

@@ -24,13 +24,46 @@ which is slower but works. The address is deliberately not in this repository:
 it identifies whoever runs the build, and a fork must not go on sending an
 address that is not theirs.
 
-## Origin
+## Credit
 
-Orbit is a fork of [Citation Tally](https://github.com/daeh/zotero-citation-tally)
-by Dae Houlihan, and is licensed AGPL-3.0 like the original. The citation-count
-column, the provider framework and the preferences are that project's work; the
-OpenAlex and Google Scholar providers, the item pane section and the graph tab
-are added here.
+Orbit is not written from nothing. Two projects carry most of what makes it
+work, and both are named here because a licence file is a legal minimum and
+not the same thing as saying who did the work.
+
+### Citation Tally — Dae Houlihan
+
+[daeh/zotero-citation-tally](https://github.com/daeh/zotero-citation-tally),
+AGPL-3.0. Orbit is a fork of it and inherits its licence.
+
+That project is the whole foundation: the citation-count column, the provider
+framework the sources plug into, the rate limiting with its backoff ladder and
+circuit breaker, the preferences, the storage in the item's Extra field, and
+the build. Everything Orbit adds sits on top of it.
+
+Added here: the OpenAlex and Google Scholar providers, the item pane section
+with the OpenAlex record and the yearly chart, the reference list from Semantic
+Scholar, and the graph tab.
+
+### Google Scholar Citation Count — Justin Ribeiro
+
+[justinribeiro/zotero-google-scholar-citation-count](https://github.com/justinribeiro/zotero-google-scholar-citation-count),
+MPL-2.0, included as `LICENSE-MPL-2.0`.
+
+`src/modules/googleScholarClient.core.ts` is derived from it and stays under
+MPL-2.0 while the rest of Orbit is AGPL-3.0; section 3.3 of the MPL expressly
+allows that combination. The file was rewritten in TypeScript, but the
+substance is that project's: which markers in Scholar's HTML identify a result
+and its citation count, and the distinction between a page carrying a result
+but no count, which means zero, and a page carrying no result, which means
+unknown. Scholar publishes no API and no schema for any of this; it was worked
+out against the live site, and that is the expensive part.
+
+### Also
+
+Built on [zotero-plugin-scaffold and zotero-plugin-toolkit](https://github.com/windingwind)
+by windingwind. The data comes from [OpenAlex](https://openalex.org),
+[Crossref](https://www.crossref.org), [Semantic Scholar](https://www.semanticscholar.org),
+[INSPIRE-HEP](https://inspirehep.net) and Google Scholar.
 
 ## Plugin Functions
 

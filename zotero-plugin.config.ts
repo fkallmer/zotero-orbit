@@ -31,7 +31,10 @@ export default defineConfig({
   xpiDownloadLink: 'https://github.com/{{owner}}/{{repo}}/releases/download/v{{version}}/{{xpiName}}.xpi',
 
   build: {
-    assets: ['addon/**/*.*'],
+    // The licences travel with the package. MPL-2.0 section 3.1 and AGPL
+    // section 5 both require them wherever the thing is distributed, and an
+    // XPI is exactly that the moment it leaves this machine.
+    assets: ['addon/**/*.*', 'LICENSE', 'LICENSE-MPL-2.0'],
     define: {
       ...pkg.config,
       author: pkg.author,
@@ -53,6 +56,10 @@ export default defineConfig({
           __contact__: JSON.stringify(contact),
         },
         bundle: true,
+        // Keep licence comments. esbuild drops every comment otherwise, and
+        // the MPL notice on the Google Scholar client has to reach whoever
+        // receives the built file.
+        legalComments: 'eof',
         target: 'firefox140',
         outfile: `.scaffold/build/addon/content/scripts/${pkg.config.addonRef}.js`,
       },

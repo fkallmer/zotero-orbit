@@ -1,3 +1,10 @@
+Orbit is licensed under the GNU Affero General Public License v3.0, below,
+with one exception: src/modules/googleScholarClient.core.ts is derived from
+zotero-google-scholar-citation-count by Justin Ribeiro and remains under the
+Mozilla Public License 2.0, a copy of which is in LICENSE-MPL-2.0. Section 3.3
+of the MPL expressly permits that file to be distributed as part of a Larger
+Work under this licence. See the Credit section of README.md.
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

@@ -1,3 +1,23 @@
+/*! @license
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/*
+ * Derived from zotero-google-scholar-citation-count by Justin Ribeiro,
+ * MPL-2.0: https://github.com/justinribeiro/zotero-google-scholar-citation-count
+ *
+ * Rewritten in TypeScript against a different plugin, but the substance is
+ * that project's: which markers in Scholar's HTML identify a result and its
+ * count (`gs_r gs_or gs_scl`, `gs_fl gs_flb`, `gs_rt`), the "Cited by" prefix,
+ * the default endpoint, and -- the part that is genuinely hard-won -- the
+ * distinction between a page with a result but no count, which means zero, and
+ * a page with no result at all, which means unknown.
+ *
+ * MPL-2.0 is file-level: this file stays under it while the rest of Orbit is
+ * AGPL-3.0, which section 3.3 of the MPL expressly allows.
+ */
+
 /**
  * Pure Google Scholar logic: URL construction and HTML parsing.
  *
