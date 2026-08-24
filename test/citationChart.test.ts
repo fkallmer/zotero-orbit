@@ -3,6 +3,8 @@ import { describe, it } from 'node:test'
 
 import { buildChartModel, MIN_YEARS_FOR_CHART, renderChartSvg } from '../src/modules/citationChart.core.ts'
 
+import { xmlErrors } from './svgWellFormed.ts'
+
 import type { YearCount } from '../src/modules/openAlexClient.core.ts'
 
 const theme = { series: '#eda100', muted: '#6b6b6b' }
@@ -121,6 +123,13 @@ describe('renderChartSvg', () => {
     const svg = renderChartSvg(model, theme, 't6')
     assert.ok(svg.includes('role="img"'))
     assert.ok(/aria-label="Citations per year and running total, 2023 to 2026, 53 in all/.test(svg))
+  })
+
+  it('is well-formed XML, which is what the pane parses it as', () => {
+    // The pane uses DOMParser as image/svg+xml, so anything HTML would forgive
+    // -- a valueless attribute, an unclosed tag -- draws nothing at all. That
+    // shipped once in the graph; this is the same guard, here.
+    assert.deepEqual(xmlErrors(renderChartSvg(model, theme, 't8')), [])
   })
 
   it('produces well-formed markup for a single-column-dominant series', () => {

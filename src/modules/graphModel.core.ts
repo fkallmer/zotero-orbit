@@ -574,7 +574,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
           // moves the ends without changing how far the head sits off a mark:
           // the marks keep their size, so the gaps are screen distances now.
           return (
-            `<line data-edge x1="${ends.x1.toFixed(1)}" y1="${ends.y1.toFixed(1)}" ` +
+            `<line data-edge="1" x1="${ends.x1.toFixed(1)}" y1="${ends.y1.toFixed(1)}" ` +
             `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
             `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
             `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
@@ -660,7 +660,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
       // zoom moves the mark without resizing it. Litmaps' behaviour, and the
       // right one: a crowded middle needs the marks pulled apart, not enlarged.
       return (
-        `<g data-mark data-at="${node.x.toFixed(1)},${node.y.toFixed(1)}" ` +
+        `<g data-mark="1" data-at="${node.x.toFixed(1)},${node.y.toFixed(1)}" ` +
         `transform="translate(${node.x.toFixed(1)},${node.y.toFixed(1)})">` +
         halo +
         collar +

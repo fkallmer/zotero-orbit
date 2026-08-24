@@ -10,6 +10,7 @@ import {
   placeLabels,
   renderGraphSvg,
 } from '../src/modules/graphModel.core.ts'
+import { xmlErrors } from './svgWellFormed.ts'
 
 import type { GraphNode } from '../src/modules/graphModel.core.ts'
 
@@ -173,6 +174,41 @@ describe('renderGraphSvg', () => {
   })
 })
 
+describe('the markup the tab actually parses', () => {
+  // DOMParser as image/svg+xml is XML, and XML mandates a value for every
+  // attribute. `data-mark` written bare is ordinary HTML and fatal here: the
+  // parse aborts and the tab renders nothing. Every other test still passed.
+  const shapes: [string, GraphNode[], Partial<typeof options>][] = [
+    ['the ordinary case', [node({ key: 'a' }), node({ key: 'b', role: 'seed', year: 2015 })], {}],
+    ['a work already in the library', [node({ key: 'a', itemID: 7, role: 'seed' })], {}],
+    [
+      'references across the bottom',
+      [node({ key: 'a', referenceCount: 40 }), node({ key: 'b', referenceCount: 2 })],
+      { xMetric: 'references' as const },
+    ],
+    ['a title carrying markup', [node({ key: 'a', title: 'A <b> & "quoted" title' })], {}],
+    ['an author carrying an apostrophe', [node({ key: 'a', author: "O'Brien" })], {}],
+  ]
+
+  for (const [what, nodes, extra] of shapes) {
+    it(`is well-formed XML for ${what}`, () => {
+      const layout = buildGraphLayout(nodes, { ...options, ...extra })!
+      const svg = renderGraphSvg(layout, theme, { x: 'Year', y: 'Citations', inLibrary: 'in your library' })
+      assert.deepEqual(xmlErrors(svg), [])
+    })
+  }
+
+  it('catches a valueless attribute, which is the failure that got through', () => {
+    // The guard has to fail on the real thing, or it guards nothing.
+    assert.equal(xmlErrors('<svg><g data-mark></g></svg>').length, 1)
+    assert.deepEqual(xmlErrors('<svg><g data-mark="1"></g></svg>'), [])
+  })
+
+  it('catches an unclosed tag too', () => {
+    assert.equal(xmlErrors('<svg><g></svg>').length, 2)
+  })
+})
+
 describe('zoom spreads the marks without inflating them', () => {
   // Eight works of the same year and much the same citation count, on a plot
   // whose axes are stretched by one old and heavily cited paper. They land on
@@ -190,7 +226,7 @@ describe('zoom spreads the marks without inflating them', () => {
     const svg = renderGraphSvg(layout, theme)
     // A circle with cx/cy inside a scaled layer grows with the zoom. One at the
     // origin under a translated group does not, which is the whole change.
-    assert.ok(svg.includes('<g data-mark data-at='))
+    assert.ok(svg.includes('<g data-mark="1" data-at='))
     assert.ok(!/<circle [^>]*cx=/.test(svg))
   })
 
