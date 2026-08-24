@@ -628,7 +628,7 @@ function buildMarkCard(
   return { card, width: 280 }
 }
 
-function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
+export function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
   const doc = win.document
   const theme = themeFor(win)
 

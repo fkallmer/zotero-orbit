@@ -36,7 +36,7 @@
     "scrub": "rm -rf node_modules .scaffold tsconfig.tsbuildinfo .yarn/install-state.gz",
     "update-deps": "yarn set version stable && yarn upgrade-interactive",
     "test": "zotero-plugin test",
-    "test:unit": "node --test 'test/**/*.test.ts'",
+    "test:unit": "node --import ./test/register.mjs --test 'test/**/*.test.ts'",
     "test:live": "node --test 'test/live/**/*.live.ts'"
   },
   "dependencies": {
@@ -49,6 +49,7 @@
     "eslint": "^10.8.1",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import-x": "^4.17.1",
+    "linkedom": "^0.18.13",
     "prettier": "^3.9.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.67.0",
