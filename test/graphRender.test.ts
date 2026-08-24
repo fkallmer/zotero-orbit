@@ -39,7 +39,6 @@ function makeNode(partial: Partial<GraphNode> & { key: string }): GraphNode {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 // Top level, not in a hook: the stubs must exist before the module graph is
 // imported, and node:test cancels a suite whose async hook outlives it.
 const { window, document, DOMParser } = parseHTML('<html><body><div id="tab"></div></body></html>')
@@ -79,7 +78,6 @@ function render(nodes: readonly GraphNode[]): Rendered {
   return { container, plot: container.querySelector('[data-role="content"]')?.ownerSVGElement ?? container }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
-/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 
 /**
  * A click, or a key. linkedom has no MouseEvent or KeyboardEvent, so the few
