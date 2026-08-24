@@ -41,7 +41,7 @@ const DIVERGENCE_RATIO = 3
 
 let registeredPaneID: string | false = false
 
-interface PaneData {
+export interface PaneData {
   record: ScholarlyRecord | null
   journal: JournalMetrics | null
   s2: S2Details | null
@@ -523,7 +523,11 @@ function renderFunding(doc: Document, body: HTMLElement, record: ScholarlyRecord
   }
 }
 
-function renderInto(doc: Document, body: HTMLElement, item: Zotero.Item, data: PaneData): void {
+/**
+ * Exported so the pane can be rendered outside Zotero: the DOM tests, and the
+ * README screenshot, both drive this rather than a mock of it.
+ */
+export function renderInto(doc: Document, body: HTMLElement, item: Zotero.Item, data: PaneData): void {
   body.replaceChildren()
   body.style.cssText = 'font-size:12px;line-height:1.45;padding:2px 0'
 
