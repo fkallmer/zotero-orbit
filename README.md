@@ -37,27 +37,26 @@ are added here.
 - **Automatic Citation Tracking** - Fetches citation counts when new items are added to your library
 - **Smart Auto-Updates** - Keeps citation data current with configurable update schedules
 - **Visual Integration** - Adds a sortable "Citations" column to your Zotero library view
-- **Multiple Databases** - Shows counts from Crossref, Semantic Scholar, and INSPIRE side by side
+- **Multiple Databases** - Shows counts from Crossref, OpenAlex, Semantic Scholar, Google Scholar and INSPIRE side by side
 - **Intelligent Rate Limiting** - Respects API limits with adaptive throttling
 - **Persistent Storage** - Stores citation data in item's Extra field for sync compatibility
 
-Please post any bugs, questions, or feature requests in the [GitHub issues](https://github.com/daeh/zotero-citation-tally/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc).
+Please post any bugs, questions, or feature requests in [Orbit's issues](https://github.com/fkallmer/zotero-orbit/issues). They do not belong on Citation Tally's tracker: the two are separate plugins now, and its maintainer did not write the parts you are most likely to be reporting on.
 
 ## Installation
 
-- Download the plugin (the `.xpi` file) from the [latest release](https://github.com/daeh/zotero-citation-tally/releases/latest)
+- Download the plugin (the `.xpi` file) from the [latest release](https://github.com/fkallmer/zotero-orbit/releases/latest)
 - Open Zotero
 - From `Tools → Plugins`
 - Select `Install Plugin From File...` from the gear icon ⛭
-- Choose the `.xpi` file you downloaded (e.g. `citation-tally.xpi`)
+- Choose the `.xpi` file you downloaded (e.g. `orbit.xpi`)
 - Restart Zotero
 
 > [!NOTE]
-> The last release with support for Zotero 7 was [`v0.0.11`](https://github.com/daeh/zotero-citation-tally/releases/tag/v0.0.11).
->
-> The last release with support for Zotero 8 was [`v0.0.12`](https://github.com/daeh/zotero-citation-tally/releases/tag/v0.0.12).
->
-> The last release with support for Zotero 9 was [`v0.0.16`](https://github.com/daeh/zotero-citation-tally/releases/tag/v0.0.16).
+> Orbit requires Zotero 10 and has no releases before it. For Zotero 7, 8 or 9,
+> use [Citation Tally](https://github.com/daeh/zotero-citation-tally/releases),
+> which Orbit is forked from -- without the OpenAlex and Google Scholar
+> providers, the item pane section or the graph tab, which are added here.
 
 ## Setup and Configuration
 
@@ -185,7 +184,7 @@ Citation Tally reads the DOI field, then looks for an arXiv ID in Archive ID, Re
 
 ## Notes
 
-[GitHub](https://github.com/daeh/zotero-citation-tally): Source code repository
+[GitHub](https://github.com/fkallmer/zotero-orbit): Source code repository, forked from [Citation Tally](https://github.com/daeh/zotero-citation-tally)
 
 This extension uses the [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template).
 
