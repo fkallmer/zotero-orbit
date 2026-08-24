@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import {
   AXIS_GUTTER,
   buildGraphLayout,
+  chainFrom,
   citationScale,
   edgeEnds,
   FITTED,
@@ -389,13 +390,14 @@ describe('paths between the surrounding works', () => {
     // All of them at once is a thicket rather than a finding; the tab lights
     // one when its end is pointed at.
     const svg = renderGraphSvg(buildGraphLayout(three, { ...options, links })!, theme)
-    assert.equal(svg.match(/data-link="1"/g)?.length, 1)
-    assert.ok(/data-link="1"[^>]*opacity="0"/.test(svg))
+    assert.equal(svg.match(/data-link="\d+"/g)?.length, 1)
+    assert.ok(/data-link="0"[^>]*opacity="0"/.test(svg))
   })
 
   it('names both ends, so either can light it', () => {
     const svg = renderGraphSvg(buildGraphLayout(three, { ...options, links })!, theme)
-    assert.ok(/data-link="1" data-key="b" data-key2="a"/.test(svg))
+    // The index is what the tab looks up when it lights a whole chain.
+    assert.ok(/data-link="0" data-key="b" data-key2="a"/.test(svg))
   })
 
   it('uses plain ink rather than a fourth hue', () => {
@@ -403,7 +405,7 @@ describe('paths between the surrounding works', () => {
     // two of the surrounding works is about neither of them.
     const svg = renderGraphSvg(buildGraphLayout(three, { ...options, links })!, theme)
     assert.ok(svg.includes(`<marker id="orbit-graph-arrow-link"`))
-    assert.ok(/data-link="1"[^>]*stroke="#5c5c5c"/.test(svg))
+    assert.ok(/data-link="0"[^>]*stroke="#5c5c5c"/.test(svg))
   })
 
   it('drops a path to a work that could not be placed', () => {
@@ -414,6 +416,57 @@ describe('paths between the surrounding works', () => {
 
   it('keeps a path whose ends both survived', () => {
     assert.deepEqual(buildGraphLayout(three, { ...options, links })!.links, links)
+  })
+})
+
+describe('chainFrom', () => {
+  //  a -> b -> c ,  d -> b ,  e -> f  (a separate pair)
+  const links = [
+    { from: 'a', to: 'b' },
+    { from: 'b', to: 'c' },
+    { from: 'd', to: 'b' },
+    { from: 'e', to: 'f' },
+  ]
+
+  it('follows the arrows in both directions from where it starts', () => {
+    const chain = chainFrom(links, 'b')
+    assert.deepEqual([...chain.keys].sort(), ['a', 'b', 'c', 'd'])
+  })
+
+  it('reaches all the way along, not just one hop', () => {
+    // From a: a -> b -> c. Two hops, and c is the point of the exercise.
+    assert.ok(chainFrom(links, 'a').keys.has('c'))
+  })
+
+  it('does not cross into a work that merely shares a neighbour', () => {
+    // d and a both cite b, but neither descends from the other. Taking the
+    // links as undirected would sweep them together -- and on a real graph it
+    // sweeps in everything: 24 paths over 17 works give every single node the
+    // same component of 17.
+    assert.ok(!chainFrom(links, 'a').keys.has('d'))
+  })
+
+  it('leaves an unrelated pair out entirely', () => {
+    const chain = chainFrom(links, 'a')
+    assert.ok(!chain.keys.has('e') && !chain.keys.has('f'))
+    assert.ok(!chain.edges.has(3))
+  })
+
+  it('names the paths it walked, so they can be lit', () => {
+    assert.deepEqual([...chainFrom(links, 'a').edges].sort(), [0, 1])
+  })
+
+  it('terminates on a cycle', () => {
+    // Two works citing each other's preprints is an ordinary thing.
+    const cyclic = [
+      { from: 'x', to: 'y' },
+      { from: 'y', to: 'x' },
+    ]
+    assert.deepEqual([...chainFrom(cyclic, 'x').keys].sort(), ['x', 'y'])
+  })
+
+  it('returns just the mark itself when nothing links to it', () => {
+    assert.deepEqual([...chainFrom(links, 'lonely').keys], ['lonely'])
   })
 })
 

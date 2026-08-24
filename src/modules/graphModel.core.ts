@@ -96,6 +96,54 @@ export interface GraphLink {
   to: string
 }
 
+/** The works and paths on the line of descent through one mark. */
+export interface Chain {
+  keys: Set<string>
+  /** Indices into the link list that was passed in. */
+  edges: Set<number>
+}
+
+/**
+ * Everything one work descends from and everything that descends from it.
+ *
+ * Directed, and that is the whole decision. Taking the links as undirected
+ * gives the connected component instead, and on a real graph -- 24 paths over
+ * 17 of 23 works -- every single node returns the same component of 17. That
+ * lights almost the whole plot whatever you point at, which is no answer at
+ * all. Walking the arrows gives a median of five works and a maximum of
+ * fourteen: a line of descent that differs from mark to mark, which is what
+ * makes it worth showing.
+ *
+ * Cycles are ordinary here -- two works can cite each other's preprints -- so
+ * both walks stop at anything already seen.
+ */
+export function chainFrom(links: readonly GraphLink[], start: string): Chain {
+  const keys = new Set<string>([start])
+  const edges = new Set<number>()
+
+  const walk = (forwards: boolean): void => {
+    const frontier = [start]
+    const reached = new Set<string>([start])
+    while (frontier.length > 0) {
+      const at = frontier.pop() as string
+      links.forEach((link, index) => {
+        const near = forwards ? link.from : link.to
+        const far = forwards ? link.to : link.from
+        if (near !== at) return
+        edges.add(index)
+        keys.add(far)
+        if (reached.has(far)) return
+        reached.add(far)
+        frontier.push(far)
+      })
+    }
+  }
+
+  walk(true)
+  walk(false)
+  return { keys, edges }
+}
+
 export type ScaleKind = 'log' | 'linear'
 
 /** What an axis measures. Both axes take the same menu. */
@@ -726,13 +774,13 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
    */
   const byKey = new Map(layout.nodes.map((node) => [node.key, node]))
   const linkLines = layout.links
-    .map((link) => {
+    .map((link, index) => {
       const from = byKey.get(link.from)
       const to = byKey.get(link.to)
       if (!from || !to) return ''
       const ends = edgeEnds(from, to, FITTED(layout.width, layout.height))
       return (
-        `<line data-edge="1" data-link="1" data-key="${escapeXml(link.from)}" ` +
+        `<line data-edge="1" data-link="${index}" data-key="${escapeXml(link.from)}" ` +
         `data-key2="${escapeXml(link.to)}" x1="${ends.x1.toFixed(1)}" y1="${ends.y1.toFixed(1)}" ` +
         `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
         `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +

@@ -22,6 +22,7 @@ import {
   AXIS_GUTTER,
   AXIS_METRICS,
   buildGraphLayout,
+  chainFrom,
   edgeEnds,
   LINE_HEIGHT,
   placeLabels,
@@ -31,7 +32,7 @@ import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
-import type { AxisMetric, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
+import type { AxisMetric, Chain, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { GraphLink } from './openAlexEnrichment'
 import type { S2Details } from './semanticScholarClient.core'
@@ -1014,9 +1015,33 @@ export function renderGraph(
     /** One update per frame, however many wheel events arrive between them. */
     let pending = 0
 
-    /** Resting value, dimmed value, and the value for the mark being pointed at. */
-    const emphasis = (key: string, rest: number, dim: number, lit: number): string =>
-      hovered === null ? String(rest) : String(key === hovered ? lit : dim)
+    /**
+     * The chain through the mark under the pointer, worked out once per hover
+     * rather than once per frame: zoom repaints sixty times a second and the
+     * answer does not change while it does.
+     */
+    let chainFor: string | null = null
+    let chain: Chain | null = null
+    const currentChain = (): Chain | null => {
+      if (hovered !== chainFor) {
+        chainFor = hovered
+        chain = hovered === null ? null : chainFrom(layout.links, hovered)
+      }
+      return chain
+    }
+
+    /**
+     * Three levels, not two.
+     *
+     * The mark being pointed at, then the works on its line of descent, then
+     * everything else. Two levels would push the chain back with the rest --
+     * and the chain is the thing the paths were drawn to show.
+     */
+    const emphasis = (key: string, rest: number, dim: number, lit: number): string => {
+      if (hovered === null) return String(rest)
+      if (key === hovered) return String(lit)
+      return String(currentChain()?.keys.has(key) ? dim + (lit - dim) * 0.55 : dim)
+    }
 
     const pair = (element: Element, name: string): [number, number] => {
       const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
@@ -1090,11 +1115,13 @@ export function renderGraph(
       for (const mark of marks) mark.setAttribute('opacity', emphasis(keyOf(mark), 1, 0.22, 1))
       for (const line of edgeLines) {
         if (line.getAttribute('hidden-short') === '1') continue // too short to draw
-        if (line.getAttribute('data-link') === '1') {
-          // A path between two surrounding works, shown only while one of its
-          // ends is being pointed at. All of them at once is a thicket.
-          const ends = keyOf(line) === hovered || line.getAttribute('data-key2') === hovered
-          line.setAttribute('opacity', ends ? '0.6' : '0')
+        const linkIndex = line.getAttribute('data-link')
+        if (linkIndex !== null) {
+          // A path between two surrounding works, shown while the mark being
+          // pointed at is anywhere on its chain. All of them at once is a
+          // thicket; only the ones touching it is half the story.
+          const onChain = currentChain()?.edges.has(Number(linkIndex)) ?? false
+          line.setAttribute('opacity', onChain ? '0.6' : '0')
           continue
         }
         const touched = hovered !== null && (keyOf(line) === hovered || hovered === seedKey)
@@ -1117,10 +1144,19 @@ export function renderGraph(
       }
     }
 
-    /** Coalesced: a trackpad delivers wheel events faster than frames. */
+    /**
+     * Coalesced: a trackpad delivers wheel events faster than frames.
+     *
+     * The flag is raised before the frame is asked for, not from its handle.
+     * Taking the handle means the callback can clear a flag that has not been
+     * set yet, leaving it raised forever and every later update dropped -- a
+     * browser's requestAnimationFrame returns first so it never happened, but
+     * the guard should not rest on that.
+     */
     const schedule = (): void => {
       if (pending) return
-      pending = win.requestAnimationFrame(() => {
+      pending = 1
+      win.requestAnimationFrame(() => {
         pending = 0
         apply()
       })

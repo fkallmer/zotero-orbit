@@ -275,6 +275,59 @@ describe('the tab as the reader sees it', () => {
     assert.notEqual(clipOf(first), clipOf(second))
   })
 
+  describe('the chain through a mark', () => {
+    // seed, then a -> b -> c as a line of descent, and an unrelated d.
+    const chained = [
+      makeNode({ key: 'seed', role: 'seed', year: 2019 }),
+      makeNode({ key: 'a', year: 2004 }),
+      makeNode({ key: 'b', year: 2008 }),
+      makeNode({ key: 'c', year: 2012 }),
+      makeNode({ key: 'd', year: 2016 }),
+    ]
+    const links = [
+      { from: 'a', to: 'b' },
+      { from: 'b', to: 'c' },
+    ]
+    const draw = () => {
+      const container = document.createElement('div')
+      container.id = `chain-${++containers}`
+      document.body.append(container)
+      renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'x' } as any, chained, links)
+      return container
+    }
+    const lit = (container: any) =>
+      [...container.querySelectorAll('[data-link]')].filter((line: any) => line.getAttribute('opacity') !== '0').length
+
+    it('shows nothing until a mark is pointed at', () => {
+      assert.equal(lit(draw()), 0)
+    })
+
+    it('lights the whole line of descent, not just the hop it touches', () => {
+      // Pointing at a: a -> b is the hop, b -> c is the rest of the chain,
+      // and the chain is what the paths were drawn to show.
+      const container = draw()
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      assert.equal(lit(container), 2)
+    })
+
+    it('keeps the works on the chain out of the dimmed rest', () => {
+      const container = draw()
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      const opacity = (key: string) =>
+        Number(container.querySelector(`[data-mark][data-key="${key}"]`)?.getAttribute('opacity') ?? '1')
+      assert.equal(opacity('a'), 1)
+      assert.ok(opacity('c') > opacity('d'), 'a work two hops along reads no better than an unrelated one')
+      assert.ok(opacity('c') < 1, 'only the mark being pointed at should be at full strength')
+    })
+
+    it('puts the paths away again when the pointer leaves', () => {
+      const container = draw()
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      fire(container.querySelector('svg[role="img"]'), 'mouseleave')
+      assert.equal(lit(container), 0)
+    })
+  })
+
   describe('the legend as the filter', () => {
     const filtered = [
       makeNode({ key: 'seed', role: 'seed', year: 2019 }),
