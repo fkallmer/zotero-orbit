@@ -248,13 +248,8 @@ export async function fetchGraphLinks(
   }
 
   const byDoi = new Map(withDoi.map((node) => [(node.doi as string).toLowerCase(), node.key]))
-  const collected: WorkLinks[] = []
-  for (let at = 0; at < withDoi.length; at += REFERENCE_CHUNK) {
-    const chunk = withDoi.slice(at, at + REFERENCE_CHUNK).map((node) => node.doi as string)
-    const json = await fetchJson(buildWorksByDoiUrl(chunk))
-    if (json === null) return [] // a partial map would invent absences
-    collected.push(...normalizeWorkLinks(json))
-  }
+  const collected = await fetchWorkLinks(withDoi.map((node) => node.doi as string))
+  if (collected === null) return [] // a partial map would invent absences
 
   const keyOfOpenAlexId = new Map<string, string>()
   for (const work of collected) {
@@ -277,4 +272,118 @@ export async function fetchGraphLinks(
 
   writeCache(key, links)
   return links
+}
+
+/**
+ * How many works of a level get expanded, and how many the next level adds.
+ *
+ * Both are hard caps, and both matter. Without the first, a seed with fifty
+ * citing works costs fifty requests for one step outward; without the second,
+ * sixteen references with forty entries each put six hundred marks on a plot
+ * that is unreadable past a hundred. Fanning out from the most-cited is not
+ * arbitrary -- those are the works the level is actually about.
+ */
+export const EXPAND_FANOUT = 10
+export const LEVEL_CAP = 25
+
+interface Candidate {
+  openAlexId: string
+  /** How many works of the previous level cite it. */
+  weight: number
+}
+
+/**
+ * Rank what the previous level cites by how many of them cite it.
+ *
+ * Co-citation, and it is the whole reason a second level is worth drawing. A
+ * work that eleven of the seed's references all cite is the shared ancestor
+ * of that literature; one cited by a single reference is that reference's own
+ * business. Ranking by the candidates' own citation counts instead would need
+ * them resolved first -- hundreds of works fetched to keep twenty-five.
+ */
+export function rankByCoCitation(bibliographies: readonly (readonly string[])[]): Candidate[] {
+  const weights = new Map<string, number>()
+  for (const cited of bibliographies) {
+    // A work counts once per citing work however often it appears in its list.
+    for (const id of new Set(cited)) weights.set(id, (weights.get(id) ?? 0) + 1)
+  }
+  return [...weights.entries()]
+    .map(([openAlexId, weight]) => ({ openAlexId, weight }))
+    .sort((a, b) => b.weight - a.weight || a.openAlexId.localeCompare(b.openAlexId))
+}
+
+/**
+ * Every work's OpenAlex id and bibliography, by DOI, in batches.
+ *
+ * Null rather than a short list on any failure: the callers use absence as
+ * evidence -- "these two are not connected", "nothing else cites this" -- and
+ * a partial answer would turn a dropped request into a finding.
+ */
+export async function fetchWorkLinks(dois: readonly string[]): Promise<WorkLinks[] | null> {
+  const collected: WorkLinks[] = []
+  for (let at = 0; at < dois.length; at += REFERENCE_CHUNK) {
+    const json = await fetchJson(buildWorksByDoiUrl(dois.slice(at, at + REFERENCE_CHUNK)))
+    if (json === null) return null
+    collected.push(...normalizeWorkLinks(json))
+  }
+  return collected
+}
+
+/** What one step outward found, ready to be turned into nodes. */
+export interface Expansion {
+  references: ResolvedReference[]
+  citing: ResolvedReference[]
+}
+
+/**
+ * One step outward from a level of the graph.
+ *
+ * Backwards by co-citation over the whole level at once, forwards one request
+ * per work, and both capped -- see EXPAND_FANOUT and LEVEL_CAP for why. Works
+ * already in the graph are dropped here rather than by the caller, so the cap
+ * counts what the level actually adds.
+ */
+export async function expandLevel(
+  level: readonly { key: string; doi: string | null; citedByCount: number | null }[],
+  known: ReadonlySet<string>,
+): Promise<Expansion> {
+  const seeds = [...level]
+    .filter((work) => work.doi !== null)
+    .sort((a, b) => (b.citedByCount ?? 0) - (a.citedByCount ?? 0))
+    .slice(0, EXPAND_FANOUT)
+  if (seeds.length === 0) return { references: [], citing: [] }
+
+  const links = await fetchWorkLinks(seeds.map((work) => work.doi as string))
+  if (links === null) return { references: [], citing: [] }
+
+  // Backwards: rank the whole level's bibliographies together, then resolve
+  // only what survives the cap. Ranking after resolving would mean fetching
+  // hundreds of works to keep twenty-five.
+  const wanted = rankByCoCitation(links.map((work) => work.referencedWorks))
+    .map((candidate) => candidate.openAlexId)
+    .filter((id) => !known.has(id.toLowerCase()))
+    .slice(0, LEVEL_CAP)
+
+  const references: ResolvedReference[] = []
+  for (let at = 0; at < wanted.length; at += REFERENCE_CHUNK) {
+    const json = await fetchJson(buildWorksByIdUrl(wanted.slice(at, at + REFERENCE_CHUNK)))
+    if (json !== null) references.push(...normalizeReferences(json))
+  }
+
+  // Forwards: one request each, most-cited first, and the cap applies to the
+  // level rather than to each work, so one popular paper cannot fill it.
+  const citing: ResolvedReference[] = []
+  const seen = new Set(known)
+  for (const work of links) {
+    if (citing.length >= LEVEL_CAP) break
+    const json = await fetchJson(buildCitingWorksUrl(work.openAlexId, LEVEL_CAP))
+    if (json === null) continue
+    for (const found of normalizeReferences(json)) {
+      const key = (found.doi ?? found.title ?? '').toLowerCase()
+      if (key === '' || seen.has(key) || citing.length >= LEVEL_CAP) continue
+      seen.add(key)
+      citing.push(found)
+    }
+  }
+  return { references, citing }
 }

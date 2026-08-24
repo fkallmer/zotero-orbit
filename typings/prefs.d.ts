@@ -24,6 +24,7 @@ declare namespace _ZoteroTypes {
       "graphShowReferences": boolean;
       "graphShowCitations": boolean;
       "graphLibraryFilter": string;
+      "graphDepth": number;
       "adoptedLegacyState": boolean;
     };
   }

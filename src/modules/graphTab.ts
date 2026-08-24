@@ -29,7 +29,13 @@ import {
   renderGraphSvg,
 } from './graphModel.core.ts'
 import { getDoiIndex, normalizeDoi } from './libraryIndex'
-import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
+import {
+  expandLevel,
+  fetchCitingWorks,
+  fetchGraphLinks,
+  fetchReferences,
+  fetchScholarlyRecord,
+} from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { AxisMetric, Chain, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
@@ -187,22 +193,38 @@ export function openGraphTab(seed: GraphSeed): void {
   void (async () => {
     try {
       const item = itemsForSeed(seed)[0]
-      const nodes = item ? await collectNodes(item, false) : []
-      if (nodes.length === 0) {
+      const collected = item ? await collectNodes(item, false) : null
+      if (!collected || collected.nodes.length === 0) {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
       }
-      // One more request, after the nodes are known and before the first
-      // paint: the placeholder is already up, and a graph that appears and
-      // then sprouts lines a second later reads as a glitch.
-      let links: GraphLink[] = []
-      try {
-        links = await fetchGraphLinks(nodes)
-      } catch (err) {
-        // Paths are an addition. Losing them must not cost the graph.
-        Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
+
+      /**
+       * Fetch out to a depth and hand back everything known at that point.
+       *
+       * The tab calls this again when the reader asks for another level. Going
+       * back inwards never calls it: the works are already in hand and the
+       * depth is on each of them, so narrowing is a filter and only widening
+       * costs anything.
+       */
+      const growTo = async (depth: number): Promise<{ nodes: GraphNode[]; links: GraphLink[] }> => {
+        await collected.grow(depth)
+        // One more request, after the nodes are known and before the paint:
+        // a graph that appears and then sprouts lines reads as a glitch.
+        let links: GraphLink[] = []
+        try {
+          links = await fetchGraphLinks(collected.nodes)
+        } catch (err) {
+          // Paths are an addition. Losing them must not cost the graph.
+          Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
+        }
+        return { nodes: collected.nodes, links }
       }
-      renderGraph(win, container, seed, nodes, links)
+
+      const startingDepth = readDepthPref()
+      if (startingDepth > 1) renderPlaceholder(win.document, container, seed, getString('graph-expanding'))
+      const { nodes, links } = await growTo(startingDepth)
+      renderGraph(win, container, seed, nodes, links, growTo)
       Zotero.debug(`Orbit: graph rendered with ${nodes.length} nodes and ${links.length} paths`)
     } catch (err) {
       Zotero.debug(`Orbit: graph failed: ${String(err)}`)
@@ -322,12 +344,16 @@ function themeFor(win: Window): GraphTheme {
  * item that has been tallied, so a graph over familiar items costs little. The
  * citing direction is the one genuinely new request.
  */
-async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNode[]> {
+async function collectNodes(
+  item: Zotero.Item,
+  force: boolean,
+): Promise<{ nodes: GraphNode[]; grow: (toDepth: number) => Promise<void> }> {
   const identifiers = Helpers.getAllItemIdentifiers(item)
-  if (identifiers.length === 0) return []
+  const nothing = { nodes: [] as GraphNode[], grow: async (): Promise<void> => {} }
+  if (identifiers.length === 0) return nothing
 
   const record = await fetchScholarlyRecord(identifiers, { force })
-  if (!record) return []
+  if (!record) return nothing
 
   // Semantic Scholar first for the backward direction: measured across five
   // papers it resolves consistently more than OpenAlex, 74 against 58 on one.
@@ -363,6 +389,7 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     role: GraphNode['role'],
     author: string | null = null,
     referenceCount: number | null = null,
+    depth = 1,
   ): void => {
     const key = (doi ?? title ?? '').toLowerCase()
     // A work can be both cited and citing across a wider graph; first role wins
@@ -373,7 +400,7 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     // about the citation, so it is looked up here and encoded as ink rather
     // than as a fourth colour.
     const itemID = doi ? (inLibrary.get(normalizeDoi(doi)) ?? null) : null
-    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID })
+    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID, depth })
   }
 
   push(
@@ -384,6 +411,7 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     'seed',
     record.authors[0]?.name.split(/\s+/).pop() ?? null,
     record.referencedWorksCount,
+    0,
   )
   for (const ref of references) {
     push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author ?? null, ref.referenceCount ?? null)
@@ -391,7 +419,31 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
   for (const cite of citing) {
     push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount)
   }
-  return nodes
+
+  /**
+   * Take one more step outward, as far as `toDepth`.
+   *
+   * Returned as a closure over the same `push` the first level used, so a
+   * work found at the third level goes through the same duplicate check, the
+   * same first-role-wins rule and the same library lookup as one found at the
+   * first. Reimplementing that for the outer levels is how they would start
+   * disagreeing with the inner one.
+   */
+  const grow = async (toDepth: number): Promise<void> => {
+    for (let depth = 1; depth < toDepth; depth++) {
+      const level = nodes.filter((node) => node.depth === depth)
+      if (level.length === 0) return
+      const found = await expandLevel(level, new Set(nodes.map((node) => node.key)))
+      for (const ref of found.references) {
+        push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author, ref.referenceCount, depth + 1)
+      }
+      for (const cite of found.citing) {
+        push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount, depth + 1)
+      }
+    }
+  }
+
+  return { nodes, grow }
 }
 
 const PADDING = { top: 18, right: 24, bottom: 26, left: 44 }
@@ -619,6 +671,14 @@ function axesFor(event: WheelEvent): ZoomAxes {
   return 'both'
 }
 
+/** How far out the reader can reach. Beyond three the plot is a fog. */
+export const MAX_DEPTH = 3
+
+export function readDepthPref(): number {
+  const stored = Number(getPref('graphDepth'))
+  return Number.isFinite(stored) ? Math.min(MAX_DEPTH, Math.max(1, Math.round(stored))) : 1
+}
+
 /** How much one wheel notch zooms. Small: a trackpad sends a stream of them. */
 const ZOOM_PER_PIXEL = 0.0022
 /** Per event, so one flick of a coarse wheel cannot cross the whole range. */
@@ -797,6 +857,7 @@ export function renderGraph(
   seed: GraphSeed,
   nodes: GraphNode[],
   links: GraphLink[] = [],
+  growTo?: (depth: number) => Promise<{ nodes: GraphNode[]; links: GraphLink[] }>,
 ): void {
   const doc = win.document
   const theme = themeFor(win)
@@ -817,6 +878,20 @@ export function renderGraph(
 
   // Declared before the selects, which call it; assigned after the plot exists.
   let draw = (): void => {}
+
+  /**
+   * Widening fetches, narrowing does not.
+   *
+   * Every node carries the depth it was found at, so going back in is a filter
+   * over works already in hand and costs nothing. Only reaching further out
+   * spends requests, and it says so while it does.
+   */
+  let depth = readDepthPref()
+  // Read off the works in hand rather than assumed from the setting: whatever
+  // depth they reach is a depth already paid for, and asking the network for
+  // it again would be spending twice for the same answer.
+  let deepestFetched = nodes.reduce((deepest, node) => Math.max(deepest, node.depth), depth)
+  let held = { nodes, links }
 
   const stored = String(getPref('graphLibraryFilter') ?? '')
   const filters: GraphFilters = {
@@ -869,6 +944,52 @@ export function renderGraph(
     return label
   }
 
+  const depthSelect = el(doc, 'select') as HTMLSelectElement
+  depthSelect.style.cssText =
+    'font:inherit;font-size:11px;padding:1px 4px;border-radius:4px;' +
+    'border:1px solid currentColor;background:transparent;color:inherit;opacity:.75'
+  depthSelect.setAttribute('title', getString('graph-depth-hint'))
+  depthSelect.setAttribute('data-control', 'depth')
+  for (let level = 1; level <= MAX_DEPTH; level++) {
+    const option = el(doc, 'option', getString('graph-depth-level', { args: { level } })) as HTMLOptionElement
+    option.value = String(level)
+    if (level === depth) option.selected = true
+    depthSelect.append(option)
+  }
+  depthSelect.addEventListener('change', () => {
+    const wanted = Number(depthSelect.value)
+    depth = wanted
+    setPref('graphDepth', wanted)
+    if (wanted <= deepestFetched || !growTo) {
+      // Already in hand: a filter, and instant.
+      paintLegend()
+      draw()
+      return
+    }
+    // Reaching out. The control locks rather than queueing a second walk over
+    // the same level, and says what it is doing where the plot can be read.
+    depthSelect.disabled = true
+    strip.textContent = getString('graph-expanding')
+    void growTo(wanted)
+      .then((grown) => {
+        held = grown
+        deepestFetched = Math.max(deepestFetched, wanted)
+      })
+      .catch((err: unknown) => {
+        // The levels already fetched are still good; fall back to them rather
+        // than losing the graph over a level that could not be reached.
+        depth = deepestFetched
+        depthSelect.value = String(depth)
+        Zotero.debug(`Orbit: could not reach depth ${wanted}: ${String(err)}`)
+      })
+      .finally(() => {
+        depthSelect.disabled = false
+        fillDetailStrip(doc, strip, null, theme)
+        paintLegend()
+        draw()
+      })
+  })
+
   controls.append(
     axisLabel(getString('graph-axis-x')),
     metricSelect(doc, xMetric, (metric) => {
@@ -884,6 +1005,8 @@ export function renderGraph(
     }),
     axisLabel(''),
     toggle,
+    axisLabel(getString('graph-depth')),
+    depthSelect,
   )
 
   /**
@@ -1281,8 +1404,17 @@ export function renderGraph(
     const span = (measured: number, floor: number): number => Math.max(floor, Number.isFinite(measured) ? measured : 0)
     const width = span(plot.clientWidth, 320)
     const height = span(plot.clientHeight, 220)
-    const shown = nodes.filter((node) => keepNode(node, filters))
-    const layout = buildGraphLayout(shown, { width, height, padding: PADDING, scale, xMetric, yMetric, links })
+    const shown = held.nodes.filter((node) => node.depth <= depth && keepNode(node, filters))
+    const within = new Set(shown.map((node) => node.key))
+    const layout = buildGraphLayout(shown, {
+      width,
+      height,
+      padding: PADDING,
+      scale,
+      xMetric,
+      yMetric,
+      links: held.links.filter((link) => within.has(link.from) && within.has(link.to)),
+    })
     yCaption.textContent = getString(METRIC_DIRECTION[yMetric])
     xCaption.textContent = getString(METRIC_DIRECTION[xMetric])
     // Log or linear is a question about counts. With years on both axes there

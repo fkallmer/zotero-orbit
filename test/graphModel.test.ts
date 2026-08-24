@@ -34,6 +34,7 @@ function node(partial: Partial<GraphNode> & { key: string }): GraphNode {
     author: null,
     referenceCount: null,
     itemID: null,
+    depth: partial.role === 'seed' ? 0 : 1,
     ...partial,
   }
 }

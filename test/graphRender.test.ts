@@ -34,6 +34,7 @@ function makeNode(partial: Partial<GraphNode> & { key: string }): GraphNode {
     author: 'Author',
     referenceCount: 12,
     itemID: null,
+    depth: partial.role === 'seed' ? 0 : 1,
     ...partial,
   }
 }
@@ -145,7 +146,9 @@ describe('the tab as the reader sees it', () => {
     assert.ok(container.querySelectorAll('[data-axis="y"]').length > 0)
     // Scale toggle, four rail buttons, and one filter switch per group.
     assert.equal(container.querySelectorAll('button').length, 5 + container.querySelectorAll('[data-filter]').length)
-    assert.equal(container.querySelectorAll('select').length, 2) // one per axis
+    // One per axis, plus the depth control.
+    assert.equal(container.querySelectorAll('select').length, 3)
+    assert.ok(container.querySelector('[data-control="depth"]'), 'no depth control')
   })
 
   it('survives a work with no year, no counts and no title', () => {
@@ -325,6 +328,82 @@ describe('the tab as the reader sees it', () => {
       fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
       fire(container.querySelector('svg[role="img"]'), 'mouseleave')
       assert.equal(lit(container), 0)
+    })
+  })
+
+  describe('reaching further out', () => {
+    const twoLevels = [
+      makeNode({ key: 'seed', role: 'seed', year: 2019 }),
+      makeNode({ key: 'near', year: 2010, depth: 1 }),
+      makeNode({ key: 'far', year: 2002, depth: 2 }),
+    ]
+    const drawWith = (grow?: (depth: number) => Promise<{ nodes: any; links: any }>) => {
+      const container = document.createElement('div')
+      container.id = `depth-${++containers}`
+      document.body.append(container)
+      renderGraph(
+        window as any,
+        container as any,
+        { kind: 'items', itemIDs: [1], name: 'x' } as any,
+        twoLevels,
+        [],
+        grow,
+      )
+      return container
+    }
+    const keys = (container: any) =>
+      [...container.querySelectorAll('[data-mark]')].map((mark: any) => mark.getAttribute('data-key')).sort()
+    const pick = (container: any, level: string) => {
+      const select = container.querySelector('[data-control="depth"]') as any
+      assert.ok(select, 'no depth control')
+      // `value` is read-only, as it is in a browser: the selection lives on
+      // the options. Only the wanted one is set -- writing `selected = false`
+      // over the others clears the selection entirely here.
+      for (const option of select.querySelectorAll('option')) {
+        if (option.getAttribute('value') === level) option.selected = true
+      }
+      fire(select, 'change')
+      return select
+    }
+
+    it('shows one level at a time, not everything it happens to hold', () => {
+      // The pref starts at 1, so a second level already in hand stays out
+      // until it is asked for.
+      const container = drawWith()
+      assert.deepEqual(keys(container), ['near', 'seed'])
+    })
+
+    it('reveals a level already fetched without asking for it again', () => {
+      // Every node carries the depth it was found at, so widening back into
+      // what is already held is a filter and costs nothing.
+      let calls = 0
+      const container = drawWith(async () => {
+        calls++
+        return { nodes: twoLevels, links: [] }
+      })
+      const select = pick(container, '2')
+      assert.equal(select.value, '2', 'the control did not take the change')
+      assert.deepEqual(keys(container), ['far', 'near', 'seed'])
+      assert.equal(calls, 0, 'asked the network for works it already had')
+    })
+
+    it('narrowing never fetches', () => {
+      let calls = 0
+      const container = drawWith(async () => {
+        calls++
+        return { nodes: twoLevels, links: [] }
+      })
+      pick(container, '2')
+      pick(container, '1')
+      assert.deepEqual(keys(container), ['near', 'seed'])
+      assert.equal(calls, 0)
+    })
+
+    it('offers no more levels than can be drawn', () => {
+      const container = drawWith()
+      const select = container.querySelector('[data-control="depth"]') as any
+      assert.ok(select, 'no depth control')
+      assert.equal(select.querySelectorAll('option').length, 3)
     })
   })
 

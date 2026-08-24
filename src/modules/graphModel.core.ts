@@ -44,6 +44,16 @@ export interface GraphNode {
    * being able to go to it is worth more.
    */
   itemID: number | null
+  /**
+   * Hops from the seed. 0 is the seed, 1 what it cites and what cites it.
+   *
+   * Carried on the node rather than worked out from the edges, because it is
+   * a property of how the work was reached rather than of the picture: a
+   * second-level work often turns out to cite the seed as well, and that later
+   * discovery must not promote it to the first level and change what a depth
+   * of 1 means.
+   */
+  depth: number
 }
 
 export interface PlacedNode extends GraphNode {
