@@ -139,11 +139,25 @@ function radiusFor(referenceCount: number | null, role: GraphRole): number {
   return role === 'seed' ? Math.max(radius, 16) : radius
 }
 
-/** "Soleimani 2019 · Magnetic induction tomography" as far as it fits. */
-function labelFor(node: GraphNode, maxChars: number): string {
+/**
+ * "Soleimani 2019" at rest, the title added on top when the work is the one
+ * being pointed at.
+ *
+ * Author and year is what identifies a paper to someone who knows the field,
+ * and it is four times narrower than a truncated title -- so far more marks
+ * carry a name at all, which is what the label is for. The title is the answer
+ * to a question about one particular mark, and it arrives when that question
+ * is asked.
+ */
+function labelFor(node: GraphNode, withTitle: boolean): string {
   const head = [node.author, node.year === null ? null : String(node.year)].filter(Boolean).join(' ')
-  const title = node.title.length > maxChars ? `${node.title.slice(0, maxChars - 1).trimEnd()}…` : node.title
+  if (!withTitle) return head || truncate(node.title, LABEL_CHARS)
+  const title = truncate(node.title, TITLE_CHARS)
   return head ? `${head} · ${title}` : title
+}
+
+function truncate(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1).trimEnd()}…` : text
 }
 
 function niceYearTicks(min: number, max: number): number[] {
@@ -182,7 +196,10 @@ function citationTickValues(maxCount: number, kind: ScaleKind): number[] {
  */
 export const AXIS_GUTTER = { left: 26, bottom: 16 }
 
-const LABEL_CHARS = 34
+/** A fallback width, for the rare work with neither author nor year. */
+const LABEL_CHARS = 24
+/** The title, once a mark is pointed at and has the field to itself. */
+const TITLE_CHARS = 46
 /** Rough width of a character at the label's font size. */
 const CHAR_WIDTH = 5.4
 const LABEL_HEIGHT = 12
@@ -262,13 +279,20 @@ export interface LabelPlacement {
  * property of the current zoom, not of the data -- and re-running this on every
  * transform is what makes zooming reveal names instead of magnifying them.
  */
-export function placeLabels(nodes: readonly PlacedNode[], view: Viewport): LabelPlacement[] {
+export function placeLabels(
+  nodes: readonly PlacedNode[],
+  view: Viewport,
+  emphasis: string | null = null,
+): LabelPlacement[] {
   const at = (node: PlacedNode): { x: number; y: number } => ({
     x: node.x * view.kx + view.tx,
     y: node.y * view.ky + view.ty,
   })
 
   const byImportance = [...nodes].sort((a, b) => {
+    // The mark being pointed at goes down first: its label is the longest and
+    // the one certainly wanted, so it must not lose a spot to a neighbour.
+    if ((a.key === emphasis) !== (b.key === emphasis)) return a.key === emphasis ? -1 : 1
     if (a.role !== b.role) return a.role === 'seed' ? -1 : b.role === 'seed' ? 1 : 0
     return (b.citedByCount ?? 0) - (a.citedByCount ?? 0)
   })
@@ -287,68 +311,90 @@ export function placeLabels(nodes: readonly PlacedNode[], view: Viewport): Label
 
   const placed: LabelPlacement[] = []
   for (const node of byImportance) {
-    const text = labelFor(node, LABEL_CHARS)
-    if (!text) continue
-    const point = at(node)
-    // A mark off-screen needs no name, and testing it would waste the spot.
-    if (point.x < -node.radius || point.x > view.width + node.radius) continue
-    if (point.y < -node.radius || point.y > view.height + node.radius) continue
-
-    const textWidth = text.length * CHAR_WIDTH
-
+    const pointed = node.key === emphasis
     /**
-     * Below, above, right, left -- in that order.
+     * What to try, in order.
      *
-     * Below reads best because the label hangs off the mark the way a caption
-     * does, but in a crowded field insisting on it is what drops two thirds of
-     * the labels. Trying the other three sides first costs nothing and keeps
-     * names on marks that would otherwise be anonymous.
+     * The pointed-at mark gets three goes: its title in a clear spot, its
+     * title over its neighbours, then its plain name. Letting it cover them is
+     * deliberate -- they are dimmed while the pointer is there, the state
+     * lasts as long as the pointer does, and a title that never appears
+     * because the field is crowded answers the question nobody could ask
+     * another way. Every other mark takes a clear spot or goes without.
      */
-    const place = (x: number, y: number, anchor: 'start' | 'middle' | 'end', top: number): LabelSpot => {
-      const left = anchor === 'start' ? x : anchor === 'end' ? x - textWidth : x - textWidth / 2
-      return { x, y, anchor, box: { x1: left, y1: top, x2: left + textWidth, y2: top + LABEL_HEIGHT } }
-    }
-    const spotsAt = (gap: number): LabelSpot[] => {
-      const diagonal = gap * 0.75
-      return [
-        place(point.x, point.y + gap + LABEL_HEIGHT - 3, 'middle', point.y + gap),
-        place(point.x, point.y - gap - 3, 'middle', point.y - gap - LABEL_HEIGHT),
-        place(point.x + gap, point.y + 3.5, 'start', point.y - LABEL_HEIGHT / 2),
-        place(point.x - gap, point.y + 3.5, 'end', point.y - LABEL_HEIGHT / 2),
-        // The diagonals are what keep a mark in a dense cluster from going
-        // nameless when all four sides happen to be occupied.
-        place(point.x + diagonal, point.y + diagonal + LABEL_HEIGHT, 'start', point.y + diagonal),
-        place(point.x - diagonal, point.y + diagonal + LABEL_HEIGHT, 'end', point.y + diagonal),
-        place(point.x + diagonal, point.y - diagonal - 3, 'start', point.y - diagonal - LABEL_HEIGHT),
-        place(point.x - diagonal, point.y - diagonal - 3, 'end', point.y - diagonal - LABEL_HEIGHT),
-      ]
-    }
+    const attempts: { text: string; overNeighbours: boolean }[] = pointed
+      ? [
+          { text: labelFor(node, true), overNeighbours: false },
+          { text: labelFor(node, true), overNeighbours: true },
+          { text: labelFor(node, false), overNeighbours: true },
+        ]
+      : [{ text: labelFor(node, false), overNeighbours: false }]
 
-    /**
-     * The seed keeps searching outward; everything else takes a nearby spot or
-     * none.
-     *
-     * A crowded seed is the normal case -- its own citing works pile up beside
-     * it -- and dropping its label is the one failure the plot cannot absorb,
-     * because that mark is what the reader opened the tab to find.
-     */
-    const radii = node.role === 'seed' ? [1, 1.8, 2.8, 4.2] : [1]
-    const fits = radii
-      .flatMap((factor) => spotsAt((node.radius + 4) * factor))
-      .find(
-        (candidate) =>
-          // Inside the plot, not the gutters: a label there would be clipped
-          // in half the moment anything moved.
-          candidate.box.x1 >= AXIS_GUTTER.left + 2 &&
-          candidate.box.x2 <= view.width - 2 &&
-          candidate.box.y1 >= 0 &&
-          candidate.box.y2 <= view.height - AXIS_GUTTER.bottom - 2 &&
-          !taken.some((other) => overlaps(candidate.box, other)),
-      )
-    if (!fits) continue
+    for (const { text, overNeighbours } of attempts) {
+      if (!text) continue
+      const point = at(node)
+      // A mark off-screen needs no name, and testing it would waste the spot.
+      if (point.x < -node.radius || point.x > view.width + node.radius) continue
+      if (point.y < -node.radius || point.y > view.height + node.radius) continue
 
-    taken.push(fits.box)
-    placed.push({ key: node.key, text, x: fits.x, y: fits.y, anchor: fits.anchor })
+      const textWidth = text.length * CHAR_WIDTH
+
+      /**
+       * Below, above, right, left -- in that order.
+       *
+       * Below reads best because the label hangs off the mark the way a caption
+       * does, but in a crowded field insisting on it is what drops two thirds of
+       * the labels. Trying the other three sides first costs nothing and keeps
+       * names on marks that would otherwise be anonymous.
+       */
+      const place = (x: number, y: number, anchor: 'start' | 'middle' | 'end', top: number): LabelSpot => {
+        const left = anchor === 'start' ? x : anchor === 'end' ? x - textWidth : x - textWidth / 2
+        return { x, y, anchor, box: { x1: left, y1: top, x2: left + textWidth, y2: top + LABEL_HEIGHT } }
+      }
+      const spotsAt = (gap: number): LabelSpot[] => {
+        const diagonal = gap * 0.75
+        return [
+          place(point.x, point.y + gap + LABEL_HEIGHT - 3, 'middle', point.y + gap),
+          place(point.x, point.y - gap - 3, 'middle', point.y - gap - LABEL_HEIGHT),
+          place(point.x + gap, point.y + 3.5, 'start', point.y - LABEL_HEIGHT / 2),
+          place(point.x - gap, point.y + 3.5, 'end', point.y - LABEL_HEIGHT / 2),
+          // The diagonals are what keep a mark in a dense cluster from going
+          // nameless when all four sides happen to be occupied.
+          place(point.x + diagonal, point.y + diagonal + LABEL_HEIGHT, 'start', point.y + diagonal),
+          place(point.x - diagonal, point.y + diagonal + LABEL_HEIGHT, 'end', point.y + diagonal),
+          place(point.x + diagonal, point.y - diagonal - 3, 'start', point.y - diagonal - LABEL_HEIGHT),
+          place(point.x - diagonal, point.y - diagonal - 3, 'end', point.y - diagonal - LABEL_HEIGHT),
+        ]
+      }
+
+      /**
+       * The seed and the pointed-at mark keep searching outward; everything
+       * else takes a nearby spot or none.
+       *
+       * A crowded seed is the normal case -- its own citing works pile up
+       * beside it -- and dropping its label is the one failure the plot cannot
+       * absorb, because that mark is what the reader opened the tab to find.
+       * The same goes for whatever the pointer is on.
+       */
+      const radii = node.role === 'seed' || pointed ? [1, 1.8, 2.8, 4.2] : [1]
+      const fits = radii
+        .flatMap((factor) => spotsAt((node.radius + 4) * factor))
+        .find(
+          (candidate) =>
+            // Inside the plot, not the gutters: a label there would be clipped
+            // in half the moment anything moved.
+            candidate.box.x1 >= AXIS_GUTTER.left + 2 &&
+            candidate.box.x2 <= view.width - 2 &&
+            candidate.box.y1 >= 0 &&
+            candidate.box.y2 <= view.height - AXIS_GUTTER.bottom - 2 &&
+            (overNeighbours || !taken.some((other) => overlaps(candidate.box, other))),
+        )
+      if (!fits) continue
+
+      taken.push(fits.box)
+      placed.push({ key: node.key, text, x: fits.x, y: fits.y, anchor: fits.anchor })
+      break
+    }
   }
   return placed
 }
@@ -589,7 +635,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
           // moves the ends without changing how far the head sits off a mark:
           // the marks keep their size, so the gaps are screen distances now.
           return (
-            `<line data-edge="1" x1="${ends.x1.toFixed(1)}" y1="${ends.y1.toFixed(1)}" ` +
+            `<line data-edge="1" data-key="${escapeXml(node.key)}" x1="${ends.x1.toFixed(1)}" ` +
+            `y1="${ends.y1.toFixed(1)}" ` +
             `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
             `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
             `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
@@ -675,7 +722,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
       // zoom moves the mark without resizing it. Litmaps' behaviour, and the
       // right one: a crowded middle needs the marks pulled apart, not enlarged.
       return (
-        `<g data-mark="1" data-at="${node.x.toFixed(1)},${node.y.toFixed(1)}" ` +
+        `<g data-mark="1" data-key="${escapeXml(node.key)}" data-at="${node.x.toFixed(1)},${node.y.toFixed(1)}" ` +
         `transform="translate(${node.x.toFixed(1)},${node.y.toFixed(1)})">` +
         halo +
         collar +

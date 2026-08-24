@@ -186,6 +186,60 @@ describe('the tab as the reader sees it', () => {
     assert.ok(!movedY, 'the vertical moved, and should not have')
   })
 
+  describe('pointing at a mark', () => {
+    const hover = (container: any, key: string) => {
+      const mark = container.querySelector(`[data-mark][data-key="${key}"]`)
+      assert.ok(mark, `no mark for ${key}`)
+      fire(mark, 'mouseover')
+      return mark
+    }
+    const opacityOf = (container: any, key: string): number =>
+      Number(container.querySelector(`[data-mark][data-key="${key}"]`)?.getAttribute('opacity') ?? '1')
+
+    it('pushes the other marks back rather than lighting one up', () => {
+      // Brighten-the-one does not read on a plot already full of saturated
+      // marks. Nothing is hidden: the dimmed ones keep their tooltip and stay
+      // clickable.
+      const { container } = render(nodes)
+      hover(container, 'ref')
+      assert.equal(opacityOf(container, 'ref'), 1)
+      assert.ok(opacityOf(container, 'cite') < 0.5, 'the others were not dimmed')
+      assert.ok(opacityOf(container, 'seed') < 0.5)
+    })
+
+    it('adds the title to that mark and to nothing else', () => {
+      const { container } = render(nodes)
+      const labels = () =>
+        [...container.querySelectorAll('[data-label]')]
+          .filter((slot: any) => slot.getAttribute('opacity') !== '0')
+          .map((slot: any) => slot.textContent)
+      const atRest = labels()
+      assert.ok(!atRest.some((text: string) => text.includes('·')), `a title at rest: ${atRest.join(' | ')}`)
+      hover(container, 'ref')
+      assert.equal(labels().filter((text: string) => text.includes('·')).length, 1)
+    })
+
+    it('names it in the strip above the plot, and gives the strip back on leaving', () => {
+      const { container } = render(nodes)
+      const strip = container.querySelector('[data-role="strip"]')
+      const hint = strip.textContent
+      hover(container, 'ref')
+      assert.notEqual(strip.textContent, hint)
+      assert.ok((strip.textContent ?? '').includes('ref'), 'the strip does not name the work')
+      fire(container.querySelector('svg[role="img"]'), 'mouseleave')
+      assert.equal(strip.textContent, hint)
+    })
+
+    it('keeps the plot from jumping: the strip replaces the hint, it does not join it', () => {
+      // A row that appeared on hover would shift every mark out from under the
+      // pointer that summoned it.
+      const { container } = render(nodes)
+      const before = container.querySelectorAll('div').length
+      hover(container, 'ref')
+      assert.equal(container.querySelectorAll('div').length, before)
+    })
+  })
+
   it('says so rather than drawing nothing when no work can be placed', () => {
     const unplaceable = [makeNode({ key: 'a', year: null }), makeNode({ key: 'b', year: null })]
     const { container } = render(unplaceable)

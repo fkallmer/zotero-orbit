@@ -645,6 +645,42 @@ function buildMarkCard(
   return { card, width: 280 }
 }
 
+/**
+ * The strip above the plot, which says what is under the pointer.
+ *
+ * It takes the place of the hint line rather than sitting beside it, so the
+ * plot below never moves: a row that appears on hover would shift every mark
+ * out from under the pointer that summoned it.
+ */
+function fillDetailStrip(doc: Document, strip: HTMLElement, node: GraphNode | null, theme: GraphTheme): void {
+  if (!node) {
+    strip.replaceChildren(doc.createTextNode(getString('graph-axes-note')))
+    strip.style.opacity = '.7'
+    return
+  }
+  strip.style.opacity = '1'
+
+  const dot = el(doc, 'span')
+  const roleColor = node.role === 'seed' ? theme.seed : node.role === 'reference' ? theme.reference : theme.citing
+  dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${roleColor};flex:none`
+
+  const title = el(doc, 'span', node.title || getString('graph-card-title'))
+  title.style.cssText = 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0'
+
+  const facts = [
+    getString(ROLE_LABEL[node.role]),
+    node.author,
+    node.year === null ? null : String(node.year),
+    node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
+    node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
+    node.itemID === null ? null : getString('graph-in-library'),
+  ].filter(Boolean)
+  const detail = el(doc, 'span', facts.join(' · '))
+  detail.style.cssText = 'opacity:.7;white-space:nowrap;flex:none'
+
+  strip.replaceChildren(dot, title, detail)
+}
+
 export function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
   const doc = win.document
   const theme = themeFor(win)
@@ -655,9 +691,13 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
 
   const title = el(doc, 'div', seed.name)
   title.style.cssText = 'font-weight:600;font-size:14px;padding-bottom:2px'
-  const axes = el(doc, 'div', getString('graph-axes-note'))
-  axes.style.cssText = 'font-size:12px;opacity:.7;padding-bottom:6px'
-  root.append(title, axes)
+  // One row, fixed height, doubling as the hint line when nothing is hovered.
+  const strip = el(doc, 'div', getString('graph-axes-note'))
+  strip.setAttribute('data-role', 'strip')
+  strip.style.cssText =
+    'font-size:12px;opacity:.7;padding-bottom:6px;display:flex;align-items:center;gap:7px;' +
+    'white-space:nowrap;overflow:hidden;min-height:17px'
+  root.append(title, strip)
 
   root.append(renderLegend(doc, theme, nodes))
 
@@ -755,6 +795,10 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
   // Panning must not fire the click handler, so the two share this flag.
   let dragged = false
 
+  /** The mark under the pointer, if any. Drives emphasis and the strip. */
+  let hovered: string | null = null
+  let byKey = new Map<string, GraphNode>()
+
   /** At most one card at a time, dismissed by Escape or a click off it. */
   let card: HTMLElement | null = null
   let escapeHandler: ((event: KeyboardEvent) => void) | null = null
@@ -814,6 +858,10 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     const marks = all('[data-mark]')
     const edgeLines = all('[data-edge]')
     const labelSlots = all('[data-label]')
+    const keyOf = (element: Element): string => element.getAttribute('data-key') ?? ''
+    // Every edge has the seed at one end, so pointing at the seed lights all
+    // of them: an edge is named after its other end, not after both.
+    const seedKey = layout.nodes.find((node) => node.role === 'seed')?.key ?? null
     const yTicks = all('[data-axis="y"]')
     const xTicks = all('[data-axis="x"]')
 
@@ -823,6 +871,10 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     let ty = 0
     /** One update per frame, however many wheel events arrive between them. */
     let pending = 0
+
+    /** Resting value, dimmed value, and the value for the mark being pointed at. */
+    const emphasis = (key: string, rest: number, dim: number, lit: number): string =>
+      hovered === null ? String(rest) : String(key === hovered ? lit : dim)
 
     const pair = (element: Element, name: string): [number, number] => {
       const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
@@ -853,7 +905,8 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
       // zoom spreads them apart, so a name that could not fit at the fitted
       // view often can once there is room. Zooming reveals labels rather than
       // magnifying the ones already there, which is the point of zooming.
-      const placements = placeLabels(layout.nodes, view)
+      // The hovered mark goes down first and carries its title.
+      const placements = placeLabels(layout.nodes, view, hovered)
       labelSlots.forEach((slot, index) => {
         const placement = placements[index]
         if (!placement) {
@@ -864,8 +917,23 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
         slot.setAttribute('x', placement.x.toFixed(1))
         slot.setAttribute('y', placement.y.toFixed(1))
         slot.setAttribute('text-anchor', placement.anchor)
-        slot.setAttribute('opacity', '0.9')
+        slot.setAttribute('opacity', emphasis(placement.key, 0.9, 0.2, 1))
       })
+
+      /**
+       * Pointing at a mark pushes the rest back rather than lighting it up.
+       *
+       * Recede-the-others reads at a glance where brighten-the-one does not:
+       * the plot is already full of saturated marks, and one more of them is
+       * not a signal. Nothing is hidden -- dimmed marks stay visible, keep
+       * their tooltip and remain clickable.
+       */
+      for (const mark of marks) mark.setAttribute('opacity', emphasis(keyOf(mark), 1, 0.22, 1))
+      for (const line of edgeLines) {
+        if (line.getAttribute('opacity') === '0') continue // an edge too short to draw
+        const touched = hovered !== null && (keyOf(line) === hovered || hovered === seedKey)
+        line.setAttribute('opacity', hovered === null ? '0.4' : touched ? '0.75' : '0.07')
+      }
 
       // A tick whose value has moved out of the plot is hidden rather than
       // stacked against the edge, where it would name a place nobody can see.
@@ -941,6 +1009,21 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
       { passive: false },
     )
 
+    svg.addEventListener('mouseover', (event: MouseEvent) => {
+      const mark = (event.target as Element | null)?.closest?.('[data-mark]')
+      const key = mark ? keyOf(mark) : null
+      if (key === hovered) return
+      hovered = key
+      fillDetailStrip(doc, strip, key === null ? null : (byKey.get(key) ?? null), theme)
+      schedule()
+    })
+    svg.addEventListener('mouseleave', () => {
+      if (hovered === null) return
+      hovered = null
+      fillDetailStrip(doc, strip, null, theme)
+      schedule()
+    })
+
     let from: { x: number; y: number } | null = null
     svg.addEventListener('mousedown', (event: MouseEvent) => {
       from = { x: event.clientX, y: event.clientY }
@@ -984,8 +1067,11 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
 
   draw = (): void => {
     // The plot is about to be replaced; a card anchored to the old one would
-    // be orphaned over the new.
+    // be orphaned over the new, and a hover state would name a mark that is
+    // no longer there.
     closeCard()
+    hovered = null
+    fillDetailStrip(doc, strip, null, theme)
     // Number.isFinite, not just Math.max: an unmeasured element yields
     // undefined, Math.max(320, undefined) is NaN, and a layout built on NaN
     // renders every mark at nowhere -- an empty plot with nothing to see and
@@ -1021,7 +1107,7 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     if (!svg || svg.nodeName === 'parsererror') return
     const imported = doc.importNode(svg, true)
 
-    const byKey = new Map(layout.nodes.map((node) => [node.key, node]))
+    byKey = new Map(layout.nodes.map((node) => [node.key, node]))
     imported.addEventListener('click', (event) => {
       // A drag that ends over a mark is panning, not a click on it.
       if (dragged) return

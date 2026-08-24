@@ -226,7 +226,7 @@ describe('zoom spreads the marks without inflating them', () => {
     const svg = renderGraphSvg(layout, theme)
     // A circle with cx/cy inside a scaled layer grows with the zoom. One at the
     // origin under a translated group does not, which is the whole change.
-    assert.ok(svg.includes('<g data-mark="1" data-at='))
+    assert.ok(svg.includes('<g data-mark="1" data-key='))
     assert.ok(!/<circle [^>]*cx=/.test(svg))
   })
 
@@ -521,17 +521,67 @@ describe('mark size', () => {
 describe('labels', () => {
   const options = { width: 600, height: 300, padding: { top: 10, right: 10, bottom: 20, left: 30 } }
 
-  it('reads as author, year and title', () => {
+  it('reads as author and year, and stops there', () => {
+    // Author and year identifies a paper to someone who knows the field, and
+    // is a quarter the width of a truncated title -- so far more marks carry
+    // a name at all, which is the whole job of a label.
     const layout = buildGraphLayout(
       [node({ key: 's', role: 'seed', author: 'Soleimani', year: 2019, title: 'Magnetic induction' })],
       options,
     )!
-    assert.equal(layout.nodes[0].label, 'Soleimani 2019 · Magnetic induction')
+    assert.equal(layout.nodes[0].label, 'Soleimani 2019')
   })
 
-  it('still labels a work whose author is unknown', () => {
+  it('adds the title for the one mark being pointed at', () => {
+    const layout = buildGraphLayout(
+      [node({ key: 's', role: 'seed', author: 'Soleimani', year: 2019, title: 'Magnetic induction' })],
+      options,
+    )!
+    const [pointed] = placeLabels(layout.nodes, FITTED(options.width, options.height), 's')
+    assert.equal(pointed.text, 'Soleimani 2019 · Magnetic induction')
+  })
+
+  it('drops back to the plain name when the title will not fit anywhere', () => {
+    // Better the name of the mark being pointed at than nothing at all.
+    const wall = Array.from({ length: 14 }, (_, index) =>
+      node({ key: `w${index}`, author: 'Wall', year: 2000 + (index % 2), citedByCount: 50 + index }),
+    )
+    const target = node({ key: 't', author: 'Target', year: 2000, citedByCount: 60, title: 'x'.repeat(200) })
+    const layout = buildGraphLayout([...wall, target], { ...options, width: 260, height: 160 })!
+    const pointed = placeLabels(layout.nodes, FITTED(260, 160), 't').find((placement) => placement.key === 't')
+    if (pointed) assert.ok(!pointed.text.includes('xxx'), `kept the title: ${pointed.text}`)
+  })
+
+  it('gives the pointed-at mark first refusal on a spot', () => {
+    // Ten works stacked on the same point: only one label can fit, and at rest
+    // the most-cited takes it. Pointing at another must hand it over, because
+    // that label is the longest and the one certainly wanted.
+    const stack = Array.from({ length: 10 }, (_, index) =>
+      node({ key: `n${index}`, author: `Author${index}`, year: 2000, citedByCount: 100 }),
+    )
+    const layout = buildGraphLayout(stack, options)!
+    const view = FITTED(options.width, options.height)
+    const atRest = placeLabels(layout.nodes, view).map((placement) => placement.key)
+    assert.ok(!atRest.includes('n7'), 'the fixture is not crowded enough to prove anything')
+    assert.equal(placeLabels(layout.nodes, view, 'n7')[0]?.key, 'n7')
+  })
+
+  it('keeps the year as an identity when the author is unknown', () => {
     const layout = buildGraphLayout([node({ key: 's', author: null, year: 2019, title: 'Untitled work' })], options)!
-    assert.equal(layout.nodes[0].label, '2019 · Untitled work')
+    assert.equal(layout.nodes[0].label, '2019')
+  })
+
+  it('falls back to the title when there is neither author nor year', () => {
+    // A nameless dot is worse than a truncated one.
+    const layout = buildGraphLayout(
+      [node({ key: 's', author: null, year: null, title: 'A work with no byline', referenceCount: 20 })],
+      {
+        ...options,
+        xMetric: 'citations',
+        yMetric: 'references',
+      },
+    )!
+    assert.equal(layout.nodes[0].label, 'A work with no byline')
   })
 
   it('never lets a label sit on top of a mark', () => {
@@ -566,7 +616,7 @@ describe('labels', () => {
       [node({ key: 'seed', role: 'seed', author: 'Li', title: 'Seed' }), ...crowd],
       options,
     )!
-    assert.equal(layout.nodes.find((placed) => placed.role === 'seed')?.label, 'Li 2020 · Seed')
+    assert.equal(layout.nodes.find((placed) => placed.role === 'seed')?.label, 'Li 2020')
   })
 })
 
