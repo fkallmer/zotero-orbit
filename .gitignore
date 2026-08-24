@@ -53,3 +53,7 @@ logs
 ### macOS ###
 #########
 .DS_Store
+
+# Yarn's local link cache. It records absolute paths, so it changes on every
+# install and whenever the checkout moves -- machine state, not source.
+.yarn/install-state.gz
