@@ -19,6 +19,7 @@ import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { Helpers } from './citationTally'
 import { AXIS_GUTTER, AXIS_METRICS, buildGraphLayout, renderGraphSvg } from './graphModel.core.ts'
+import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchCitingWorks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
@@ -328,6 +329,10 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
 
   const citing = await fetchCitingWorks(record, { force })
 
+  // One pass over the library rather than a search per work; the index is
+  // memoised and dropped when items change. See libraryIndex.
+  const inLibrary = await getDoiIndex(item.libraryID)
+
   const seen = new Set<string>()
   const nodes: GraphNode[] = []
   const push = (
@@ -344,11 +349,11 @@ async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNod
     // so the seed and its references keep their identity.
     if (key === '' || seen.has(key)) return
     seen.add(key)
-    // No library matching here. The graph is about what the sources know of a
-    // work's surroundings, not about which of it happens to be filed already --
-    // that question belongs to the item pane's reference list, where it is
-    // still asked and answered.
-    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount })
+    // Which of these the reader already has is a fact about them rather than
+    // about the citation, so it is looked up here and encoded as ink rather
+    // than as a fourth colour.
+    const itemID = doi ? (inLibrary.get(normalizeDoi(doi)) ?? null) : null
+    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID })
   }
 
   push(
@@ -421,9 +426,17 @@ function railButton(doc: Document, paths: string[], tooltip: string, onClick: ()
   return button
 }
 
-function renderLegend(doc: Document, theme: GraphTheme, counts: Record<GraphNode['role'], number>): HTMLElement {
+function renderLegend(doc: Document, theme: GraphTheme, nodes: readonly GraphNode[]): HTMLElement {
   const legend = el(doc, 'div')
   legend.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;padding:2px 0 8px'
+
+  const row = (swatch: HTMLElement, label: string, count: number): HTMLElement => {
+    const line = el(doc, 'div')
+    line.style.cssText = 'display:flex;align-items:center;gap:6px'
+    line.append(swatch, el(doc, 'span', `${label} (${count})`))
+    return line
+  }
+
   // Three series, so a legend is present rather than optional -- and the roles
   // are named, so identity never rests on colour alone.
   const entries: [GraphNode['role'], string, string][] = [
@@ -432,12 +445,21 @@ function renderLegend(doc: Document, theme: GraphTheme, counts: Record<GraphNode
     ['citing', theme.citing, getString('graph-role-citing')],
   ]
   for (const [role, color, label] of entries) {
-    const row = el(doc, 'div')
-    row.style.cssText = 'display:flex;align-items:center;gap:6px'
     const dot = el(doc, 'span')
     dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${color};flex:none`
-    row.append(dot, el(doc, 'span', `${label} (${counts[role]})`))
-    legend.append(row)
+    legend.append(row(dot, label, nodes.filter((node) => node.role === role).length))
+  }
+
+  // The fourth entry is a ring rather than a dot, because that is what the
+  // mark is: the same swatch drawn hollow would claim membership is a fourth
+  // role, and it sits across all three.
+  const filed = nodes.filter((node) => node.itemID !== null).length
+  if (filed > 0) {
+    const ring = el(doc, 'span')
+    ring.style.cssText =
+      `width:11px;height:11px;border-radius:50%;border:1.6px solid ${theme.muted};` +
+      'opacity:.85;background:transparent;flex:none'
+    legend.append(row(ring, getString('graph-in-library'), filed))
   }
   return legend
 }
@@ -501,9 +523,7 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
   axes.style.cssText = 'font-size:12px;opacity:.7;padding-bottom:6px'
   root.append(title, axes)
 
-  const counts = { seed: 0, reference: 0, citing: 0 }
-  for (const node of nodes) counts[node.role]++
-  root.append(renderLegend(doc, theme, counts))
+  root.append(renderLegend(doc, theme, nodes))
 
   // Remembered, because which axis is right depends on the library rather than
   // on the moment: a field where everything sits between 40 and 90 citations
@@ -742,8 +762,12 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
 
     // Parsed and imported, never innerHTML: Zotero's sanitizer strips xmlns and
     // the result silently stops being SVG.
-    const axisNames = { x: getString(METRIC_LABEL[xMetric]), y: getString(METRIC_LABEL[yMetric]) }
-    const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme, axisNames), 'image/svg+xml')
+    const text = {
+      x: getString(METRIC_LABEL[xMetric]),
+      y: getString(METRIC_LABEL[yMetric]),
+      inLibrary: getString('graph-in-library'),
+    }
+    const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme, text), 'image/svg+xml')
     const svg = parsed.documentElement
     if (!svg || svg.nodeName === 'parsererror') return
     const imported = doc.importNode(svg, true)
@@ -753,6 +777,13 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
       if (dragged) return
       const target = (event.target as Element | null)?.closest?.('circle')
       if (!target) return
+      // Already filed: go to it. Opening the publisher's page for a paper the
+      // reader has sitting in their own library is the wrong of the two.
+      const itemID = Number(target.getAttribute('data-item'))
+      if (itemID) {
+        void Zotero.getActiveZoteroPane()?.selectItem(itemID)
+        return
+      }
       const doi = target.getAttribute('data-doi')
       if (doi) Zotero.launchURL(`https://doi.org/${doi}`)
     })

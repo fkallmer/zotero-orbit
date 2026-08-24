@@ -25,6 +25,7 @@ export type FluentMessageId =
   | 'graph-direction-year'
   | 'graph-dropped-no-value'
   | 'graph-empty'
+  | 'graph-in-library'
   | 'graph-loading'
   | 'graph-metric-citations'
   | 'graph-metric-references'

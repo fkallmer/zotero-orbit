@@ -23,6 +23,7 @@ function node(partial: Partial<GraphNode> & { key: string }): GraphNode {
     doi: null,
     author: null,
     referenceCount: null,
+    itemID: null,
     ...partial,
   }
 }
@@ -161,6 +162,41 @@ describe('renderGraphSvg', () => {
   it('omits the reference count rather than printing undefined for it', () => {
     const svg = renderGraphSvg(layout, theme)
     assert.ok(!svg.includes('undefined'))
+  })
+})
+
+describe('work the reader already has', () => {
+  const mixed = [
+    node({ key: 'filed', title: 'Filed', itemID: 42, citedByCount: 20 }),
+    node({ key: 'not', title: 'Not filed', citedByCount: 5, year: 2015 }),
+  ]
+
+  it('rings a filed work in plain ink, not in a fourth colour', () => {
+    // Three hues already mean role, and "I have this" is a fact about the
+    // reader rather than about the citation -- it has to read in greyscale.
+    const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme)
+    assert.equal(svg.match(new RegExp(`stroke="${theme.muted}" stroke-width="1.6"`, 'g'))?.length, 1)
+  })
+
+  it('keeps the surface ring underneath, so overlapping marks stay countable', () => {
+    const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme)
+    assert.equal(svg.match(/stroke="#ffffff" stroke-width="2"/g)?.length, 2)
+  })
+
+  it('carries the item id, so the mark can lead back to the item', () => {
+    const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme)
+    assert.ok(svg.includes('data-item="42"'))
+    assert.ok(svg.includes('data-item=""'))
+  })
+
+  it('says so on hover, and only for the filed one', () => {
+    const svg = renderGraphSvg(buildGraphLayout(mixed, options)!, theme, {
+      x: 'Year',
+      y: 'Citations',
+      inLibrary: 'in your library',
+    })
+    assert.ok(svg.includes('<title>Filed · 2020 · 20 citations · in your library</title>'))
+    assert.ok(svg.includes('<title>Not filed · 2015 · 5 citations</title>'))
   })
 })
 

@@ -37,6 +37,13 @@ export interface GraphNode {
    * review with 200 references beside a letter with 8 -- went unsaid.
    */
   referenceCount: number | null
+  /**
+   * The library item this work already is, when its DOI matched one.
+   *
+   * An id rather than a flag: knowing a work is filed is worth something, and
+   * being able to go to it is worth more.
+   */
+  itemID: number | null
 }
 
 export interface PlacedNode extends GraphNode {
@@ -391,9 +398,11 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
  * screen reader being told "citations against year" is worth more than the
  * metric keys it would otherwise fall back to.
  */
-export interface AxisNames {
+export interface GraphText {
   x: string
   y: string
+  /** Appended to the tooltip of a work that is already filed. */
+  inLibrary: string
 }
 
 export interface GraphTheme {
@@ -420,7 +429,7 @@ function colorFor(role: GraphRole, theme: GraphTheme): string {
  * countable, and the seed a wider halo -- shape rather than hue, so the focal
  * point survives greyscale and colour blindness.
  */
-export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames?: AxisNames): string {
+export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: GraphText): string {
   /**
    * Each tick is its own group, tagged with where it started.
    *
@@ -520,6 +529,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames
         // == null, not === null: a caller that simply omits the field would
         // otherwise get "cites undefined" printed at it.
         node.referenceCount == null ? null : `cites ${node.referenceCount} works`,
+        node.itemID === null ? null : (text?.inLibrary ?? 'in your library'),
       ]
         .filter(Boolean)
         .join(' · ')
@@ -530,11 +540,29 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames
             `fill="none" stroke="${fill}" stroke-width="1" opacity="0.35"/>`
           : ''
 
+      /**
+       * A collar in plain ink around work that is already filed.
+       *
+       * Outside the surface ring rather than instead of it: that ring is what
+       * keeps overlapping marks countable, and spending it here would trade one
+       * piece of information for another. Ink rather than a fourth hue, because
+       * the three hues already mean role, and because "I have this" is a fact
+       * about the reader rather than about the citation -- it should read in
+       * greyscale, and it does.
+       */
+      const collar =
+        node.itemID === null
+          ? ''
+          : `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${(node.radius + 2.6).toFixed(1)}" ` +
+            `fill="none" stroke="${theme.muted}" stroke-width="1.6" opacity="0.85"/>`
+
       return (
         halo +
+        collar +
         `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.radius.toFixed(1)}" ` +
         `fill="${fill}" stroke="${theme.surface}" stroke-width="2" ` +
         `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
+        `data-item="${node.itemID ?? ''}" ` +
         `style="cursor:pointer"><title>${escapeXml(detail)}</title></circle>`
       )
     })
@@ -543,8 +571,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, axisNames
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.width} ${layout.height}" ` +
     `width="100%" height="100%" role="img" ` +
-    `aria-label="${escapeXml(axisNames?.y ?? layout.yMetric)} against ` +
-    `${escapeXml(axisNames?.x ?? layout.xMetric)} for ${layout.nodes.length} works">` +
+    `aria-label="${escapeXml(text?.y ?? layout.yMetric)} against ` +
+    `${escapeXml(text?.x ?? layout.xMetric)} for ${layout.nodes.length} works">` +
     arrowDefs +
     // The frame first, the plot over it. The numbers survive that order only
     // because the clip keeps the marks out of the gutters they live in -- which

@@ -127,6 +127,7 @@ graph-center-seed = Centre on this work
 graph-role-seed = This work
 graph-role-reference = Cited by it
 graph-role-citing = Citing it
+graph-in-library = In your library
 graph-no-values = None of the surrounding works carry both values the axes ask for, so there is nothing to place.
 graph-dropped-no-value = { $count } not shown, missing a value
 graph-loading = Gathering references and citing works…
