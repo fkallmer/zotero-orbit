@@ -214,7 +214,45 @@ function overlaps(a: Box, b: Box): boolean {
   return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1
 }
 
-function assignLabels(nodes: PlacedNode[], width: number, height: number): void {
+/** Where the plot sits inside the frame. Identity is the fitted view. */
+export interface Viewport {
+  k: number
+  tx: number
+  ty: number
+  width: number
+  height: number
+}
+
+export const FITTED = (width: number, height: number): Viewport => ({ k: 1, tx: 0, ty: 0, width, height })
+
+export interface LabelPlacement {
+  key: string
+  text: string
+  x: number
+  y: number
+  anchor: 'start' | 'middle' | 'end'
+}
+
+/**
+ * Lay the labels out for one view of the plot.
+ *
+ * Fifty labels cannot all be shown at once, and picking arbitrarily would hide
+ * the interesting ones. So they go down in order of consequence -- the seed,
+ * then the most-cited -- and one is dropped when its box overlaps a mark or a
+ * label already placed. What survives is the part of the field worth reading,
+ * and everything keeps its tooltip regardless.
+ *
+ * It takes a viewport rather than assuming the fitted one because marks keep
+ * their size while zooming spreads them apart. Which labels fit is therefore a
+ * property of the current zoom, not of the data -- and re-running this on every
+ * transform is what makes zooming reveal names instead of magnifying them.
+ */
+export function placeLabels(nodes: readonly PlacedNode[], view: Viewport): LabelPlacement[] {
+  const at = (node: PlacedNode): { x: number; y: number } => ({
+    x: node.x * view.k + view.tx,
+    y: node.y * view.k + view.ty,
+  })
+
   const byImportance = [...nodes].sort((a, b) => {
     if (a.role !== b.role) return a.role === 'seed' ? -1 : b.role === 'seed' ? 1 : 0
     return (b.citedByCount ?? 0) - (a.citedByCount ?? 0)
@@ -222,16 +260,25 @@ function assignLabels(nodes: PlacedNode[], width: number, height: number): void 
 
   // The marks are obstacles too, not just the labels. Checking only label
   // against label is what let a title be painted straight across the seed.
-  const taken: Box[] = nodes.map((node) => ({
-    x1: node.x - node.radius - 2,
-    y1: node.y - node.radius - 2,
-    x2: node.x + node.radius + 2,
-    y2: node.y + node.radius + 2,
-  }))
+  const taken: Box[] = nodes.map((node) => {
+    const point = at(node)
+    return {
+      x1: point.x - node.radius - 2,
+      y1: point.y - node.radius - 2,
+      x2: point.x + node.radius + 2,
+      y2: point.y + node.radius + 2,
+    }
+  })
 
+  const placed: LabelPlacement[] = []
   for (const node of byImportance) {
     const text = labelFor(node, LABEL_CHARS)
     if (!text) continue
+    const point = at(node)
+    // A mark off-screen needs no name, and testing it would waste the spot.
+    if (point.x < -node.radius || point.x > view.width + node.radius) continue
+    if (point.y < -node.radius || point.y > view.height + node.radius) continue
+
     const textWidth = text.length * CHAR_WIDTH
 
     /**
@@ -249,16 +296,16 @@ function assignLabels(nodes: PlacedNode[], width: number, height: number): void 
     const spotsAt = (gap: number): LabelSpot[] => {
       const diagonal = gap * 0.75
       return [
-        place(node.x, node.y + gap + LABEL_HEIGHT - 3, 'middle', node.y + gap),
-        place(node.x, node.y - gap - 3, 'middle', node.y - gap - LABEL_HEIGHT),
-        place(node.x + gap, node.y + 3.5, 'start', node.y - LABEL_HEIGHT / 2),
-        place(node.x - gap, node.y + 3.5, 'end', node.y - LABEL_HEIGHT / 2),
+        place(point.x, point.y + gap + LABEL_HEIGHT - 3, 'middle', point.y + gap),
+        place(point.x, point.y - gap - 3, 'middle', point.y - gap - LABEL_HEIGHT),
+        place(point.x + gap, point.y + 3.5, 'start', point.y - LABEL_HEIGHT / 2),
+        place(point.x - gap, point.y + 3.5, 'end', point.y - LABEL_HEIGHT / 2),
         // The diagonals are what keep a mark in a dense cluster from going
         // nameless when all four sides happen to be occupied.
-        place(node.x + diagonal, node.y + diagonal + LABEL_HEIGHT, 'start', node.y + diagonal),
-        place(node.x - diagonal, node.y + diagonal + LABEL_HEIGHT, 'end', node.y + diagonal),
-        place(node.x + diagonal, node.y - diagonal - 3, 'start', node.y - diagonal - LABEL_HEIGHT),
-        place(node.x - diagonal, node.y - diagonal - 3, 'end', node.y - diagonal - LABEL_HEIGHT),
+        place(point.x + diagonal, point.y + diagonal + LABEL_HEIGHT, 'start', point.y + diagonal),
+        place(point.x - diagonal, point.y + diagonal + LABEL_HEIGHT, 'end', point.y + diagonal),
+        place(point.x + diagonal, point.y - diagonal - 3, 'start', point.y - diagonal - LABEL_HEIGHT),
+        place(point.x - diagonal, point.y - diagonal - 3, 'end', point.y - diagonal - LABEL_HEIGHT),
       ]
     }
 
@@ -278,18 +325,29 @@ function assignLabels(nodes: PlacedNode[], width: number, height: number): void 
           // Inside the plot, not the gutters: a label there would be clipped
           // in half the moment anything moved.
           candidate.box.x1 >= AXIS_GUTTER.left + 2 &&
-          candidate.box.x2 <= width - 2 &&
+          candidate.box.x2 <= view.width - 2 &&
           candidate.box.y1 >= 0 &&
-          candidate.box.y2 <= height - AXIS_GUTTER.bottom - 2 &&
+          candidate.box.y2 <= view.height - AXIS_GUTTER.bottom - 2 &&
           !taken.some((other) => overlaps(candidate.box, other)),
       )
     if (!fits) continue
 
     taken.push(fits.box)
-    node.label = text
-    node.labelX = fits.x
-    node.labelY = fits.y
-    node.labelAnchor = fits.anchor
+    placed.push({ key: node.key, text, x: fits.x, y: fits.y, anchor: fits.anchor })
+  }
+  return placed
+}
+
+/** The fitted-view placement, written back onto the nodes for the first paint. */
+function assignLabels(nodes: PlacedNode[], width: number, height: number): void {
+  const byKey = new Map(nodes.map((node) => [node.key, node]))
+  for (const placement of placeLabels(nodes, FITTED(width, height))) {
+    const node = byKey.get(placement.key)
+    if (!node) continue
+    node.label = placement.text
+    node.labelX = placement.x
+    node.labelY = placement.y
+    node.labelAnchor = placement.anchor
   }
 }
 
@@ -418,6 +476,40 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+/**
+ * Where an edge starts and stops, for one view.
+ *
+ * Shared with the tab, which recomputes it on every transform. The gaps are
+ * screen distances rather than data ones: the marks no longer scale, so the
+ * arrowhead must sit the same few pixels off its target at any zoom, and an
+ * edge whose ends have come closer together than the two gaps is not drawn --
+ * a head pointing backwards through its own mark says the opposite of the
+ * truth.
+ */
+export function edgeEnds(
+  from: { x: number; y: number; radius: number },
+  to: { x: number; y: number; radius: number },
+  view: Viewport,
+): { x1: number; y1: number; x2: number; y2: number; hidden: boolean } {
+  const fx = from.x * view.k + view.tx
+  const fy = from.y * view.k + view.ty
+  const tox = to.x * view.k + view.tx
+  const toy = to.y * view.k + view.ty
+  const dx = tox - fx
+  const dy = toy - fy
+  const length = Math.hypot(dx, dy) || 1
+  const startGap = from.radius + 2
+  const endGap = to.radius + 7
+  if (length <= startGap + endGap) return { x1: fx, y1: fy, x2: fx, y2: fy, hidden: true }
+  return {
+    x1: fx + (dx / length) * startGap,
+    y1: fy + (dy / length) * startGap,
+    x2: fx + (dx / length) * (length - endGap),
+    y2: fy + (dy / length) * (length - endGap),
+    hidden: false,
+  }
+}
+
 function colorFor(role: GraphRole, theme: GraphTheme): string {
   return role === 'seed' ? theme.seed : role === 'reference' ? theme.reference : theme.citing
 }
@@ -477,19 +569,16 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         .map((node) => {
           const from = node.role === 'reference' ? seed : node
           const to = node.role === 'reference' ? node : seed
-          const dx = to.x - from.x
-          const dy = to.y - from.y
-          const length = Math.hypot(dx, dy) || 1
-          const startGap = from.radius + 2
-          const endGap = to.radius + 7
-          if (length <= startGap + endGap) return ''
-          const x1 = from.x + (dx / length) * startGap
-          const y1 = from.y + (dy / length) * startGap
-          const x2 = from.x + (dx / length) * (length - endGap)
-          const y2 = from.y + (dy / length) * (length - endGap)
+          const ends = edgeEnds(from, to, { k: 1, tx: 0, ty: 0, width: layout.width, height: layout.height })
+          // The centres and the two gaps travel with the line, because zoom
+          // moves the ends without changing how far the head sits off a mark:
+          // the marks keep their size, so the gaps are screen distances now.
           return (
-            `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" ` +
-            `stroke="${colorFor(node.role, theme)}" stroke-width="1.2" opacity="0.4" ` +
+            `<line data-edge x1="${ends.x1.toFixed(1)}" y1="${ends.y1.toFixed(1)}" ` +
+            `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
+            `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
+            `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
+            `stroke="${colorFor(node.role, theme)}" stroke-width="1.2" opacity="${ends.hidden ? 0 : 0.4}" ` +
             `marker-end="url(#${node.role === 'reference' ? 'arrow-ref' : 'arrow-cite'})"/>`
           )
         })
@@ -508,15 +597,26 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.citing}" opacity="0.8"/></marker>` +
     `</defs>`
 
+  /**
+   * One text element per mark, whether or not it is showing.
+   *
+   * A fixed pool rather than markup rebuilt on every wheel event: which labels
+   * fit changes with the zoom, and swapping attributes on elements that already
+   * exist is both faster and free of the flicker that tearing down a group and
+   * building it again produces.
+   */
+  const shown = layout.nodes.filter((node) => node.label !== null)
   const labels = layout.nodes
-    .filter((node) => node.label !== null)
-    .map(
-      (node) =>
-        `<text x="${(node.labelX ?? node.x).toFixed(1)}" y="${(node.labelY ?? node.y).toFixed(1)}" ` +
-        `font-size="10" fill="${theme.muted}" text-anchor="${node.labelAnchor ?? 'middle'}" opacity="0.9" ` +
+    .map((_, slot) => {
+      const node = shown[slot]
+      return (
+        `<text data-label="${slot}" x="${(node?.labelX ?? 0).toFixed(1)}" y="${(node?.labelY ?? 0).toFixed(1)}" ` +
+        `font-size="10" fill="${theme.muted}" text-anchor="${node?.labelAnchor ?? 'middle'}" ` +
+        `opacity="${node ? 0.9 : 0}" ` +
         `paint-order="stroke" stroke="${theme.surface}" stroke-width="3" stroke-linejoin="round">` +
-        `${escapeXml(node.label as string)}</text>`,
-    )
+        `${escapeXml(node?.label ?? '')}</text>`
+      )
+    })
     .join('')
 
   const marks = layout.nodes
@@ -536,8 +636,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
 
       const halo =
         node.role === 'seed'
-          ? `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${(node.radius + 7).toFixed(1)}" ` +
-            `fill="none" stroke="${fill}" stroke-width="1" opacity="0.35"/>`
+          ? `<circle r="${(node.radius + 7).toFixed(1)}" fill="none" stroke="${fill}" ` +
+            `stroke-width="1" opacity="0.35"/>`
           : ''
 
       /**
@@ -553,17 +653,21 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
       const collar =
         node.itemID === null
           ? ''
-          : `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${(node.radius + 2.6).toFixed(1)}" ` +
-            `fill="none" stroke="${theme.muted}" stroke-width="1.6" opacity="0.85"/>`
+          : `<circle r="${(node.radius + 2.6).toFixed(1)}" fill="none" stroke="${theme.muted}" ` +
+            `stroke-width="1.6" opacity="0.85"/>`
 
+      // The geometry sits at the origin and the group carries the position, so
+      // zoom moves the mark without resizing it. Litmaps' behaviour, and the
+      // right one: a crowded middle needs the marks pulled apart, not enlarged.
       return (
+        `<g data-mark data-at="${node.x.toFixed(1)},${node.y.toFixed(1)}" ` +
+        `transform="translate(${node.x.toFixed(1)},${node.y.toFixed(1)})">` +
         halo +
         collar +
-        `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.radius.toFixed(1)}" ` +
-        `fill="${fill}" stroke="${theme.surface}" stroke-width="2" ` +
+        `<circle r="${node.radius.toFixed(1)}" fill="${fill}" stroke="${theme.surface}" stroke-width="2" ` +
         `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
         `data-item="${node.itemID ?? ''}" ` +
-        `style="cursor:pointer"><title>${escapeXml(detail)}</title></circle>`
+        `style="cursor:pointer"><title>${escapeXml(detail)}</title></circle></g>`
       )
     })
     .join('')
@@ -579,6 +683,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     // is the whole reason the gutters are reserved.
     `<g data-role="axis">${yTickGroups}${xTickGroups}</g>` +
     `<g data-role="content" clip-path="url(#plot-area)">` +
-    `<g>${edges}</g><g>${marks}</g><g>${labels}</g></g></svg>`
+    `<g data-role="edges">${edges}</g><g data-role="marks">${marks}</g>` +
+    `<g data-role="labels">${labels}</g></g></svg>`
   )
 }

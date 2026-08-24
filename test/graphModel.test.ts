@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { AXIS_GUTTER, buildGraphLayout, citationScale, renderGraphSvg } from '../src/modules/graphModel.core.ts'
+import {
+  AXIS_GUTTER,
+  buildGraphLayout,
+  citationScale,
+  edgeEnds,
+  FITTED,
+  placeLabels,
+  renderGraphSvg,
+} from '../src/modules/graphModel.core.ts'
 
 import type { GraphNode } from '../src/modules/graphModel.core.ts'
 
@@ -162,6 +170,90 @@ describe('renderGraphSvg', () => {
   it('omits the reference count rather than printing undefined for it', () => {
     const svg = renderGraphSvg(layout, theme)
     assert.ok(!svg.includes('undefined'))
+  })
+})
+
+describe('zoom spreads the marks without inflating them', () => {
+  // Eight works of the same year and much the same citation count, on a plot
+  // whose axes are stretched by one old and heavily cited paper. They land on
+  // top of each other: the case the graph is worst at, and the reason to zoom.
+  const cluster = Array.from({ length: 8 }, (_, index) =>
+    node({ key: `c${index}`, role: 'citing', author: `Author${index}`, year: 2021, citedByCount: 10 + index }),
+  )
+  const options = { width: 600, height: 300, padding: { top: 10, right: 10, bottom: 20, left: 30 } }
+  const layout = buildGraphLayout(
+    [node({ key: 'seed', role: 'seed', year: 2019 }), node({ key: 'old', year: 1960, citedByCount: 5000 }), ...cluster],
+    options,
+  )!
+
+  it('carries the position on the group and the geometry at the origin', () => {
+    const svg = renderGraphSvg(layout, theme)
+    // A circle with cx/cy inside a scaled layer grows with the zoom. One at the
+    // origin under a translated group does not, which is the whole change.
+    assert.ok(svg.includes('<g data-mark data-at='))
+    assert.ok(!/<circle [^>]*cx=/.test(svg))
+  })
+
+  it('keeps one text element per mark, showing or not', () => {
+    const svg = renderGraphSvg(layout, theme)
+    // A pool, so a zoom swaps attributes rather than rebuilding the group.
+    assert.equal(svg.match(/<text data-label="/g)?.length, layout.nodes.length)
+  })
+
+  it('names more of a crowded cluster once there is room for the names', () => {
+    const fitted = placeLabels(layout.nodes, FITTED(options.width, options.height))
+    const crowd = layout.nodes.filter((placed) => placed.role === 'citing')
+    const middleX = crowd.reduce((sum, placed) => sum + placed.x, 0) / crowd.length
+    const middleY = crowd.reduce((sum, placed) => sum + placed.y, 0) / crowd.length
+    const k = 4
+    const zoomed = placeLabels(layout.nodes, {
+      k,
+      tx: options.width / 2 - middleX * k,
+      ty: options.height / 2 - middleY * k,
+      width: options.width,
+      height: options.height,
+    })
+    const named = (placements: { key: string }[]): number =>
+      crowd.filter((placed) => placements.some((placement) => placement.key === placed.key)).length
+    assert.ok(named(zoomed) > named(fitted), `${named(fitted)} at rest, ${named(zoomed)} zoomed in`)
+  })
+
+  it('gives no label to a mark that has left the viewport', () => {
+    const offscreen = placeLabels(layout.nodes, {
+      k: 1,
+      tx: 5000,
+      ty: 0,
+      width: options.width,
+      height: options.height,
+    })
+    assert.equal(offscreen.length, 0)
+  })
+})
+
+describe('edgeEnds', () => {
+  const from = { x: 100, y: 100, radius: 10 }
+  const to = { x: 300, y: 100, radius: 10 }
+
+  it('holds the arrowhead the same distance off its target at any zoom', () => {
+    // The marks no longer scale, so the gap is a screen distance. Scaling it
+    // with the data would bury the head under the mark when zoomed in.
+    const near = edgeEnds(from, to, { k: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    const far = edgeEnds(from, to, { k: 4, tx: 0, ty: 0, width: 600, height: 300 })
+    assert.equal(Math.round(300 - near.x2), 17)
+    assert.equal(Math.round(300 * 4 - far.x2), 17)
+  })
+
+  it('hides an edge whose ends have come closer than the two gaps', () => {
+    // A head pointing backwards through its own mark states the opposite of
+    // the truth, so nothing is drawn at all.
+    const squeezed = edgeEnds(from, { ...to, x: 110 }, { k: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    assert.equal(squeezed.hidden, true)
+  })
+
+  it('survives two marks at exactly the same point', () => {
+    const same = edgeEnds(from, { ...from }, { k: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    assert.equal(same.hidden, true)
+    assert.ok(!Number.isNaN(same.x1))
   })
 })
 

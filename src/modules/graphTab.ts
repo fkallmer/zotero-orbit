@@ -18,12 +18,19 @@ import { readCache } from '../utils/recordCache'
 import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { Helpers } from './citationTally'
-import { AXIS_GUTTER, AXIS_METRICS, buildGraphLayout, renderGraphSvg } from './graphModel.core.ts'
+import {
+  AXIS_GUTTER,
+  AXIS_METRICS,
+  buildGraphLayout,
+  edgeEnds,
+  placeLabels,
+  renderGraphSvg,
+} from './graphModel.core.ts'
 import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchCitingWorks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
-import type { AxisMetric, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
+import type { AxisMetric, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { S2Details } from './semanticScholarClient.core'
 import type { FluentMessageId } from '../../typings/i10n'
@@ -637,24 +644,66 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
    * event. A trackpad sends a stream of two-pixel deltas, and a fixed step
    * turned a light two-finger swipe into four levels of zoom.
    */
-  const installPanAndZoom = (svg: SVGSVGElement, width: number, height: number): typeof view => {
-    // Annotated, not inferred: Zotero's ambient DOM typings hand these back as
-    // `any`, and every setAttribute downstream inherits it.
-    const content: Element | null = svg.querySelector('[data-role="content"]')
-    const ticksOn = (axis: 'x' | 'y'): Element[] => {
-      const found = svg.querySelectorAll(`[data-axis="${axis}"]`) as unknown as ArrayLike<Element>
+  const installPanAndZoom = (svg: SVGSVGElement, layout: GraphLayout, width: number, height: number): typeof view => {
+    const all = (selector: string): Element[] => {
+      const found = svg.querySelectorAll(selector) as unknown as ArrayLike<Element>
       return Array.from(found)
     }
-    const yTicks = ticksOn('y')
-    const xTicks = ticksOn('x')
-    if (!content) return null
+    const marks = all('[data-mark]')
+    const edgeLines = all('[data-edge]')
+    const labelSlots = all('[data-label]')
+    const yTicks = all('[data-axis="y"]')
+    const xTicks = all('[data-axis="x"]')
 
     let k = 1
     let tx = 0
     let ty = 0
+    /** One update per frame, however many wheel events arrive between them. */
+    let pending = 0
+
+    const pair = (element: Element, name: string): [number, number] => {
+      const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
+      return [Number(a), Number(b)]
+    }
 
     const apply = (): void => {
-      content.setAttribute('transform', `translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})`)
+      const view = { k, tx, ty, width, height }
+
+      for (const mark of marks) {
+        const [x, y] = pair(mark, 'data-at')
+        mark.setAttribute('transform', `translate(${(x * k + tx).toFixed(2)},${(y * k + ty).toFixed(2)})`)
+      }
+
+      for (const line of edgeLines) {
+        const [fx, fy] = pair(line, 'data-from')
+        const [tox, toy] = pair(line, 'data-to')
+        const [startGap, endGap] = pair(line, 'data-gaps')
+        const ends = edgeEnds({ x: fx, y: fy, radius: startGap - 2 }, { x: tox, y: toy, radius: endGap - 7 }, view)
+        line.setAttribute('x1', ends.x1.toFixed(1))
+        line.setAttribute('y1', ends.y1.toFixed(1))
+        line.setAttribute('x2', ends.x2.toFixed(1))
+        line.setAttribute('y2', ends.y2.toFixed(1))
+        line.setAttribute('opacity', ends.hidden ? '0' : '0.4')
+      }
+
+      // Re-laid out, not merely repositioned: the marks keep their size while
+      // zoom spreads them apart, so a name that could not fit at the fitted
+      // view often can once there is room. Zooming reveals labels rather than
+      // magnifying the ones already there, which is the point of zooming.
+      const placements = placeLabels(layout.nodes, view)
+      labelSlots.forEach((slot, index) => {
+        const placement = placements[index]
+        if (!placement) {
+          slot.setAttribute('opacity', '0')
+          return
+        }
+        slot.textContent = placement.text
+        slot.setAttribute('x', placement.x.toFixed(1))
+        slot.setAttribute('y', placement.y.toFixed(1))
+        slot.setAttribute('text-anchor', placement.anchor)
+        slot.setAttribute('opacity', '0.9')
+      })
+
       // A tick whose value has moved out of the plot is hidden rather than
       // stacked against the edge, where it would name a place nobody can see.
       for (const tick of yTicks) {
@@ -671,10 +720,19 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
       }
     }
 
+    /** Coalesced: a trackpad delivers wheel events faster than frames. */
+    const schedule = (): void => {
+      if (pending) return
+      pending = win.requestAnimationFrame(() => {
+        pending = 0
+        apply()
+      })
+    }
+
     /** factor > 1 zooms out; the anchor is a fraction of the viewport, 0 to 1. */
     const zoomBy = (factor: number, atX = 0.5, atY = 0.5): void => {
-      // Clamped: far enough in to separate overlapping marks, not so far out
-      // that the plot becomes a speck.
+      // Clamped: far enough in to pull a dense cluster apart, not so far out
+      // that the marks pile back on top of each other.
       const next = Math.min(15, Math.max(1 / 3, k / factor))
       const anchorX = atX * width
       const anchorY = atY * height
@@ -682,7 +740,7 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
       tx = anchorX - (anchorX - tx) * (next / k)
       ty = anchorY - (anchorY - ty) * (next / k)
       k = next
-      apply()
+      schedule()
     }
 
     svg.addEventListener(
@@ -715,7 +773,7 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
       ty += ((event.clientY - from.y) / rect.height) * height
       if (Math.abs(event.clientX - from.x) > 3 || Math.abs(event.clientY - from.y) > 3) dragged = true
       from = { x: event.clientX, y: event.clientY }
-      apply()
+      schedule()
     })
     const release = (): void => {
       from = null
@@ -731,12 +789,12 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
         k = 1
         tx = 0
         ty = 0
-        apply()
+        schedule()
       },
       centre: (x: number, y: number) => {
         tx = width / 2 - x * k
         ty = height / 2 - y * k
-        apply()
+        schedule()
       },
     }
   }
@@ -788,7 +846,7 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
       if (doi) Zotero.launchURL(`https://doi.org/${doi}`)
     })
 
-    view = installPanAndZoom(imported as unknown as SVGSVGElement, width, height)
+    view = installPanAndZoom(imported as unknown as SVGSVGElement, layout, width, height)
     const seedNode = layout.nodes.find((node) => node.role === 'seed')
     seedPoint = seedNode ? { x: seedNode.x, y: seedNode.y } : null
 
