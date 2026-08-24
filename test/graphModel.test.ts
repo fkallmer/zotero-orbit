@@ -159,8 +159,8 @@ describe('renderGraphSvg', () => {
     // The seed cites its references, so those edges leave the seed; the citing
     // works cite the seed, so theirs arrive at it. Without the heads the plot
     // shows two clusters and leaves the direction to be guessed.
-    assert.ok(svg.includes('marker-end="url(#arrow-ref)"'))
-    assert.ok(svg.includes('marker-end="url(#arrow-cite)"'))
+    assert.ok(svg.includes('marker-end="url(#citationtally-graph-arrow-ref)"'))
+    assert.ok(svg.includes('marker-end="url(#citationtally-graph-arrow-cite)"'))
   })
 
   it('says how many works a mark cites, since that is what its size means', () => {
@@ -391,8 +391,23 @@ describe('a fixed frame around a moving plot', () => {
 
   it('clips the plot out of the gutters the tick numbers live in', () => {
     const svg = renderGraphSvg(layout, theme)
-    assert.ok(svg.includes('clip-path="url(#plot-area)"'))
-    assert.ok(svg.includes('<clipPath id="plot-area">'))
+    assert.ok(svg.includes('clip-path="url(#citationtally-graph-plot-area)"'))
+    assert.ok(svg.includes('<clipPath id="citationtally-graph-plot-area">'))
+  })
+
+  it('namespaces its defs, so two open graphs cannot clip each other', () => {
+    // Both would otherwise define `plot-area`, and `url(#plot-area)` resolves
+    // to whichever came first in the document. The second tab's plot is then
+    // clipped by the first tab's rectangle -- which is in a hidden deck panel
+    // and has collapsed to nothing, so the second graph draws an empty box
+    // until the first tab is closed.
+    const first = renderGraphSvg(layout, theme, undefined, 'tab-a')
+    const second = renderGraphSvg(layout, theme, undefined, 'tab-b')
+    for (const name of ['plot-area', 'arrow-ref', 'arrow-cite']) {
+      assert.ok(first.includes(`id="tab-a-${name}"`), `first is missing ${name}`)
+      assert.ok(second.includes(`id="tab-b-${name}"`), `second is missing ${name}`)
+      assert.ok(!second.includes(`url(#tab-a-${name})`), `second reaches into the first for ${name}`)
+    }
   })
 
   it('tags every tick with where it started, so it can slide back onto its value', () => {

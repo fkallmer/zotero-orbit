@@ -78,8 +78,14 @@ const { window, document, DOMParser } = parseHTML('<html><body><div id="tab"></d
 // Imported after the globals exist: the module graph touches Zotero on load.
 const { renderGraph } = await import('../src/modules/graphTab.ts')
 
+let containers = 0
+
 function render(nodes: readonly GraphNode[]): Rendered {
   const container = document.createElement('div')
+  // Zotero gives every tab-content the tab's id, and the graph namespaces its
+  // SVG defs with it. Rendering without one here would let two graphs share
+  // the ids and hide exactly the bug this guards against.
+  container.id = `tab-${++containers}`
   document.body.append(container)
   renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'A work' } as any, nodes as any)
   return { container, plot: container.querySelector('[data-role="content"]')?.ownerSVGElement ?? container }
@@ -238,6 +244,26 @@ describe('the tab as the reader sees it', () => {
       hover(container, 'ref')
       assert.equal(container.querySelectorAll('div').length, before)
     })
+  })
+
+  it('draws both graphs when two tabs are open at once', () => {
+    // The reported bug: the second tab stayed empty until the first was
+    // closed. Both defined `plot-area`, `url(#plot-area)` resolved to the
+    // first, and the second plot was clipped by a rectangle sitting in a
+    // hidden deck panel that had collapsed to nothing.
+    const first = render(nodes)
+    const second = render(nodes)
+    for (const { container } of [first, second]) {
+      const content = container.querySelector('[data-role="content"]')
+      assert.ok(content, 'no content group')
+      const clip = (content.getAttribute('clip-path') ?? '').replace(/^url\(#|\)$/g, '')
+      // The clip it names must be its own, not one from the other tab.
+      assert.ok(container.querySelector(`#${clip}`), `${clip} is not in this tab`)
+      assert.ok(container.querySelectorAll('[data-mark]').length > 0)
+    }
+    const clipOf = (rendered: typeof first) =>
+      rendered.container.querySelector('[data-role="content"]')?.getAttribute('clip-path')
+    assert.notEqual(clipOf(first), clipOf(second))
   })
 
   it('says so rather than drawing nothing when no work can be placed', () => {

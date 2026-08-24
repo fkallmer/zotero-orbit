@@ -1102,7 +1102,10 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
       y: getString(METRIC_LABEL[yMetric]),
       inLibrary: getString('graph-in-library'),
     }
-    const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme, text), 'image/svg+xml')
+    // The tab's own id namespaces the SVG defs, so two open graphs cannot
+    // reach into each other's clip path.
+    const uid = container.id || 'citationtally-graph'
+    const parsed = new DOMParser().parseFromString(renderGraphSvg(layout, theme, text, uid), 'image/svg+xml')
     const svg = parsed.documentElement
     if (!svg || svg.nodeName === 'parsererror') return
     const imported = doc.importNode(svg, true)

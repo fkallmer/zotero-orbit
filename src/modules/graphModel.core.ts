@@ -582,7 +582,19 @@ function colorFor(role: GraphRole, theme: GraphTheme): string {
  * countable, and the seed a wider halo -- shape rather than hue, so the focal
  * point survives greyscale and colour blindness.
  */
-export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: GraphText): string {
+/**
+ * @param uid Namespaces the ids in `defs`. Two graphs in one document -- two
+ *   open tabs -- otherwise both define `plot-area`, and `url(#plot-area)`
+ *   resolves to whichever came first. The second plot is then clipped by the
+ *   first one's rectangle, which sits in a hidden tab and has collapsed to
+ *   nothing, so the second tab draws an empty box until the first is closed.
+ */
+export function renderGraphSvg(
+  layout: GraphLayout,
+  theme: GraphTheme,
+  text?: GraphText,
+  uid = 'citationtally-graph',
+): string {
   /**
    * Each tick is its own group, tagged with where it started.
    *
@@ -641,7 +653,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
             `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
             `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
             `stroke="${colorFor(node.role, theme)}" stroke-width="1.2" opacity="${ends.hidden ? 0 : 0.4}" ` +
-            `marker-end="url(#${node.role === 'reference' ? 'arrow-ref' : 'arrow-cite'})"/>`
+            `marker-end="url(#${uid}-${node.role === 'reference' ? 'arrow-ref' : 'arrow-cite'})"/>`
           )
         })
         .join('')
@@ -649,12 +661,12 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
 
   const arrowDefs =
     `<defs>` +
-    `<clipPath id="plot-area"><rect x="${AXIS_GUTTER.left}" y="0" ` +
+    `<clipPath id="${uid}-plot-area"><rect x="${AXIS_GUTTER.left}" y="0" ` +
     `width="${layout.width - AXIS_GUTTER.left}" height="${layout.height - AXIS_GUTTER.bottom}"/></clipPath>` +
-    `<marker id="arrow-ref" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
+    `<marker id="${uid}-arrow-ref" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
     `markerUnits="userSpaceOnUse" orient="auto">` +
     `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.reference}" opacity="0.8"/></marker>` +
-    `<marker id="arrow-cite" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
+    `<marker id="${uid}-arrow-cite" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
     `markerUnits="userSpaceOnUse" orient="auto">` +
     `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.citing}" opacity="0.8"/></marker>` +
     `</defs>`
@@ -744,7 +756,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     // because the clip keeps the marks out of the gutters they live in -- which
     // is the whole reason the gutters are reserved.
     `<g data-role="axis">${yTickGroups}${xTickGroups}</g>` +
-    `<g data-role="content" clip-path="url(#plot-area)">` +
+    `<g data-role="content" clip-path="url(#${uid}-plot-area)">` +
     `<g data-role="edges">${edges}</g><g data-role="marks">${marks}</g>` +
     `<g data-role="labels">${labels}</g></g></svg>`
   )
