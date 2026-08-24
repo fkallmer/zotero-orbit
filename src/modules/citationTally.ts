@@ -84,7 +84,7 @@ const REQUEST_TIMEOUT_MS = 20_000
  * "polite pool", which is better resourced than the anonymous one; the project
  * URL serves as that contact.
  */
-const USER_AGENT = `Orbit/${version} (+https://github.com/daeh/zotero-zotero-orbit; mailto:dev@daeh.info)`
+const USER_AGENT = `Orbit/${version} (+https://github.com/fkallmer/zotero-orbit; mailto:dev@daeh.info)`
 
 /** Headers every provider request sends. */
 const REQUEST_HEADERS: Readonly<Record<string, string>> = { 'User-Agent': USER_AGENT }
