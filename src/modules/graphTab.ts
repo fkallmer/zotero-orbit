@@ -516,6 +516,118 @@ const ZOOM_PER_PIXEL = 0.0022
 const ZOOM_STEP_LIMIT = 0.22
 const ZOOM_BUTTON_STEP = 1.3
 
+const ROLE_LABEL: Record<GraphNode['role'], FluentMessageId> = {
+  seed: 'graph-role-seed',
+  reference: 'graph-role-reference',
+  citing: 'graph-role-citing',
+}
+
+/**
+ * The card a click on a mark opens.
+ *
+ * A mark is a dot with a truncated caption; the question a click asks is
+ * "what is this", and the honest answer is the record, not the publisher's
+ * website. Opening the DOI outright answered a question nobody had asked yet
+ * and threw away the one piece of context -- role, counts, whether it is
+ * already filed -- that the graph had and the browser would not.
+ *
+ * Everything shown is already in hand, so the card costs no request.
+ */
+function buildMarkCard(
+  doc: Document,
+  node: GraphNode,
+  theme: GraphTheme,
+  onClose: () => void,
+): { card: HTMLElement; width: number } {
+  const card = el(doc, 'div')
+  card.style.cssText =
+    'position:absolute;z-index:5;width:280px;box-sizing:border-box;padding:10px 12px 11px;' +
+    `background:${theme.surface};color:inherit;border:1px solid ${theme.muted}59;border-radius:7px;` +
+    'box-shadow:0 3px 14px rgba(0,0,0,.22);font-size:12px;line-height:1.4;' +
+    'display:flex;flex-direction:column;gap:6px'
+  // Clicks inside must not reach the plot, which closes the card.
+  card.addEventListener('click', (event) => event.stopPropagation())
+
+  const head = el(doc, 'div')
+  head.style.cssText = 'display:flex;align-items:center;gap:6px'
+  const dot = el(doc, 'span')
+  const roleColor = node.role === 'seed' ? theme.seed : node.role === 'reference' ? theme.reference : theme.citing
+  dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${roleColor};flex:none`
+  const role = el(doc, 'span', getString(ROLE_LABEL[node.role]))
+  role.style.cssText = 'opacity:.7'
+  head.append(dot, role)
+
+  if (node.itemID !== null) {
+    const badge = el(doc, 'span')
+    badge.style.cssText = 'display:flex;align-items:center;gap:5px;opacity:.7'
+    const ring = el(doc, 'span')
+    ring.style.cssText = `width:10px;height:10px;border-radius:50%;border:1.6px solid ${theme.muted};flex:none`
+    badge.append(ring, el(doc, 'span', getString('graph-in-library')))
+    head.append(badge)
+  }
+
+  const close = el(doc, 'button', '\u00d7')
+  close.style.cssText =
+    'margin-left:auto;border:none;background:transparent;color:inherit;opacity:.5;cursor:pointer;' +
+    'font-size:15px;line-height:1;padding:0 2px'
+  close.setAttribute('title', getString('graph-card-close'))
+  close.addEventListener('click', onClose)
+  head.append(close)
+
+  // The full title, which is the point: the caption on the mark is cut at 34
+  // characters and the tooltip vanishes the moment the pointer moves.
+  const title = el(doc, 'div', node.title || getString('graph-card-title'))
+  title.style.cssText = 'font-weight:600;font-size:12.5px;overflow-wrap:anywhere'
+
+  const byline = [node.author, node.year === null ? null : String(node.year)].filter(Boolean).join(' \u00b7 ')
+  const facts = [
+    byline,
+    node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
+    node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
+  ].filter(Boolean)
+  const detail = el(doc, 'div', facts.join(' \u00b7 '))
+  detail.style.cssText = 'opacity:.75'
+
+  card.append(head, title, detail)
+
+  const actions = el(doc, 'div')
+  actions.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;padding-top:2px'
+  const action = (label: string, run: () => void): HTMLElement => {
+    const button = el(doc, 'button', label)
+    button.style.cssText =
+      'font:inherit;font-size:11px;padding:3px 9px;border-radius:4px;cursor:pointer;' +
+      'border:1px solid currentColor;background:transparent;color:inherit;opacity:.8'
+    button.addEventListener('click', () => {
+      run()
+      onClose()
+    })
+    return button
+  }
+
+  if (node.itemID !== null) {
+    actions.append(
+      action(getString('graph-card-item'), () => {
+        void Zotero.getActiveZoteroPane()?.selectItem(node.itemID as number)
+      }),
+    )
+  }
+  if (node.doi) {
+    actions.append(
+      action(getString('graph-card-doi'), () => {
+        Zotero.launchURL(`https://doi.org/${node.doi ?? ''}`)
+      }),
+    )
+  }
+  if (actions.children.length > 0) card.append(actions)
+  else {
+    const none = el(doc, 'div', getString('graph-card-no-doi'))
+    none.style.cssText = 'opacity:.6;font-size:11px'
+    card.append(none)
+  }
+
+  return { card, width: 280 }
+}
+
 function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: GraphNode[]): void {
   const doc = win.document
   const theme = themeFor(win)
@@ -625,6 +737,39 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
 
   // Panning must not fire the click handler, so the two share this flag.
   let dragged = false
+
+  /** At most one card at a time, dismissed by Escape or a click off it. */
+  let card: HTMLElement | null = null
+  let escapeHandler: ((event: KeyboardEvent) => void) | null = null
+
+  const closeCard = (): void => {
+    card?.remove()
+    card = null
+    if (escapeHandler) doc.removeEventListener('keydown', escapeHandler)
+    escapeHandler = null
+  }
+
+  const openCard = (node: GraphNode, event: MouseEvent): void => {
+    closeCard()
+    const built = buildMarkCard(doc, node, theme, closeCard)
+    card = built.card
+
+    // Placed against the plot, and kept inside it: a card that opens half
+    // off the edge is worse than one that opens a little away from its mark.
+    const bounds = plot.getBoundingClientRect()
+    const left = Math.min(Math.max(event.clientX - bounds.left + 14, 4), Math.max(4, bounds.width - built.width - 4))
+    card.style.left = `${left}px`
+    // Measured after insertion, since the height depends on how the title wraps.
+    card.style.top = '0px'
+    plot.append(card)
+    const top = event.clientY - bounds.top + 12
+    card.style.top = `${Math.min(Math.max(top, 4), Math.max(4, bounds.height - card.offsetHeight - 4))}px`
+
+    escapeHandler = (keyEvent: KeyboardEvent): void => {
+      if (keyEvent.key === 'Escape') closeCard()
+    }
+    doc.addEventListener('keydown', escapeHandler)
+  }
 
   /**
    * Wheel to zoom, drag to pan, by transforming the plot inside a fixed frame.
@@ -800,6 +945,9 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
   }
 
   draw = (): void => {
+    // The plot is about to be replaced; a card anchored to the old one would
+    // be orphaned over the new.
+    closeCard()
     const width = Math.max(320, plot.clientWidth)
     const height = Math.max(220, plot.clientHeight)
     const layout = buildGraphLayout(nodes, { width, height, padding: PADDING, scale, xMetric, yMetric })
@@ -830,20 +978,18 @@ function renderGraph(win: Window, container: Element, seed: GraphSeed, nodes: Gr
     if (!svg || svg.nodeName === 'parsererror') return
     const imported = doc.importNode(svg, true)
 
+    const byKey = new Map(layout.nodes.map((node) => [node.key, node]))
     imported.addEventListener('click', (event) => {
       // A drag that ends over a mark is panning, not a click on it.
       if (dragged) return
       const target = (event.target as Element | null)?.closest?.('circle')
-      if (!target) return
-      // Already filed: go to it. Opening the publisher's page for a paper the
-      // reader has sitting in their own library is the wrong of the two.
-      const itemID = Number(target.getAttribute('data-item'))
-      if (itemID) {
-        void Zotero.getActiveZoteroPane()?.selectItem(itemID)
+      // Anywhere else in the plot dismisses whatever is open.
+      if (!target) {
+        closeCard()
         return
       }
-      const doi = target.getAttribute('data-doi')
-      if (doi) Zotero.launchURL(`https://doi.org/${doi}`)
+      const node = byKey.get(target.getAttribute('data-key') ?? '')
+      if (node) openCard(node, event as MouseEvent)
     })
 
     view = installPanAndZoom(imported as unknown as SVGSVGElement, layout, width, height)
