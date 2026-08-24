@@ -354,6 +354,36 @@ describe('the tab as the reader sees it', () => {
       assert.equal(showing(), atRest)
     })
 
+    it('lights the neighbourhood’s edges to the seed, not just the one it is on', () => {
+      // Everything on the plot is here because of its relation to this work.
+      // Lighting one work's link to it while its neighbours' links stay faint
+      // shows a fragment of the structure being asked about.
+      const container = draw()
+      const seedEdge = (key: string) =>
+        [...container.querySelectorAll('[data-edge]:not([data-link])')].find(
+          (line: any) => line.getAttribute('data-key') === key,
+        ) as any
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      const lit = Number(seedEdge('a')?.getAttribute('opacity'))
+      const neighbour = Number(seedEdge('b')?.getAttribute('opacity'))
+      const stranger = Number(seedEdge('d')?.getAttribute('opacity'))
+      assert.equal(lit, neighbour, 'the linked neighbour’s edge to the seed stayed faint')
+      assert.ok(stranger < neighbour, 'an unrelated work’s edge is as bright as a linked one')
+    })
+
+    it('thickens what it lights, heads included', () => {
+      const container = draw()
+      const edge = (key: string) =>
+        [...container.querySelectorAll('[data-edge]:not([data-link])')].find(
+          (line: any) => line.getAttribute('data-key') === key,
+        ) as any
+      const before = edge('a').getAttribute('stroke-width')
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      assert.ok(Number(edge('a').getAttribute('stroke-width')) > Number(before))
+      assert.equal(edge('a').getAttribute('marker-end'), edge('a').getAttribute('data-arrow-lit'))
+      assert.equal(edge('d').getAttribute('marker-end'), edge('d').getAttribute('data-arrow'))
+    })
+
     it('reaches further when the control asks for it', () => {
       const container = draw()
       const select = container.querySelector('[data-control="hops"]') as any
@@ -507,6 +537,31 @@ describe('the tab as the reader sees it', () => {
       assert.ok(!keys(container).includes('cite'))
       click(container, 'citing')
       assert.ok(keys(container).includes('cite'))
+    })
+  })
+
+  describe('reloading', () => {
+    it('offers no reload when there is nothing to reload with', () => {
+      // renderGraph is handed the callback by the tab that fetched; a caller
+      // with no way to fetch again must not be given a button that lies.
+      const { container } = render(nodes)
+      assert.equal(container.querySelector('[data-control="reload"]'), null)
+    })
+
+    it('asks the caller to fetch again, once per press', () => {
+      const container = document.createElement('div')
+      container.id = `reload-${++containers}`
+      document.body.append(container)
+      let asked = 0
+      renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'x' } as any, nodes, [], () => {
+        asked++
+      })
+      const button = container.querySelector('[data-control="reload"]')
+      assert.ok(button, 'no reload button')
+      fire(button, 'click')
+      assert.equal(asked, 1)
+      fire(button, 'click')
+      assert.equal(asked, 2)
     })
   })
 

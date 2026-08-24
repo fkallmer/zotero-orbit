@@ -50,6 +50,7 @@ export type FluentMessageId =
   | 'graph-no-values'
   | 'graph-placeholder-note'
   | 'graph-placeholder-title'
+  | 'graph-reload'
   | 'graph-role-citing'
   | 'graph-role-reference'
   | 'graph-role-seed'

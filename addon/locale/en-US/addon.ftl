@@ -120,6 +120,7 @@ graph-metric-references = References cited
 graph-direction-year = More recently published
 graph-direction-citations = More citations
 graph-direction-references = Cites more works
+graph-reload = Fetch it all again, past the cache
 graph-zoom-in = Zoom in
 graph-zoom-out = Zoom out
 graph-zoom-reset = Fit everything back into view

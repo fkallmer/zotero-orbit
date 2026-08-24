@@ -196,10 +196,19 @@ export function openGraphTab(seed: GraphSeed): void {
   renderPlaceholder(win.document, container, seed, getString('graph-loading'))
   Zotero.debug(`Orbit: graph tab opened for ${seed.kind} "${seed.name}"`)
 
-  void (async () => {
+  /**
+   * Fetch and draw. Called again by the tab's reload button, with force set.
+   *
+   * Everything the graph shows is cached -- which is what makes it quick, and
+   * what makes it wrong once a paper has picked up citations or the library
+   * has gained the work. Reloading is the only way back to the sources, so it
+   * is a button rather than something to discover by closing the tab.
+   */
+  const load = async (force: boolean): Promise<void> => {
     try {
+      renderPlaceholder(win.document, container, seed, getString('graph-loading'))
       const start = startingPoint(seed)
-      const nodes = start ? await collectNodes(start.identifiers, start.libraryID, start.title, false) : []
+      const nodes = start ? await collectNodes(start.identifiers, start.libraryID, start.title, force) : []
       if (nodes.length === 0) {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
@@ -209,18 +218,20 @@ export function openGraphTab(seed: GraphSeed): void {
       // then sprouts lines a second later reads as a glitch.
       let links: GraphLink[] = []
       try {
-        links = await fetchGraphLinks(nodes)
+        links = await fetchGraphLinks(nodes, { force })
       } catch (err) {
         // Paths are an addition. Losing them must not cost the graph.
         Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
       }
-      renderGraph(win, container, seed, nodes, links)
+      renderGraph(win, container, seed, nodes, links, () => void load(true))
       Zotero.debug(`Orbit: graph rendered with ${nodes.length} nodes and ${links.length} paths`)
     } catch (err) {
       Zotero.debug(`Orbit: graph failed: ${String(err)}`)
       renderPlaceholder(win.document, container, seed, String(err))
     }
-  })()
+  }
+
+  void load(false)
 }
 
 /** The seed for the current selection, or null when there is nothing to graph. */
@@ -443,18 +454,21 @@ function icon(doc: Document, paths: string[]): Element {
 const MAGNIFIER = 'M11,6.5a4.5,4.5 0 1,1 -9,0a4.5,4.5 0 1,1 9,0'
 const HANDLE = 'M9.9,9.9 L14,14'
 const ICONS = {
+  // An arrow round three quarters of a circle, with a head where it stops.
+  reload: ['M13.2,8a5.2,5.2 0 1,1 -1.9,-4', 'M13.4,2.6v3.6h-3.6'],
   zoomIn: [MAGNIFIER, HANDLE, 'M6.5,4.3v4.4', 'M4.3,6.5h4.4'],
   zoomOut: [MAGNIFIER, HANDLE, 'M4.3,6.5h4.4'],
   centre: ['M13,8a5,5 0 1,1 -10,0a5,5 0 1,1 10,0', 'M8,1.2v1.6', 'M8,13.2v1.6', 'M1.2,8h1.6', 'M13.2,8h1.6'],
   fit: ['M2,6V2h4', 'M10,2h4v4', 'M14,10v4h-4', 'M6,14H2v-4'],
 }
 
-function railButton(doc: Document, paths: string[], tooltip: string, onClick: () => void): HTMLElement {
+function railButton(doc: Document, paths: string[], tooltip: string, onClick: () => void, name?: string): HTMLElement {
   const button = el(doc, 'button')
   button.style.cssText =
     'display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;' +
     'border:none;background:transparent;color:inherit;opacity:.55;cursor:pointer;border-radius:5px'
   button.setAttribute('title', tooltip)
+  if (name) button.setAttribute('data-control', name)
   button.append(icon(doc, paths))
   button.addEventListener('mouseenter', () => (button.style.opacity = '1'))
   button.addEventListener('mouseleave', () => (button.style.opacity = '.55'))
@@ -840,6 +854,7 @@ export function renderGraph(
   seed: GraphSeed,
   nodes: GraphNode[],
   links: GraphLink[] = [],
+  onReload?: () => void,
 ): void {
   const doc = win.document
   const theme = themeFor(win)
@@ -944,6 +959,12 @@ export function renderGraph(
     showEmphasis()
   })
 
+  // Top row, not the rail: the rail is where you move the plot, and this
+  // replaces it.
+  const reload = onReload
+    ? railButton(doc, ICONS.reload, getString('graph-reload'), onReload, 'reload')
+    : el(doc, 'span')
+
   controls.append(
     axisLabel(getString('graph-axis-x')),
     metricSelect(doc, xMetric, (metric) => {
@@ -961,6 +982,7 @@ export function renderGraph(
     toggle,
     axisLabel(getString('graph-highlight')),
     hopsSelect,
+    reload,
   )
 
   /**
@@ -1230,6 +1252,15 @@ export function renderGraph(
        * their tooltip and remain clickable.
        */
       for (const mark of marks) mark.setAttribute('opacity', emphasis(keyOf(mark), 1, 0.22, 1))
+      /** Lit edges thicken and take the larger head; the rest recede. */
+      const setEdge = (line: Element, lit: boolean, resting: number, dim: number, base: number): void => {
+        const at = emphasised()
+        line.setAttribute('opacity', at === null ? String(resting) : lit ? '0.85' : String(dim))
+        line.setAttribute('stroke-width', at !== null && lit ? String(base * 2) : String(base))
+        const arrow = line.getAttribute(at !== null && lit ? 'data-arrow-lit' : 'data-arrow')
+        if (arrow) line.setAttribute('marker-end', arrow)
+      }
+
       for (const line of edgeLines) {
         if (line.getAttribute('hidden-short') === '1') continue // too short to draw
         const linkIndex = line.getAttribute('data-link')
@@ -1238,11 +1269,22 @@ export function renderGraph(
           // pointed at is anywhere on its chain. All of them at once is a
           // thicket; only the ones touching it is half the story.
           const onChain = currentChain()?.edges.has(Number(linkIndex)) ?? false
-          line.setAttribute('opacity', onChain ? '0.6' : '0')
+          setEdge(line, onChain, 0, 0, 1)
+          if (!onChain) line.setAttribute('opacity', '0')
           continue
         }
-        const touched = emphasised() !== null && (keyOf(line) === emphasised() || emphasised() === seedKey)
-        line.setAttribute('opacity', emphasised() === null ? '0.4' : touched ? '0.75' : '0.07')
+        /**
+         * The edge to the seed is lit for the whole neighbourhood, not just
+         * for the mark under the pointer.
+         *
+         * Everything on the plot is there because of its relation to this
+         * work, and lighting one work's link to it while its neighbours' links
+         * stay faint shows a fragment of the structure being asked about. The
+         * seed itself lights all of them, since all of them are its own.
+         */
+        const at = emphasised()
+        const related = at !== null && (at === seedKey || (currentChain()?.keys.has(keyOf(line)) ?? false))
+        setEdge(line, related, 0.4, 0.06, 1.2)
       }
 
       // A tick whose value has moved out of the plot is hidden rather than

@@ -765,8 +765,10 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
             `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
             `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
             `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
+            `data-arrow="url(#${uid}-arrow-${node.role === 'reference' ? 'ref' : 'cite'})" ` +
+            `data-arrow-lit="url(#${uid}-arrow-${node.role === 'reference' ? 'ref' : 'cite'}-lit)" ` +
             `stroke="${colorFor(node.role, theme)}" stroke-width="1.2" opacity="${ends.hidden ? 0 : 0.4}" ` +
-            `marker-end="url(#${uid}-${node.role === 'reference' ? 'arrow-ref' : 'arrow-cite'})"/>`
+            `marker-end="url(#${uid}-arrow-${node.role === 'reference' ? 'ref' : 'cite'})"/>`
           )
         })
         .join('')
@@ -793,27 +795,38 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         `x2="${ends.x2.toFixed(1)}" y2="${ends.y2.toFixed(1)}" ` +
         `data-from="${from.x.toFixed(1)},${from.y.toFixed(1)}" data-to="${to.x.toFixed(1)},${to.y.toFixed(1)}" ` +
         `data-gaps="${(from.radius + 2).toFixed(1)},${(to.radius + 7).toFixed(1)}" ` +
+        `data-arrow="url(#${uid}-arrow-link)" data-arrow-lit="url(#${uid}-arrow-link-lit)" ` +
         `stroke="${theme.muted}" stroke-width="1" opacity="0" ` +
         `marker-end="url(#${uid}-arrow-link)"/>`
       )
     })
     .join('')
 
+  /**
+   * Two sizes of every head: at rest, and while its edge is lit.
+   *
+   * markerUnits is userSpaceOnUse, so a head does not follow its line's
+   * stroke-width -- which is what keeps it from ballooning under zoom, and
+   * also what would leave a thickened line ending in the same small point.
+   * Two markers and a swap costs less than giving that up.
+   */
+  const arrow = (name: string, fill: string, size: number): string =>
+    `<marker id="${uid}-arrow-${name}" viewBox="0 0 8 8" refX="7" refY="4" ` +
+    `markerWidth="${size}" markerHeight="${size}" markerUnits="userSpaceOnUse" orient="auto">` +
+    `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${fill}" opacity="0.85"/></marker>`
+
   const arrowDefs =
     `<defs>` +
     `<clipPath id="${uid}-plot-area"><rect x="${AXIS_GUTTER.left}" y="0" ` +
     `width="${layout.width - AXIS_GUTTER.left}" height="${layout.height - AXIS_GUTTER.bottom}"/></clipPath>` +
-    `<marker id="${uid}-arrow-ref" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
-    `markerUnits="userSpaceOnUse" orient="auto">` +
-    `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.reference}" opacity="0.8"/></marker>` +
-    `<marker id="${uid}-arrow-cite" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" ` +
-    `markerUnits="userSpaceOnUse" orient="auto">` +
-    `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.citing}" opacity="0.8"/></marker>` +
+    arrow('ref', theme.reference, 7) +
+    arrow('ref-lit', theme.reference, 11) +
+    arrow('cite', theme.citing, 7) +
+    arrow('cite-lit', theme.citing, 11) +
     // Plain ink for the paths between the surrounding works: the three hues
     // mean a work's relation to the seed, and these lines are about neither.
-    `<marker id="${uid}-arrow-link" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" ` +
-    `markerUnits="userSpaceOnUse" orient="auto">` +
-    `<path d="M0,0.5 L7.5,4 L0,7.5 z" fill="${theme.muted}" opacity="0.8"/></marker>` +
+    arrow('link', theme.muted, 6) +
+    arrow('link-lit', theme.muted, 10) +
     `</defs>`
 
   /**

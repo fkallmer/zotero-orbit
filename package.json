@@ -1,6 +1,6 @@
 {
   "name": "zotero-orbit",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "description": "Citation counts, context and a citation graph for Zotero items",
   "author": "Falk Kallmer",
