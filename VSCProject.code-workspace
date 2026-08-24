@@ -5,7 +5,7 @@
     }
   ],
   "settings": {
-    "window.title": "zotero-citation-tally",
+    "window.title": "zotero-orbit",
     "extensions.ignoreRecommendations": false,
     "editor.formatOnSave": true,
     "[javascript][javascriptreact][typescript][typescriptreact]": {

@@ -90,15 +90,39 @@ test('every locale ships the same set of FTL files', () => {
   }
 })
 
-test('ids match per file, not merely across the union', () => {
-  // A union comparison would pass if a `pref-*` id were misfiled into addon.ftl,
-  // where the preferences document could never reach it.
+/**
+ * A translation may be partial; it may not be wrong.
+ *
+ * Fluent falls back to the reference locale for any id a translation does not
+ * declare, so an incomplete file is the ordinary state of translated software
+ * and costs a reader nothing. Demanding completeness costs them something
+ * else: it is what fills a locale with the reference language under another
+ * language's name, which is a claim rather than a translation.
+ *
+ * What must hold is the other direction. An id in a translation that the
+ * reference lacks reaches nobody -- it is a typo, a rename that was applied to
+ * one file, or a string retired everywhere but here.
+ */
+test('a translation declares no id the reference locale lacks', () => {
   for (const file of REFERENCE_FILES) {
-    const expected = [...read(REFERENCE_LOCALE, file).messages.keys()].sort()
+    const known = read(REFERENCE_LOCALE, file).messages
     for (const locale of LOCALES) {
       if (locale === REFERENCE_LOCALE) continue
-      assert.deepEqual([...read(locale, file).messages.keys()].sort(), expected, `${locale}/${file} ids`)
+      const orphans = [...read(locale, file).messages.keys()].filter((id) => !known.has(id))
+      assert.deepEqual(orphans, [], `${locale}/${file} declares ids that ${REFERENCE_LOCALE} does not`)
     }
+  }
+})
+
+test('a file misfiled between bundles is still caught', () => {
+  // The union of all ids would hide a `pref-*` id sitting in addon.ftl, where
+  // the preferences document could never reach it.
+  const prefIds = read(REFERENCE_LOCALE, 'preferences.ftl').messages
+  for (const id of read(REFERENCE_LOCALE, 'addon.ftl').messages.keys()) {
+    assert.ok(!id.startsWith('pref-'), `${id} is in addon.ftl but named for the preferences bundle`)
+  }
+  for (const id of prefIds.keys()) {
+    assert.ok(id.startsWith('pref'), `${id} is in preferences.ftl but not named for it`)
   }
 })
 
@@ -134,7 +158,8 @@ test('translations keep the same attributes and variables', () => {
       const translated = read(locale, file).messages
       for (const [id, message] of reference) {
         const other = translated.get(id)
-        assert.ok(other, `${locale}/${file} is missing ${id}`)
+        // Absent is fine -- Fluent falls back. Present and different is not.
+        if (!other) continue
         assert.deepEqual(
           [...other.attributes].sort(),
           [...message.attributes].sort(),
@@ -153,11 +178,10 @@ test('translations keep the same attributes and variables', () => {
 test('every id the pane sets dynamically lives in preferences.ftl', () => {
   // The generated FluentMessageId union spans all files, so the type system
   // cannot tell that a pane id is reachable from the pane's own bundle.
-  for (const locale of LOCALES) {
-    const ids = read(locale, 'preferences.ftl').messages
-    for (const id of PREFS_MESSAGE_IDS) {
-      assert.ok(ids.has(id), `${locale}/preferences.ftl is missing ${id}`)
-    }
+  // The reference locale must carry them all; a translation falls back.
+  const ids = read(REFERENCE_LOCALE, 'preferences.ftl').messages
+  for (const id of PREFS_MESSAGE_IDS) {
+    assert.ok(ids.has(id), `${REFERENCE_LOCALE}/preferences.ftl is missing ${id}`)
   }
 })
 
@@ -196,6 +220,7 @@ test('XUL widgets are localized by attribute, never by value', () => {
     const messages = read(locale, 'preferences.ftl').messages
     for (const { tag, id } of widgets) {
       const message = messages.get(id)
+      if (locale !== REFERENCE_LOCALE && !message) continue
       assert.ok(message, `${locale}: <${tag}> uses ${id}, which preferences.ftl does not define`)
       assert.ok(message.attributes.has('label'), `${locale}: ${id} is on a <${tag}> and needs a .label attribute`)
       assert.equal(
@@ -281,6 +306,9 @@ test('item pane section ids are attribute-only, like Zotero’s own', () => {
     const messages = read(locale, 'addon.ftl').messages
     for (const [id, attribute] of Object.entries(expected)) {
       const message = messages.get(id)
+      // The reference locale must define it; a translation need not, but if it
+      // does, the same rule applies -- Fluent would wreck the section either way.
+      if (locale !== REFERENCE_LOCALE && !message) continue
       assert.ok(message, `${locale}: addon.ftl does not define ${id}`)
       assert.ok(message.attributes.has(attribute), `${locale}: ${id} needs a .${attribute} attribute`)
       assert.equal(

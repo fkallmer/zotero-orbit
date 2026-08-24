@@ -1,6 +1,11 @@
+# Chinese translations only.
+#
+# Every message not listed here falls back to en-US, which is what Fluent does
+# for a missing id. The file used to carry English text under a zh-CN name for
+# most of its entries -- a claim of a translation that was never made, and one
+# that a Chinese reader would have discovered by using it.
 startup-begin = 引用计数正在加载
 startup-finish = 引用计数已就绪
-startup-progress = [{ $percent }%] { $message }
 menuitem-update-citation-tallies =
     .label = 更新引用计数
 menuitem-retally-outdated-citations =
@@ -22,11 +27,6 @@ auto-update-stopped = 自动更新已停止：{ $error }
 auto-update-completed = 自动更新完成：{ $updated }/{ $total } 个项目已更新
 
 # Database display names
-database-crossref = Crossref
-database-googlescholar = Google Scholar
-database-inspire = INSPIRE
-database-openalex = OpenAlex
-database-semanticscholar = SemanticScholar
 
 # Semantic Scholar API key
 semantic-scholar-key-rejected = Semantic Scholar 拒绝了您的 API 密钥。引用计数已停止使用它，稍后会自动重试。
@@ -34,137 +34,18 @@ semantic-scholar-unavailable = Semantic Scholar 不可用，已被关闭。其�
 
 # Column and tooltip
 column-citations = 引用
-tooltip-citation-tallies = { $displayName }：{ $count }
 
 # Item pane section
 # Attribute-only, like Zotero's own section strings (section-tags, sidenav-info).
 # A Fluent message with a *value* is written into the element's textContent,
 # which wipes the collapsible-section's internal structure -- header icon,
 # twisty and body all disappear and only the bare text remains.
-pane-header =
-  .label = Citation Details
-pane-sidenav =
-  .tooltiptext = Citation Details
-pane-refresh =
-  .tooltiptext = Refresh from OpenAlex
-pane-loading = Loading OpenAlex data...
-pane-refreshing = Refreshing all sources...
-pane-refresh-failed = Refresh failed. See the debug output for details.
-pane-no-openalex = No OpenAlex record for this item. Works without a DOI or arXiv ID cannot be looked up there.
-pane-retracted = This work has been retracted.
-pane-heading-citations = Citations
-pane-divergence-note = The sources disagree substantially. Databases that index by DOI cannot see books, chapters or non-English work, where Google Scholar often can.
-pane-label-fwci = Field-weighted impact
-pane-label-percentile = Percentile
-pane-heading-history = Citations per year
-pane-heading-access = Open Access
-pane-label-oa-status = Status
-pane-link-fulltext = Open full text
-pane-label-apc = Publication charge
-pane-heading-journal = Journal
-pane-label-journal = Name
-pane-label-mean-citedness = 2-year mean citedness
-pane-label-h-index = h-index
-pane-label-i10-index = i10-index
-pane-label-doaj = In DOAJ
-pane-value-yes = yes
-pane-value-no = no
-pane-heading-authors = Authors
-pane-heading-institutions = Institutions
-pane-heading-funding = Funding
 
 # Explanations, shown by the info toggle. Precision matters more than brevity
 # here: several of these look like metrics they are not.
 # Read with getString() and set as a title attribute by hand, so this one
 # needs a value -- unlike the header strings, which Fluent applies itself.
-pane-info-toggle = Explain these values
-pane-hint-fwci = Citations compared to other works of the same age and field. 1.0 is the field average, 2.0 is twice as cited as typical. Comparable across disciplines, unlike a raw count.
-pane-hint-percentile = Where this work sits among everything published that year. 90–99 means it is in the top tenth by citations.
-pane-hint-mean-citedness = OpenAlex's 2-year mean citedness for the journal: average citations to articles from the two preceding years. Comparable in spirit to a Journal Impact Factor, but computed from open data — not Clarivate's JIF, and not interchangeable with it.
-pane-hint-h-index = The journal has published this many articles that each have at least that many citations. Rewards a sustained body of cited work rather than a few outliers.
-pane-hint-i10-index = How many articles in the journal have at least 10 citations each.
-pane-hint-doaj = Whether the journal is listed in the Directory of Open Access Journals, a vetted index of open access journals with reviewed editorial standards.
-pane-hint-apc = The article processing charge the publisher lists for open access. What was actually paid is shown when the record has it.
-
-pane-heading-references = References
-pane-label-references = Cited works
-pane-label-references-held = In your library
-pane-reference-in-library = Already in your library
-pane-references-more = and { $count } more
-pane-hint-references = Works this paper cites, as far as Semantic Scholar resolved them — consistently more than OpenAlex finds, and still fewer than the printed bibliography. Treat it as a floor, not a count.
-pane-label-influential = Influential citations
-pane-hint-influential = Citations where Semantic Scholar judges the citing work built on this one, rather than mentioning it in passing. At ten citations, one influential versus eight is the whole story.
-
-column-fwci = Field-weighted impact
-pane-references-none = Semantic Scholar lists no references for this work.
-pane-references-elided = The publisher has asked Semantic Scholar not to serve this work's reference list through its API — { $count } references exist and are visible on the Semantic Scholar site. OpenAlex had none for this work either.
-pane-reference-cited-by = Citations of this cited work
 
 # Citation graph tab
-graph-tab-title = Graph: { $name }
-graph-placeholder-title = Citation graph
-graph-placeholder-note = Scaffolding only — no data yet. If you can read this, the tab renders.
-graph-seed-items = { $count } selected items
-graph-seed-untitled = Untitled item
-graph-seed-library = Library
-menuitem-graph-library =
-  .label = Citation graph for this library
-menuitem-graph-selection =
-  .label = Citation graph
-graph-axes-note = Mark size is how many works each one cites. Arrows point from the citing work to the cited one; point at a mark to see the paths between it and the others. Click a legend entry to take that group out. Scroll to zoom, drag to pan; hold Shift to stretch the horizontal axis alone, Alt for the vertical.
-graph-axis-x = Across
-graph-axis-y = Up
-graph-metric-year = Publication year
-graph-metric-citations = Citations
-graph-metric-references = References cited
-graph-direction-year = More recently published
-graph-direction-citations = More citations
-graph-direction-references = Cites more works
-graph-reload = Fetch it all again, past the cache
-graph-zoom-in = Zoom in
-graph-zoom-out = Zoom out
-graph-zoom-reset = Fit everything back into view
-graph-center-seed = Centre on this work
 # Singular: labels one work in the card and the detail strip.
-graph-role-seed = This work
-graph-role-reference = Reference
-graph-role-citing = Citation
 # Plural: the legend, where each carries a count.
-graph-legend-seed = This work
-graph-legend-reference = References
-graph-legend-citing = Citations
-graph-in-library = In your library
-graph-library-only = Only in your library
-graph-library-missing = Not in your library
-graph-card-title = Untitled work
-graph-card-citations = { $count } citations
-graph-card-references = cites { $count } works
-graph-card-doi = Open DOI
-graph-card-source = Semantic Scholar
-graph-card-graph = Graph from here
-graph-card-item = Show in library
-graph-card-close = Close
-graph-card-no-doi = No DOI, so there is nowhere to open it.
-graph-no-values = None of the surrounding works carry both values the axes ask for, so there is nothing to place.
-graph-dropped-no-value = { $count } not shown, missing a value
-graph-loading = Gathering references and citing works…
-graph-step-record = Looking this work up
-graph-step-references = Reading its references
-graph-step-citing = Finding what cites it
-graph-step-library = Checking your library
-graph-step-links = Tracing the paths between them
-graph-highlight = Highlight
-graph-links = Follow
-graph-links-both = References and citations
-graph-links-references = References only
-graph-links-citations = Citations only
-graph-links-hint = Which way to follow the paths out of the work under the pointer: what it cites, what cites it, or both.
-graph-highlight-hint = How far along the citation paths to light up from the work under the pointer. One link is what it is directly connected to.
-graph-highlight-hops = { $hops ->
-    [one] 1 link
-   *[other] { $hops } links
-  }
-graph-empty = No OpenAlex record for this item, so there is nothing to graph. Works without a DOI or arXiv ID cannot be looked up.
-graph-scale-log = Scale: logarithmic
-graph-scale-linear = Scale: linear
-graph-scale-hint = Logarithmic keeps orders of magnitude readable; linear separates works that are cited similarly often.

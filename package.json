@@ -1,6 +1,6 @@
 {
   "name": "zotero-orbit",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "private": true,
   "description": "Citation counts, context and a citation graph for Zotero items",
   "author": "Falk Kallmer",
@@ -26,7 +26,7 @@
   "homepage": "https://github.com/fkallmer/zotero-orbit#readme",
   "scripts": {
     "start": "zotero-plugin serve",
-    "build": "node utils/bump-version.mjs && zotero-plugin build && tsc --noEmit && node utils/patch-update-json.mjs && node utils/copy-xpi.mjs",
+    "build": "node utils/bump-version.mjs && zotero-plugin build && tsc --noEmit && node utils/copy-xpi.mjs",
     "scaffold:release": "zotero-plugin release",
     "release:build": "yarn build && yarn lint:check",
     "lint": "NODE_ENV=production && prettier --config prettier.config.mjs --write . && eslint --config eslint.config.mjs --fix .",
