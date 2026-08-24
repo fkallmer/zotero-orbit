@@ -214,16 +214,31 @@ function overlaps(a: Box, b: Box): boolean {
   return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1
 }
 
-/** Where the plot sits inside the frame. Identity is the fitted view. */
+/**
+ * Where the plot sits inside the frame. Identity is the fitted view.
+ *
+ * One factor per axis, not one for both. Marks keep their size whatever the
+ * zoom, so stretching only the horizontal distorts nothing -- it pulls apart a
+ * run of works published in the same few years while leaving the citation
+ * spread alone, which is exactly the crowding a single factor cannot address.
+ */
 export interface Viewport {
-  k: number
+  kx: number
+  ky: number
   tx: number
   ty: number
   width: number
   height: number
 }
 
-export const FITTED = (width: number, height: number): Viewport => ({ k: 1, tx: 0, ty: 0, width, height })
+export const FITTED = (width: number, height: number): Viewport => ({
+  kx: 1,
+  ky: 1,
+  tx: 0,
+  ty: 0,
+  width,
+  height,
+})
 
 export interface LabelPlacement {
   key: string
@@ -249,8 +264,8 @@ export interface LabelPlacement {
  */
 export function placeLabels(nodes: readonly PlacedNode[], view: Viewport): LabelPlacement[] {
   const at = (node: PlacedNode): { x: number; y: number } => ({
-    x: node.x * view.k + view.tx,
-    y: node.y * view.k + view.ty,
+    x: node.x * view.kx + view.tx,
+    y: node.y * view.ky + view.ty,
   })
 
   const byImportance = [...nodes].sort((a, b) => {
@@ -491,10 +506,10 @@ export function edgeEnds(
   to: { x: number; y: number; radius: number },
   view: Viewport,
 ): { x1: number; y1: number; x2: number; y2: number; hidden: boolean } {
-  const fx = from.x * view.k + view.tx
-  const fy = from.y * view.k + view.ty
-  const tox = to.x * view.k + view.tx
-  const toy = to.y * view.k + view.ty
+  const fx = from.x * view.kx + view.tx
+  const fy = from.y * view.ky + view.ty
+  const tox = to.x * view.kx + view.tx
+  const toy = to.y * view.ky + view.ty
   const dx = tox - fx
   const dy = toy - fy
   const length = Math.hypot(dx, dy) || 1
@@ -569,7 +584,7 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         .map((node) => {
           const from = node.role === 'reference' ? seed : node
           const to = node.role === 'reference' ? node : seed
-          const ends = edgeEnds(from, to, { k: 1, tx: 0, ty: 0, width: layout.width, height: layout.height })
+          const ends = edgeEnds(from, to, FITTED(layout.width, layout.height))
           // The centres and the two gaps travel with the line, because zoom
           // moves the ends without changing how far the head sits off a mark:
           // the marks keep their size, so the gaps are screen distances now.

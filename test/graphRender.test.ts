@@ -64,6 +64,14 @@ const { window, document, DOMParser } = parseHTML('<html><body><div id="tab"></d
     return 1
   }
   window.requestAnimationFrame = globals.requestAnimationFrame
+  // linkedom lays nothing out, and the wheel handler divides by the viewport
+  // width. Without a box every anchor becomes NaN and the transform with it.
+  const box = { left: 0, top: 0, right: 600, bottom: 300, width: 600, height: 300, x: 0, y: 0 }
+  window.Element.prototype.getBoundingClientRect = () => box
+  // And a size. Without one the layout is built on NaN and every assertion
+  // below counts elements that are drawn at nowhere.
+  Object.defineProperty(window.Element.prototype, 'clientWidth', { get: () => box.width, configurable: true })
+  Object.defineProperty(window.Element.prototype, 'clientHeight', { get: () => box.height, configurable: true })
   globals.addon = { data: { config: { addonID: 'test', addonRef: 'citationtally', addonInstance: 'test' } } }
   globals.ztoolkit = new Proxy({}, { get: () => noop })
 }
@@ -93,6 +101,20 @@ describe('the tab as the reader sees it', () => {
     makeNode({ key: 'ref', year: 2005, citedByCount: 1822, itemID: 42 }),
     makeNode({ key: 'cite', role: 'citing', year: 2022, citedByCount: 3 }),
   ]
+
+  it('places every mark at a real coordinate', () => {
+    // The layout is arithmetic on a measured width. When the measurement is
+    // missing that arithmetic yields NaN, nothing throws, and every mark is
+    // drawn at nowhere -- which looks exactly like the plot never rendered.
+    const { container } = render(nodes)
+    for (const mark of container.querySelectorAll('[data-mark]')) {
+      const at = mark.getAttribute('data-at') ?? ''
+      assert.ok(
+        at.split(',').every((value: string) => Number.isFinite(Number(value))),
+        `a mark sits at "${at}"`,
+      )
+    }
+  })
 
   it('puts an actual drawing in the container', () => {
     // The failure this exists for: a parse error left the plot empty while
@@ -141,6 +163,27 @@ describe('the tab as the reader sees it', () => {
     assert.ok(container.querySelectorAll('div').length > before, 'nothing was added')
     fire(document, 'keydown', { key: 'Escape' })
     assert.equal(container.querySelectorAll('div').length, before)
+  })
+
+  it('zooms one axis alone when the wheel carries a modifier', () => {
+    const { container } = render(nodes)
+    const marks = () =>
+      [...container.querySelectorAll('[data-mark]')].map((mark: any) =>
+        (mark.getAttribute('transform') ?? '')
+          .match(/translate\(([-\d.]+),([-\d.]+)\)/)
+          ?.slice(1, 3)
+          .map(Number),
+      )
+    const before = marks()
+    const svg = container.querySelector('svg[role="img"]') ?? container.querySelector('svg')
+    // A firm scroll up, with Shift: horizontal only.
+    fire(svg, 'wheel', { deltaY: -400, deltaMode: 0, shiftKey: true, clientX: 300, clientY: 150 })
+    const after = marks()
+
+    const movedX = before.some((point: any, index: number) => Math.abs(point[0] - after[index][0]) > 1)
+    const movedY = before.some((point: any, index: number) => Math.abs(point[1] - after[index][1]) > 0.01)
+    assert.ok(movedX, 'the horizontal did not move')
+    assert.ok(!movedY, 'the vertical moved, and should not have')
   })
 
   it('says so rather than drawing nothing when no work can be placed', () => {

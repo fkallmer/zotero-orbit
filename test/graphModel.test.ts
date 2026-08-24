@@ -243,7 +243,8 @@ describe('zoom spreads the marks without inflating them', () => {
     const middleY = crowd.reduce((sum, placed) => sum + placed.y, 0) / crowd.length
     const k = 4
     const zoomed = placeLabels(layout.nodes, {
-      k,
+      kx: k,
+      ky: k,
       tx: options.width / 2 - middleX * k,
       ty: options.height / 2 - middleY * k,
       width: options.width,
@@ -256,13 +257,56 @@ describe('zoom spreads the marks without inflating them', () => {
 
   it('gives no label to a mark that has left the viewport', () => {
     const offscreen = placeLabels(layout.nodes, {
-      k: 1,
+      kx: 1,
+      ky: 1,
       tx: 5000,
       ty: 0,
       width: options.width,
       height: options.height,
     })
     assert.equal(offscreen.length, 0)
+  })
+})
+
+describe('zooming one axis alone', () => {
+  const options = { width: 600, height: 300, padding: { top: 10, right: 10, bottom: 20, left: 30 } }
+  const layout = buildGraphLayout(
+    [
+      node({ key: 'a', role: 'seed', year: 2000, citedByCount: 10 }),
+      node({ key: 'b', year: 2004, citedByCount: 1000 }),
+    ],
+    options,
+  )!
+  const view = (kx: number, ky: number) => ({ kx, ky, tx: 0, ty: 0, width: 1e6, height: 1e6 })
+  const gap = (kx: number, ky: number, axis: 'x' | 'y'): number => {
+    const placements = placeLabels(layout.nodes, view(kx, ky))
+    const at = (key: string) => placements.find((placement) => placement.key === key)!
+    return Math.abs(at('a')[axis] - at('b')[axis])
+  }
+
+  it('pulls the marks apart along the axis it is given', () => {
+    // Marks keep their size at any zoom, so this is not a distortion -- it
+    // separates works of the same few years without touching anything about
+    // their citation counts, which one shared factor cannot do.
+    assert.ok(gap(3, 1, 'x') > gap(1, 1, 'x') * 2.5)
+    assert.ok(gap(1, 3, 'y') > gap(1, 1, 'y') * 2.5)
+  })
+
+  it('leaves the other axis exactly where it was', () => {
+    // Asserted on the geometry rather than on the labels: a label moves to
+    // another side of its mark once the crowding changes, which is the point
+    // of laying them out again and says nothing about the axis.
+    const from = { x: 100, y: 100, radius: 10 }
+    const to = { x: 200, y: 200, radius: 10 }
+    const rest = edgeEnds(from, to, { kx: 1, ky: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    const wide = edgeEnds(from, to, { kx: 3, ky: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    const tall = edgeEnds(from, to, { kx: 1, ky: 3, tx: 0, ty: 0, width: 600, height: 300 })
+    assert.ok(wide.x2 > rest.x2 * 2)
+    assert.ok(tall.y2 > rest.y2 * 2)
+    // The mark itself has not moved on the untouched axis: y stays near 100,
+    // off it only by the gap that holds the line clear of the mark.
+    assert.ok(Math.abs(wide.y1 - 100) < 12, `y drifted to ${wide.y1}`)
+    assert.ok(Math.abs(tall.x1 - 100) < 12, `x drifted to ${tall.x1}`)
   })
 })
 
@@ -273,8 +317,8 @@ describe('edgeEnds', () => {
   it('holds the arrowhead the same distance off its target at any zoom', () => {
     // The marks no longer scale, so the gap is a screen distance. Scaling it
     // with the data would bury the head under the mark when zoomed in.
-    const near = edgeEnds(from, to, { k: 1, tx: 0, ty: 0, width: 600, height: 300 })
-    const far = edgeEnds(from, to, { k: 4, tx: 0, ty: 0, width: 600, height: 300 })
+    const near = edgeEnds(from, to, { kx: 1, ky: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    const far = edgeEnds(from, to, { kx: 4, ky: 4, tx: 0, ty: 0, width: 600, height: 300 })
     assert.equal(Math.round(300 - near.x2), 17)
     assert.equal(Math.round(300 * 4 - far.x2), 17)
   })
@@ -282,12 +326,12 @@ describe('edgeEnds', () => {
   it('hides an edge whose ends have come closer than the two gaps', () => {
     // A head pointing backwards through its own mark states the opposite of
     // the truth, so nothing is drawn at all.
-    const squeezed = edgeEnds(from, { ...to, x: 110 }, { k: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    const squeezed = edgeEnds(from, { ...to, x: 110 }, { kx: 1, ky: 1, tx: 0, ty: 0, width: 600, height: 300 })
     assert.equal(squeezed.hidden, true)
   })
 
   it('survives two marks at exactly the same point', () => {
-    const same = edgeEnds(from, { ...from }, { k: 1, tx: 0, ty: 0, width: 600, height: 300 })
+    const same = edgeEnds(from, { ...from }, { kx: 1, ky: 1, tx: 0, ty: 0, width: 600, height: 300 })
     assert.equal(same.hidden, true)
     assert.ok(!Number.isNaN(same.x1))
   })

@@ -510,6 +510,23 @@ function readMetricPref(name: 'graphAxisX' | 'graphAxisY', fallback: AxisMetric)
   return (AXIS_METRICS as readonly string[]).includes(stored) ? (stored as AxisMetric) : fallback
 }
 
+/** Which axis a zoom acts on. */
+type ZoomAxes = 'both' | 'x' | 'y'
+
+/**
+ * The modifier decides which axis the wheel moves.
+ *
+ * Shift for the horizontal and Alt for the vertical, which is the convention
+ * charting tools have settled on; without a modifier both move together, so
+ * the ordinary gesture is unchanged. Ctrl and Meta are left alone -- the
+ * platform and Zotero already claim them.
+ */
+function axesFor(event: WheelEvent): ZoomAxes {
+  if (event.shiftKey) return 'x'
+  if (event.altKey) return 'y'
+  return 'both'
+}
+
 /** How much one wheel notch zooms. Small: a trackpad sends a stream of them. */
 const ZOOM_PER_PIXEL = 0.0022
 /** Per event, so one flick of a coarse wheel cannot cross the whole range. */
@@ -800,7 +817,8 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     const yTicks = all('[data-axis="y"]')
     const xTicks = all('[data-axis="x"]')
 
-    let k = 1
+    let kx = 1
+    let ky = 1
     let tx = 0
     let ty = 0
     /** One update per frame, however many wheel events arrive between them. */
@@ -812,11 +830,11 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     }
 
     const apply = (): void => {
-      const view = { k, tx, ty, width, height }
+      const view = { kx, ky, tx, ty, width, height }
 
       for (const mark of marks) {
         const [x, y] = pair(mark, 'data-at')
-        mark.setAttribute('transform', `translate(${(x * k + tx).toFixed(2)},${(y * k + ty).toFixed(2)})`)
+        mark.setAttribute('transform', `translate(${(x * kx + tx).toFixed(2)},${(y * ky + ty).toFixed(2)})`)
       }
 
       for (const line of edgeLines) {
@@ -853,13 +871,13 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
       // stacked against the edge, where it would name a place nobody can see.
       for (const tick of yTicks) {
         const home = Number(tick.getAttribute('data-pos'))
-        const at = home * k + ty
+        const at = home * ky + ty
         tick.setAttribute('transform', `translate(0,${(at - home).toFixed(2)})`)
         tick.setAttribute('opacity', at > 8 && at < height - AXIS_GUTTER.bottom ? '1' : '0')
       }
       for (const tick of xTicks) {
         const home = Number(tick.getAttribute('data-pos'))
-        const at = home * k + tx
+        const at = home * kx + tx
         tick.setAttribute('transform', `translate(${(at - home).toFixed(2)},0)`)
         tick.setAttribute('opacity', at > AXIS_GUTTER.left && at < width - 4 ? '1' : '0')
       }
@@ -874,17 +892,31 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
       })
     }
 
-    /** factor > 1 zooms out; the anchor is a fraction of the viewport, 0 to 1. */
-    const zoomBy = (factor: number, atX = 0.5, atY = 0.5): void => {
+    /**
+     * factor > 1 zooms out; the anchor is a fraction of the viewport, 0 to 1.
+     *
+     * `axes` says which of them moves. Zooming one alone is not a distortion
+     * here -- the marks keep their size at any zoom, so a horizontal stretch
+     * pulls apart works published in the same few years and leaves everything
+     * about their citation counts exactly where it was.
+     */
+    const zoomBy = (factor: number, atX = 0.5, atY = 0.5, axes: ZoomAxes = 'both'): void => {
       // Clamped: far enough in to pull a dense cluster apart, not so far out
       // that the marks pile back on top of each other.
-      const next = Math.min(15, Math.max(1 / 3, k / factor))
+      const clamp = (value: number): number => Math.min(15, Math.max(1 / 3, value))
       const anchorX = atX * width
       const anchorY = atY * height
       // Hold the point under the anchor still while the scale changes around it.
-      tx = anchorX - (anchorX - tx) * (next / k)
-      ty = anchorY - (anchorY - ty) * (next / k)
-      k = next
+      if (axes !== 'y') {
+        const next = clamp(kx / factor)
+        tx = anchorX - (anchorX - tx) * (next / kx)
+        kx = next
+      }
+      if (axes !== 'x') {
+        const next = clamp(ky / factor)
+        ty = anchorY - (anchorY - ty) * (next / ky)
+        ky = next
+      }
       schedule()
     }
 
@@ -899,7 +931,12 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
         const clamped = Math.max(-ZOOM_STEP_LIMIT, Math.min(ZOOM_STEP_LIMIT, raw))
         const rect = svg.getBoundingClientRect()
         // Zoom about the pointer, so the mark under it stays put.
-        zoomBy(Math.exp(clamped), (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
+        zoomBy(
+          Math.exp(clamped),
+          (event.clientX - rect.left) / rect.width,
+          (event.clientY - rect.top) / rect.height,
+          axesFor(event),
+        )
       },
       { passive: false },
     )
@@ -931,14 +968,15 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     return {
       zoomBy,
       reset: () => {
-        k = 1
+        kx = 1
+        ky = 1
         tx = 0
         ty = 0
         schedule()
       },
       centre: (x: number, y: number) => {
-        tx = width / 2 - x * k
-        ty = height / 2 - y * k
+        tx = width / 2 - x * kx
+        ty = height / 2 - y * ky
         schedule()
       },
     }
@@ -948,8 +986,13 @@ export function renderGraph(win: Window, container: Element, seed: GraphSeed, no
     // The plot is about to be replaced; a card anchored to the old one would
     // be orphaned over the new.
     closeCard()
-    const width = Math.max(320, plot.clientWidth)
-    const height = Math.max(220, plot.clientHeight)
+    // Number.isFinite, not just Math.max: an unmeasured element yields
+    // undefined, Math.max(320, undefined) is NaN, and a layout built on NaN
+    // renders every mark at nowhere -- an empty plot with nothing to see and
+    // nothing thrown.
+    const span = (measured: number, floor: number): number => Math.max(floor, Number.isFinite(measured) ? measured : 0)
+    const width = span(plot.clientWidth, 320)
+    const height = span(plot.clientHeight, 220)
     const layout = buildGraphLayout(nodes, { width, height, padding: PADDING, scale, xMetric, yMetric })
     yCaption.textContent = getString(METRIC_DIRECTION[yMetric])
     xCaption.textContent = getString(METRIC_DIRECTION[xMetric])
