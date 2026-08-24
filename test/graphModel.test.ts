@@ -34,7 +34,6 @@ function node(partial: Partial<GraphNode> & { key: string }): GraphNode {
     author: null,
     referenceCount: null,
     itemID: null,
-    depth: partial.role === 'seed' ? 0 : 1,
     ...partial,
   }
 }
@@ -430,13 +429,22 @@ describe('chainFrom', () => {
   ]
 
   it('follows the arrows in both directions from where it starts', () => {
-    const chain = chainFrom(links, 'b')
+    const chain = chainFrom(links, 'b', 1)
     assert.deepEqual([...chain.keys].sort(), ['a', 'b', 'c', 'd'])
   })
 
-  it('reaches all the way along, not just one hop', () => {
-    // From a: a -> b -> c. Two hops, and c is the point of the exercise.
-    assert.ok(chainFrom(links, 'a').keys.has('c'))
+  it('stops at one hop, which is what "connected to this" means', () => {
+    // From a: a -> b is one hop, b -> c is two. c is not what a is connected
+    // to, and lighting it would say otherwise.
+    const one = chainFrom(links, 'a', 1)
+    assert.ok(one.keys.has('b'))
+    assert.ok(!one.keys.has('c'), 'reached two hops when asked for one')
+    assert.deepEqual([...one.edges], [0])
+  })
+
+  it('goes further when asked to, and no further than asked', () => {
+    assert.ok(chainFrom(links, 'a', 2).keys.has('c'))
+    assert.deepEqual([...chainFrom(links, 'a', 2).edges].sort(), [0, 1])
   })
 
   it('does not cross into a work that merely shares a neighbour', () => {
@@ -444,17 +452,13 @@ describe('chainFrom', () => {
     // links as undirected would sweep them together -- and on a real graph it
     // sweeps in everything: 24 paths over 17 works give every single node the
     // same component of 17.
-    assert.ok(!chainFrom(links, 'a').keys.has('d'))
+    assert.ok(!chainFrom(links, 'a', 3).keys.has('d'))
   })
 
   it('leaves an unrelated pair out entirely', () => {
-    const chain = chainFrom(links, 'a')
+    const chain = chainFrom(links, 'a', 3)
     assert.ok(!chain.keys.has('e') && !chain.keys.has('f'))
     assert.ok(!chain.edges.has(3))
-  })
-
-  it('names the paths it walked, so they can be lit', () => {
-    assert.deepEqual([...chainFrom(links, 'a').edges].sort(), [0, 1])
   })
 
   it('terminates on a cycle', () => {
@@ -463,11 +467,17 @@ describe('chainFrom', () => {
       { from: 'x', to: 'y' },
       { from: 'y', to: 'x' },
     ]
-    assert.deepEqual([...chainFrom(cyclic, 'x').keys].sort(), ['x', 'y'])
+    assert.deepEqual([...chainFrom(cyclic, 'x', 3).keys].sort(), ['x', 'y'])
   })
 
   it('returns just the mark itself when nothing links to it', () => {
-    assert.deepEqual([...chainFrom(links, 'lonely').keys], ['lonely'])
+    assert.deepEqual([...chainFrom(links, 'lonely', 3).keys], ['lonely'])
+  })
+
+  it('lights nothing at all below one hop', () => {
+    const none = chainFrom(links, 'a', 0)
+    assert.deepEqual([...none.keys], ['a'])
+    assert.equal(none.edges.size, 0)
   })
 })
 

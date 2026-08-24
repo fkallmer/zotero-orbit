@@ -34,7 +34,6 @@ function makeNode(partial: Partial<GraphNode> & { key: string }): GraphNode {
     author: 'Author',
     referenceCount: 12,
     itemID: null,
-    depth: partial.role === 'seed' ? 0 : 1,
     ...partial,
   }
 }
@@ -146,9 +145,9 @@ describe('the tab as the reader sees it', () => {
     assert.ok(container.querySelectorAll('[data-axis="y"]').length > 0)
     // Scale toggle, four rail buttons, and one filter switch per group.
     assert.equal(container.querySelectorAll('button').length, 5 + container.querySelectorAll('[data-filter]').length)
-    // One per axis, plus the depth control.
+    // One per axis, plus the highlight-depth control.
     assert.equal(container.querySelectorAll('select').length, 3)
-    assert.ok(container.querySelector('[data-control="depth"]'), 'no depth control')
+    assert.ok(container.querySelector('[data-control="hops"]'), 'no highlight control')
   })
 
   it('survives a work with no year, no counts and no title', () => {
@@ -305,22 +304,36 @@ describe('the tab as the reader sees it', () => {
       assert.equal(lit(draw()), 0)
     })
 
-    it('lights the whole line of descent, not just the hop it touches', () => {
-      // Pointing at a: a -> b is the hop, b -> c is the rest of the chain,
-      // and the chain is what the paths were drawn to show.
+    const opacityOf = (container: any, key: string) =>
+      Number(container.querySelector(`[data-mark][data-key="${key}"]`)?.getAttribute('opacity') ?? '1')
+
+    it('lights only what the mark is directly connected to', () => {
+      // a -> b is the connection; b -> c is b's business. Lighting it would
+      // answer a question about b while the pointer is on a.
       const container = draw()
       fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
-      assert.equal(lit(container), 2)
+      assert.equal(lit(container), 1)
     })
 
-    it('keeps the works on the chain out of the dimmed rest', () => {
+    it('sets the directly connected work apart from the rest', () => {
       const container = draw()
       fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
-      const opacity = (key: string) =>
-        Number(container.querySelector(`[data-mark][data-key="${key}"]`)?.getAttribute('opacity') ?? '1')
-      assert.equal(opacity('a'), 1)
-      assert.ok(opacity('c') > opacity('d'), 'a work two hops along reads no better than an unrelated one')
-      assert.ok(opacity('c') < 1, 'only the mark being pointed at should be at full strength')
+      assert.equal(opacityOf(container, 'a'), 1)
+      assert.ok(opacityOf(container, 'b') > opacityOf(container, 'd'), 'the connected work reads like an unrelated one')
+      assert.ok(opacityOf(container, 'b') < 1, 'only the mark being pointed at should be at full strength')
+      assert.equal(opacityOf(container, 'c'), opacityOf(container, 'd'), 'a second hop was lit')
+    })
+
+    it('reaches further when the control asks for it', () => {
+      const container = draw()
+      const select = container.querySelector('[data-control="hops"]') as any
+      for (const option of select.querySelectorAll('option')) {
+        if (option.getAttribute('value') === '2') option.selected = true
+      }
+      fire(select, 'change')
+      fire(container.querySelector('[data-mark][data-key="a"]'), 'mouseover')
+      assert.equal(lit(container), 2)
+      assert.ok(opacityOf(container, 'c') > opacityOf(container, 'd'))
     })
 
     it('puts the paths away again when the pointer leaves', () => {
@@ -331,79 +344,58 @@ describe('the tab as the reader sees it', () => {
     })
   })
 
-  describe('reaching further out', () => {
-    const twoLevels = [
+  describe('holding a mark with a click', () => {
+    const held = [
       makeNode({ key: 'seed', role: 'seed', year: 2019 }),
-      makeNode({ key: 'near', year: 2010, depth: 1 }),
-      makeNode({ key: 'far', year: 2002, depth: 2 }),
+      makeNode({ key: 'a', year: 2010 }),
+      makeNode({ key: 'b', year: 2004 }),
     ]
-    const drawWith = (grow?: (depth: number) => Promise<{ nodes: any; links: any }>) => {
+    const drawHeld = () => {
       const container = document.createElement('div')
-      container.id = `depth-${++containers}`
+      container.id = `pin-${++containers}`
       document.body.append(container)
-      renderGraph(
-        window as any,
-        container as any,
-        { kind: 'items', itemIDs: [1], name: 'x' } as any,
-        twoLevels,
-        [],
-        grow,
-      )
+      renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'x' } as any, held, [
+        { from: 'a', to: 'b' },
+      ])
       return container
     }
-    const keys = (container: any) =>
-      [...container.querySelectorAll('[data-mark]')].map((mark: any) => mark.getAttribute('data-key')).sort()
-    const pick = (container: any, level: string) => {
-      const select = container.querySelector('[data-control="depth"]') as any
-      assert.ok(select, 'no depth control')
-      // `value` is read-only, as it is in a browser: the selection lives on
-      // the options. Only the wanted one is set -- writing `selected = false`
-      // over the others clears the selection entirely here.
-      for (const option of select.querySelectorAll('option')) {
-        if (option.getAttribute('value') === level) option.selected = true
-      }
-      fire(select, 'change')
-      return select
-    }
+    const mark = (container: any, key: string) => container.querySelector(`[data-mark][data-key="${key}"] circle`)
+    const opacityOf = (container: any, key: string) =>
+      Number(container.querySelector(`[data-mark][data-key="${key}"]`)?.getAttribute('opacity') ?? '1')
 
-    it('shows one level at a time, not everything it happens to hold', () => {
-      // The pref starts at 1, so a second level already in hand stays out
-      // until it is asked for.
-      const container = drawWith()
-      assert.deepEqual(keys(container), ['near', 'seed'])
+    it('keeps the emphasis when the pointer moves off, once a mark is clicked', () => {
+      // The reason for holding it: the reader has to be able to leave the mark
+      // to reach the card, or to follow a lit path, without the plot changing
+      // under them on the way.
+      const container = drawHeld()
+      fire(mark(container, 'a'), 'click', { clientX: 20, clientY: 20 })
+      fire(container.querySelector('svg[role="img"]'), 'mouseleave')
+      assert.equal(opacityOf(container, 'a'), 1, 'the held mark lost its emphasis')
+      assert.ok(opacityOf(container, 'seed') < 1)
     })
 
-    it('reveals a level already fetched without asking for it again', () => {
-      // Every node carries the depth it was found at, so widening back into
-      // what is already held is a filter and costs nothing.
-      let calls = 0
-      const container = drawWith(async () => {
-        calls++
-        return { nodes: twoLevels, links: [] }
-      })
-      const select = pick(container, '2')
-      assert.equal(select.value, '2', 'the control did not take the change')
-      assert.deepEqual(keys(container), ['far', 'near', 'seed'])
-      assert.equal(calls, 0, 'asked the network for works it already had')
+    it('does not let the pointer take the emphasis off a held mark', () => {
+      const container = drawHeld()
+      fire(mark(container, 'a'), 'click', { clientX: 20, clientY: 20 })
+      fire(container.querySelector('[data-mark][data-key="seed"]'), 'mouseover')
+      assert.equal(opacityOf(container, 'a'), 1, 'the pointer overrode the held mark')
     })
 
-    it('narrowing never fetches', () => {
-      let calls = 0
-      const container = drawWith(async () => {
-        calls++
-        return { nodes: twoLevels, links: [] }
-      })
-      pick(container, '2')
-      pick(container, '1')
-      assert.deepEqual(keys(container), ['near', 'seed'])
-      assert.equal(calls, 0)
+    it('lets go on a click into empty space', () => {
+      const container = drawHeld()
+      fire(mark(container, 'a'), 'click', { clientX: 20, clientY: 20 })
+      fire(container.querySelector('svg[role="img"]'), 'click')
+      assert.equal(opacityOf(container, 'a'), 1, 'nothing is emphasised, so every mark is at full strength')
+      assert.equal(opacityOf(container, 'seed'), 1)
     })
 
-    it('offers no more levels than can be drawn', () => {
-      const container = drawWith()
-      const select = container.querySelector('[data-control="depth"]') as any
-      assert.ok(select, 'no depth control')
-      assert.equal(select.querySelectorAll('option').length, 3)
+    it('lets go on Escape, together with the card', () => {
+      const container = drawHeld()
+      fire(mark(container, 'a'), 'click', { clientX: 20, clientY: 20 })
+      const withCard = container.querySelectorAll('div').length
+      fire(document, 'keydown', { key: 'Escape' })
+      assert.ok(container.querySelectorAll('div').length < withCard, 'the card stayed')
+      assert.equal(opacityOf(container, 'seed'), 1, 'the emphasis outlived the card')
     })
   })
 

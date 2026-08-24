@@ -29,13 +29,7 @@ import {
   renderGraphSvg,
 } from './graphModel.core.ts'
 import { getDoiIndex, normalizeDoi } from './libraryIndex'
-import {
-  expandLevel,
-  fetchCitingWorks,
-  fetchGraphLinks,
-  fetchReferences,
-  fetchScholarlyRecord,
-} from './openAlexEnrichment'
+import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { AxisMetric, Chain, GraphLayout, GraphNode, GraphTheme, ScaleKind } from './graphModel.core.ts'
@@ -193,38 +187,22 @@ export function openGraphTab(seed: GraphSeed): void {
   void (async () => {
     try {
       const item = itemsForSeed(seed)[0]
-      const collected = item ? await collectNodes(item, false) : null
-      if (!collected || collected.nodes.length === 0) {
+      const nodes = item ? await collectNodes(item, false) : []
+      if (nodes.length === 0) {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
       }
-
-      /**
-       * Fetch out to a depth and hand back everything known at that point.
-       *
-       * The tab calls this again when the reader asks for another level. Going
-       * back inwards never calls it: the works are already in hand and the
-       * depth is on each of them, so narrowing is a filter and only widening
-       * costs anything.
-       */
-      const growTo = async (depth: number): Promise<{ nodes: GraphNode[]; links: GraphLink[] }> => {
-        await collected.grow(depth)
-        // One more request, after the nodes are known and before the paint:
-        // a graph that appears and then sprouts lines reads as a glitch.
-        let links: GraphLink[] = []
-        try {
-          links = await fetchGraphLinks(collected.nodes)
-        } catch (err) {
-          // Paths are an addition. Losing them must not cost the graph.
-          Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
-        }
-        return { nodes: collected.nodes, links }
+      // One more request, after the nodes are known and before the first
+      // paint: the placeholder is already up, and a graph that appears and
+      // then sprouts lines a second later reads as a glitch.
+      let links: GraphLink[] = []
+      try {
+        links = await fetchGraphLinks(nodes)
+      } catch (err) {
+        // Paths are an addition. Losing them must not cost the graph.
+        Zotero.debug(`Orbit: citation paths unavailable: ${String(err)}`)
       }
-
-      const startingDepth = readDepthPref()
-      if (startingDepth > 1) renderPlaceholder(win.document, container, seed, getString('graph-expanding'))
-      const { nodes, links } = await growTo(startingDepth)
-      renderGraph(win, container, seed, nodes, links, growTo)
+      renderGraph(win, container, seed, nodes, links)
       Zotero.debug(`Orbit: graph rendered with ${nodes.length} nodes and ${links.length} paths`)
     } catch (err) {
       Zotero.debug(`Orbit: graph failed: ${String(err)}`)
@@ -344,16 +322,12 @@ function themeFor(win: Window): GraphTheme {
  * item that has been tallied, so a graph over familiar items costs little. The
  * citing direction is the one genuinely new request.
  */
-async function collectNodes(
-  item: Zotero.Item,
-  force: boolean,
-): Promise<{ nodes: GraphNode[]; grow: (toDepth: number) => Promise<void> }> {
+async function collectNodes(item: Zotero.Item, force: boolean): Promise<GraphNode[]> {
   const identifiers = Helpers.getAllItemIdentifiers(item)
-  const nothing = { nodes: [] as GraphNode[], grow: async (): Promise<void> => {} }
-  if (identifiers.length === 0) return nothing
+  if (identifiers.length === 0) return []
 
   const record = await fetchScholarlyRecord(identifiers, { force })
-  if (!record) return nothing
+  if (!record) return []
 
   // Semantic Scholar first for the backward direction: measured across five
   // papers it resolves consistently more than OpenAlex, 74 against 58 on one.
@@ -389,7 +363,6 @@ async function collectNodes(
     role: GraphNode['role'],
     author: string | null = null,
     referenceCount: number | null = null,
-    depth = 1,
   ): void => {
     const key = (doi ?? title ?? '').toLowerCase()
     // A work can be both cited and citing across a wider graph; first role wins
@@ -400,7 +373,7 @@ async function collectNodes(
     // about the citation, so it is looked up here and encoded as ink rather
     // than as a fourth colour.
     const itemID = doi ? (inLibrary.get(normalizeDoi(doi)) ?? null) : null
-    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID, depth })
+    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID })
   }
 
   push(
@@ -411,7 +384,6 @@ async function collectNodes(
     'seed',
     record.authors[0]?.name.split(/\s+/).pop() ?? null,
     record.referencedWorksCount,
-    0,
   )
   for (const ref of references) {
     push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author ?? null, ref.referenceCount ?? null)
@@ -419,31 +391,7 @@ async function collectNodes(
   for (const cite of citing) {
     push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount)
   }
-
-  /**
-   * Take one more step outward, as far as `toDepth`.
-   *
-   * Returned as a closure over the same `push` the first level used, so a
-   * work found at the third level goes through the same duplicate check, the
-   * same first-role-wins rule and the same library lookup as one found at the
-   * first. Reimplementing that for the outer levels is how they would start
-   * disagreeing with the inner one.
-   */
-  const grow = async (toDepth: number): Promise<void> => {
-    for (let depth = 1; depth < toDepth; depth++) {
-      const level = nodes.filter((node) => node.depth === depth)
-      if (level.length === 0) return
-      const found = await expandLevel(level, new Set(nodes.map((node) => node.key)))
-      for (const ref of found.references) {
-        push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author, ref.referenceCount, depth + 1)
-      }
-      for (const cite of found.citing) {
-        push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount, depth + 1)
-      }
-    }
-  }
-
-  return { nodes, grow }
+  return nodes
 }
 
 const PADDING = { top: 18, right: 24, bottom: 26, left: 44 }
@@ -671,12 +619,12 @@ function axesFor(event: WheelEvent): ZoomAxes {
   return 'both'
 }
 
-/** How far out the reader can reach. Beyond three the plot is a fog. */
-export const MAX_DEPTH = 3
+/** How far the highlight can reach. Past three it stops discriminating. */
+export const MAX_HOPS = 3
 
-export function readDepthPref(): number {
-  const stored = Number(getPref('graphDepth'))
-  return Number.isFinite(stored) ? Math.min(MAX_DEPTH, Math.max(1, Math.round(stored))) : 1
+export function readHopsPref(): number {
+  const stored = Number(getPref('graphHighlightHops'))
+  return Number.isFinite(stored) ? Math.min(MAX_HOPS, Math.max(1, Math.round(stored))) : 1
 }
 
 /** How much one wheel notch zooms. Small: a trackpad sends a stream of them. */
@@ -857,10 +805,12 @@ export function renderGraph(
   seed: GraphSeed,
   nodes: GraphNode[],
   links: GraphLink[] = [],
-  growTo?: (depth: number) => Promise<{ nodes: GraphNode[]; links: GraphLink[] }>,
 ): void {
   const doc = win.document
   const theme = themeFor(win)
+
+  /** How far the highlight reaches. Remembered; nothing is fetched for it. */
+  let hops = readHopsPref()
 
   const root = el(doc, 'div')
   root.style.cssText =
@@ -878,20 +828,6 @@ export function renderGraph(
 
   // Declared before the selects, which call it; assigned after the plot exists.
   let draw = (): void => {}
-
-  /**
-   * Widening fetches, narrowing does not.
-   *
-   * Every node carries the depth it was found at, so going back in is a filter
-   * over works already in hand and costs nothing. Only reaching further out
-   * spends requests, and it says so while it does.
-   */
-  let depth = readDepthPref()
-  // Read off the works in hand rather than assumed from the setting: whatever
-  // depth they reach is a depth already paid for, and asking the network for
-  // it again would be spending twice for the same answer.
-  let deepestFetched = nodes.reduce((deepest, node) => Math.max(deepest, node.depth), depth)
-  let held = { nodes, links }
 
   const stored = String(getPref('graphLibraryFilter') ?? '')
   const filters: GraphFilters = {
@@ -944,50 +880,23 @@ export function renderGraph(
     return label
   }
 
-  const depthSelect = el(doc, 'select') as HTMLSelectElement
-  depthSelect.style.cssText =
+  const hopsSelect = el(doc, 'select') as HTMLSelectElement
+  hopsSelect.style.cssText =
     'font:inherit;font-size:11px;padding:1px 4px;border-radius:4px;' +
     'border:1px solid currentColor;background:transparent;color:inherit;opacity:.75'
-  depthSelect.setAttribute('title', getString('graph-depth-hint'))
-  depthSelect.setAttribute('data-control', 'depth')
-  for (let level = 1; level <= MAX_DEPTH; level++) {
-    const option = el(doc, 'option', getString('graph-depth-level', { args: { level } })) as HTMLOptionElement
+  hopsSelect.setAttribute('title', getString('graph-highlight-hint'))
+  hopsSelect.setAttribute('data-control', 'hops')
+  for (let level = 1; level <= MAX_HOPS; level++) {
+    const option = el(doc, 'option', getString('graph-highlight-hops', { args: { hops: level } })) as HTMLOptionElement
     option.value = String(level)
-    if (level === depth) option.selected = true
-    depthSelect.append(option)
+    if (level === hops) option.selected = true
+    hopsSelect.append(option)
   }
-  depthSelect.addEventListener('change', () => {
-    const wanted = Number(depthSelect.value)
-    depth = wanted
-    setPref('graphDepth', wanted)
-    if (wanted <= deepestFetched || !growTo) {
-      // Already in hand: a filter, and instant.
-      paintLegend()
-      draw()
-      return
-    }
-    // Reaching out. The control locks rather than queueing a second walk over
-    // the same level, and says what it is doing where the plot can be read.
-    depthSelect.disabled = true
-    strip.textContent = getString('graph-expanding')
-    void growTo(wanted)
-      .then((grown) => {
-        held = grown
-        deepestFetched = Math.max(deepestFetched, wanted)
-      })
-      .catch((err: unknown) => {
-        // The levels already fetched are still good; fall back to them rather
-        // than losing the graph over a level that could not be reached.
-        depth = deepestFetched
-        depthSelect.value = String(depth)
-        Zotero.debug(`Orbit: could not reach depth ${wanted}: ${String(err)}`)
-      })
-      .finally(() => {
-        depthSelect.disabled = false
-        fillDetailStrip(doc, strip, null, theme)
-        paintLegend()
-        draw()
-      })
+  hopsSelect.addEventListener('change', () => {
+    hops = Number(hopsSelect.value)
+    setPref('graphHighlightHops', hops)
+    // Nothing is fetched and nothing moves: the same works, lit differently.
+    showEmphasis()
   })
 
   controls.append(
@@ -1005,8 +914,8 @@ export function renderGraph(
     }),
     axisLabel(''),
     toggle,
-    axisLabel(getString('graph-depth')),
-    depthSelect,
+    axisLabel(getString('graph-highlight')),
+    hopsSelect,
   )
 
   /**
@@ -1043,6 +952,7 @@ export function renderGraph(
 
   /** The live view, replaced on every redraw. Null until the first one. */
   let view: {
+    repaint: () => void
     zoomBy: (factor: number, atX?: number, atY?: number) => void
     reset: () => void
     centre: (x: number, y: number) => void
@@ -1061,8 +971,21 @@ export function renderGraph(
   // Panning must not fire the click handler, so the two share this flag.
   let dragged = false
 
-  /** The mark under the pointer, if any. Drives emphasis and the strip. */
-  let hovered: string | null = null
+  /**
+   * What the emphasis is about: the mark held by a click, or failing that the
+   * one under the pointer.
+   *
+   * A click pins it so the reader can move the mouse to the card and read it,
+   * or study the lit paths, without the plot rearranging itself the moment
+   * they set off. The pin is the card: they are opened and dropped together,
+   * so there is one thing to dismiss rather than two.
+   */
+  let pointedAt: string | null = null
+  let pinned: string | null = null
+  const emphasised = (): string | null => pinned ?? pointedAt
+  /** Assigned once the plot exists; the strip and the repaint live there. */
+  let showEmphasis = (): void => {}
+
   let byKey = new Map<string, GraphNode>()
 
   /** At most one card at a time, dismissed by Escape or a click off it. */
@@ -1070,8 +993,12 @@ export function renderGraph(
   let escapeHandler: ((event: KeyboardEvent) => void) | null = null
 
   const closeCard = (): void => {
+    // The pin and the card are one thing to the reader, so they go together.
+    const wasPinned = pinned !== null
+    pinned = null
     card?.remove()
     card = null
+    if (wasPinned) showEmphasis()
     if (escapeHandler) doc.removeEventListener('keydown', escapeHandler)
     escapeHandler = null
   }
@@ -1144,11 +1071,14 @@ export function renderGraph(
      * answer does not change while it does.
      */
     let chainFor: string | null = null
+    let chainHops = hops
     let chain: Chain | null = null
     const currentChain = (): Chain | null => {
-      if (hovered !== chainFor) {
-        chainFor = hovered
-        chain = hovered === null ? null : chainFrom(layout.links, hovered)
+      const at = emphasised()
+      if (at !== chainFor || hops !== chainHops) {
+        chainFor = at
+        chainHops = hops
+        chain = at === null ? null : chainFrom(layout.links, at, hops)
       }
       return chain
     }
@@ -1161,8 +1091,8 @@ export function renderGraph(
      * and the chain is the thing the paths were drawn to show.
      */
     const emphasis = (key: string, rest: number, dim: number, lit: number): string => {
-      if (hovered === null) return String(rest)
-      if (key === hovered) return String(lit)
+      if (emphasised() === null) return String(rest)
+      if (key === emphasised()) return String(lit)
       return String(currentChain()?.keys.has(key) ? dim + (lit - dim) * 0.55 : dim)
     }
 
@@ -1198,8 +1128,8 @@ export function renderGraph(
       // zoom spreads them apart, so a name that could not fit at the fitted
       // view often can once there is room. Zooming reveals labels rather than
       // magnifying the ones already there, which is the point of zooming.
-      // The hovered mark goes down first and carries its title.
-      const placements = placeLabels(layout.nodes, view, hovered, describeNode)
+      // The emphasised mark goes down first and carries its title.
+      const placements = placeLabels(layout.nodes, view, emphasised(), describeNode)
       labelSlots.forEach((slot, index) => {
         const placement = placements[index]
         if (!placement) {
@@ -1247,8 +1177,8 @@ export function renderGraph(
           line.setAttribute('opacity', onChain ? '0.6' : '0')
           continue
         }
-        const touched = hovered !== null && (keyOf(line) === hovered || hovered === seedKey)
-        line.setAttribute('opacity', hovered === null ? '0.4' : touched ? '0.75' : '0.07')
+        const touched = emphasised() !== null && (keyOf(line) === emphasised() || emphasised() === seedKey)
+        line.setAttribute('opacity', emphasised() === null ? '0.4' : touched ? '0.75' : '0.07')
       }
 
       // A tick whose value has moved out of the plot is hidden rather than
@@ -1337,16 +1267,18 @@ export function renderGraph(
     svg.addEventListener('mouseover', (event: MouseEvent) => {
       const mark = (event.target as Element | null)?.closest?.('[data-mark]')
       const key = mark ? keyOf(mark) : null
-      if (key === hovered) return
-      hovered = key
-      fillDetailStrip(doc, strip, key === null ? null : (byKey.get(key) ?? null), theme)
-      schedule()
+      if (key === pointedAt) return
+      pointedAt = key
+      // A pinned mark owns the emphasis; the pointer crossing others must not
+      // quietly take it back.
+      if (pinned !== null) return
+      showEmphasis()
     })
     svg.addEventListener('mouseleave', () => {
-      if (hovered === null) return
-      hovered = null
-      fillDetailStrip(doc, strip, null, theme)
-      schedule()
+      if (pointedAt === null) return
+      pointedAt = null
+      if (pinned !== null) return
+      showEmphasis()
     })
 
     let from: { x: number; y: number } | null = null
@@ -1374,6 +1306,7 @@ export function renderGraph(
     svg.style.cursor = 'grab'
 
     return {
+      repaint: schedule,
       zoomBy,
       reset: () => {
         kx = 1
@@ -1392,10 +1325,10 @@ export function renderGraph(
 
   draw = (): void => {
     // The plot is about to be replaced; a card anchored to the old one would
-    // be orphaned over the new, and a hover state would name a mark that is
-    // no longer there.
+    // be orphaned over the new, and an emphasis would name a mark that is no
+    // longer there.
     closeCard()
-    hovered = null
+    pointedAt = null
     fillDetailStrip(doc, strip, null, theme)
     // Number.isFinite, not just Math.max: an unmeasured element yields
     // undefined, Math.max(320, undefined) is NaN, and a layout built on NaN
@@ -1404,17 +1337,8 @@ export function renderGraph(
     const span = (measured: number, floor: number): number => Math.max(floor, Number.isFinite(measured) ? measured : 0)
     const width = span(plot.clientWidth, 320)
     const height = span(plot.clientHeight, 220)
-    const shown = held.nodes.filter((node) => node.depth <= depth && keepNode(node, filters))
-    const within = new Set(shown.map((node) => node.key))
-    const layout = buildGraphLayout(shown, {
-      width,
-      height,
-      padding: PADDING,
-      scale,
-      xMetric,
-      yMetric,
-      links: held.links.filter((link) => within.has(link.from) && within.has(link.to)),
-    })
+    const shown = nodes.filter((node) => keepNode(node, filters))
+    const layout = buildGraphLayout(shown, { width, height, padding: PADDING, scale, xMetric, yMetric, links })
     yCaption.textContent = getString(METRIC_DIRECTION[yMetric])
     xCaption.textContent = getString(METRIC_DIRECTION[xMetric])
     // Log or linear is a question about counts. With years on both axes there
@@ -1446,14 +1370,26 @@ export function renderGraph(
       // A drag that ends over a mark is panning, not a click on it.
       if (dragged) return
       const target = (event.target as Element | null)?.closest?.('circle')
-      // Anywhere else in the plot dismisses whatever is open.
+      // Anywhere else in the plot lets go of whatever is held.
       if (!target) {
         closeCard()
         return
       }
-      const node = byKey.get(target.getAttribute('data-key') ?? '')
-      if (node) openCard(node, event as MouseEvent)
+      const key = target.getAttribute('data-key') ?? ''
+      const node = byKey.get(key)
+      if (!node) return
+      // After openCard, not before: it starts by closing whatever is open,
+      // and closing lets go of the pin.
+      openCard(node, event as MouseEvent)
+      pinned = key
+      showEmphasis()
     })
+
+    showEmphasis = (): void => {
+      const at = emphasised()
+      fillDetailStrip(doc, strip, at === null ? null : (byKey.get(at) ?? null), theme)
+      view?.repaint()
+    }
 
     view = installPanAndZoom(imported as unknown as SVGSVGElement, layout, width, height)
     const seedNode = layout.nodes.find((node) => node.role === 'seed')

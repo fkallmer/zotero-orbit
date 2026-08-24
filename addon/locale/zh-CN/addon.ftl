@@ -145,10 +145,12 @@ graph-card-no-doi = No DOI, so there is nowhere to open it.
 graph-no-values = None of the surrounding works carry both values the axes ask for, so there is nothing to place.
 graph-dropped-no-value = { $count } not shown, missing a value
 graph-loading = Gathering references and citing works…
-graph-expanding = Reaching further out…
-graph-depth = Depth
-graph-depth-hint = How many citation links out from this work to reach. Each further level costs requests and takes a moment.
-graph-depth-level = { $level }
+graph-highlight = Highlight
+graph-highlight-hint = How far along the citation paths to light up from the work under the pointer. One link is what it is directly connected to.
+graph-highlight-hops = { $hops ->
+    [one] 1 link
+   *[other] { $hops } links
+  }
 graph-empty = No OpenAlex record for this item, so there is nothing to graph. Works without a DOI or arXiv ID cannot be looked up.
 graph-scale-log = Scale: logarithmic
 graph-scale-linear = Scale: linear

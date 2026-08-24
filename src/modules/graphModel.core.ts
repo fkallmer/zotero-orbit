@@ -44,16 +44,6 @@ export interface GraphNode {
    * being able to go to it is worth more.
    */
   itemID: number | null
-  /**
-   * Hops from the seed. 0 is the seed, 1 what it cites and what cites it.
-   *
-   * Carried on the node rather than worked out from the edges, because it is
-   * a property of how the work was reached rather than of the picture: a
-   * second-level work often turns out to cite the seed as well, and that later
-   * discovery must not promote it to the first level and change what a depth
-   * of 1 means.
-   */
-  depth: number
 }
 
 export interface PlacedNode extends GraphNode {
@@ -114,38 +104,46 @@ export interface Chain {
 }
 
 /**
- * Everything one work descends from and everything that descends from it.
+ * What one work is linked to, out to a given number of hops.
  *
- * Directed, and that is the whole decision. Taking the links as undirected
+ * Directed, and that is the first decision. Taking the links as undirected
  * gives the connected component instead, and on a real graph -- 24 paths over
- * 17 of 23 works -- every single node returns the same component of 17. That
- * lights almost the whole plot whatever you point at, which is no answer at
- * all. Walking the arrows gives a median of five works and a maximum of
- * fourteen: a line of descent that differs from mark to mark, which is what
- * makes it worth showing.
+ * 17 of 23 works -- every single node returns the same component of 17, which
+ * lights almost the whole plot whatever you point at. Walking the arrows in
+ * both directions gives what a work cites and what cites it, which is the
+ * question being asked of a mark.
+ *
+ * Bounded, and that is the second. One hop is what "connected to this" means
+ * to a reader; further out is a different question, and one they should have
+ * to ask for. Unbounded, a single hover on a well-connected work reaches
+ * fourteen of the twenty-three and stops discriminating.
  *
  * Cycles are ordinary here -- two works can cite each other's preprints -- so
- * both walks stop at anything already seen.
+ * a work already reached at an equal or shorter distance is not walked again.
  */
-export function chainFrom(links: readonly GraphLink[], start: string): Chain {
+export function chainFrom(links: readonly GraphLink[], start: string, maxHops: number): Chain {
   const keys = new Set<string>([start])
   const edges = new Set<number>()
+  if (maxHops < 1) return { keys, edges }
 
   const walk = (forwards: boolean): void => {
-    const frontier = [start]
+    let frontier = [start]
     const reached = new Set<string>([start])
-    while (frontier.length > 0) {
-      const at = frontier.pop() as string
-      links.forEach((link, index) => {
-        const near = forwards ? link.from : link.to
-        const far = forwards ? link.to : link.from
-        if (near !== at) return
-        edges.add(index)
-        keys.add(far)
-        if (reached.has(far)) return
-        reached.add(far)
-        frontier.push(far)
-      })
+    for (let hop = 0; hop < maxHops && frontier.length > 0; hop++) {
+      const next: string[] = []
+      for (const at of frontier) {
+        links.forEach((link, index) => {
+          const near = forwards ? link.from : link.to
+          const far = forwards ? link.to : link.from
+          if (near !== at) return
+          edges.add(index)
+          keys.add(far)
+          if (reached.has(far)) return
+          reached.add(far)
+          next.push(far)
+        })
+      }
+      frontier = next
     }
   }
 
