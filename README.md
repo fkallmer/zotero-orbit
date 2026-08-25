@@ -20,13 +20,17 @@ surroundings as a graph you can walk.
 
 ### A Citations column
 
+![The Citations column and the field-weighted impact column, over eleven well-known papers](docs/assets/readme/column.png)
+
 Counts from Crossref, OpenAlex, Semantic Scholar, INSPIRE and Google Scholar,
 in the order you choose, each in its own colour, separated by `|`. Hovering a
 cell says which number came from where.
 
 There is a second, sortable column for OpenAlex's field-weighted citation
 impact — how a paper compares to others of its field, year and type, where 1.0
-is average.
+is average. Above, it separates AlexNet from Watson and Crick: 4424 against 55,
+on 75,675 citations against 13,303. A raw count cannot say that, and a `–`
+means that source has no number for the work rather than a count of zero.
 
 ### An item pane section
 

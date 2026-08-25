@@ -3,12 +3,6 @@
 Orbit's own list. The one this file used to hold was Dae Houlihan's, and its
 items were about Citation Tally.
 
-## Still missing
-
-- **No screenshot of the Citations column.** It is Zotero's item tree, which
-  cannot be rendered outside Zotero; the old one was Citation Tally's and is
-  gone. Drop a real one at `docs/assets/readme/column.png`.
-
 ## Worth doing
 
 - Offer the OpenAlex provider back to Citation Tally. Open an issue there first.
