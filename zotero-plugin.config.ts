@@ -23,11 +23,11 @@ export default defineConfig({
   name: pkg.config.addonName,
   id: pkg.config.addonID,
   namespace: pkg.config.addonRef,
-  // No updateURL while this fork has no release channel of its own. The
-  // template resolves {{owner}}/{{repo}} from the git remote, which still
-  // points at upstream -- leaving it in would let Zotero silently "update"
-  // this build back to daeh's release and drop the OpenAlex provider.
-  // Restore it once the fork publishes its own update.json.
+  // updateURL is left at the scaffold's default, which resolves to
+  // fkallmer/zotero-orbit and is served from the `release` tag. It once had to
+  // be suppressed, because {{owner}}/{{repo}} resolved to upstream and Zotero
+  // would have "updated" this build back to daeh's release; the remote is this
+  // fork's now, and the release channel exists.
   xpiDownloadLink: 'https://github.com/{{owner}}/{{repo}}/releases/download/v{{version}}/{{xpiName}}.xpi',
 
   build: {

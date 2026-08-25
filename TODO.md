@@ -3,12 +3,8 @@
 Orbit's own list. The one this file used to hold was Dae Houlihan's, and its
 items were about Citation Tally.
 
-## Before this can be published
+## Still missing
 
-- **The repository is private**, so the update feed in `manifest.json` resolves
-  to a 404 and Zotero will never find an update. Going public also needs a
-  release tagged `v<version>` with `orbit.xpi` attached, and one tagged
-  `release` carrying `update.json`.
 - **No screenshot of the Citations column.** It is Zotero's item tree, which
   cannot be rendered outside Zotero; the old one was Citation Tally's and is
   gone. Drop a real one at `docs/assets/readme/column.png`.
