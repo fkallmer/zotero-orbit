@@ -145,7 +145,21 @@ yarn install
 yarn build          # → .scaffold/build/orbit.xpi
 yarn test:unit
 yarn test:coverage  # runs the suite and rewrites the coverage badges above
+yarn test           # the specs in test/zotero, inside a real Zotero
 ```
+
+`yarn test` launches Zotero itself and has to be told where it is, or it stops
+at `No Zotero Found.` before starting anything. Put the path in an untracked
+`.env`, which the scaffold reads:
+
+```sh
+ZOTERO_PLUGIN_ZOTERO_BIN_PATH=/Applications/Zotero.app/Contents/MacOS/zotero
+```
+
+It runs against its own profile and data directory under `.scaffold/test/`, so
+your library is not involved. Close any running Zotero first, and expect the
+test window to stay open when the run ends — the command returns once it is
+closed.
 
 Every build raises the patch version. Zotero keys an installed plugin by
 version, and two builds sharing one are the same plugin as far as it is
