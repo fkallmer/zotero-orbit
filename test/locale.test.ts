@@ -5,6 +5,12 @@
  * only warns, and it never sees ids passed from TypeScript. These assertions
  * cover the rest: per-file parity between locales, the uniqueness `initLocale`
  * depends on, and the ids the pane sets dynamically.
+ *
+ * Orbit ships en-US only, so the four cross-locale checks -- file-set parity,
+ * orphan ids, misfiled files, attribute and variable parity -- currently pass
+ * over an empty set of translations. They are kept rather than deleted: they
+ * cost nothing, and they are the contract a contributed translation would have
+ * to meet on the day it arrives. Read them as dormant, not as passing.
  */
 
 import assert from 'node:assert/strict'
