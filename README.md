@@ -34,7 +34,7 @@ means that source has no number for the work rather than a count of zero.
 
 ### An item pane section
 
-![The item pane section](docs/assets/readme/item-pane.png)
+![The item pane section, over a paper three sources disagree about](docs/assets/readme/item-pane.png)
 
 The same counts, spelled out and linked to their sources — the disagreement
 above is real, and it is the ordinary case rather than a bad day. Then the
