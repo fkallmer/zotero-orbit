@@ -1,5 +1,6 @@
 /**
- * Teach Node the resolutions the bundler performs and it does not.
+ * Teach Node the resolutions the bundler performs and it does not, and give it
+ * the one global the Zotero runtime has and Node does not.
  *
  * `src/` is written for esbuild. It imports `../utils/locale` without an
  * extension, and it takes named exports off `../../package.json` -- neither of
@@ -15,6 +16,23 @@
 import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
 import { fileURLToPath } from 'node:url'
+
+import { Temporal } from 'temporal-polyfill'
+
+/**
+ * `Temporal` is a global in Zotero's Gecko runtime and absent from Node 26 --
+ * `--harmony-temporal` is accepted and changes nothing. Six modules under
+ * `src/` build on it, so `retryAge` and `temporalParse` threw
+ * `ReferenceError: Temporal is not defined` while still evaluating their own
+ * top level, before a single assertion ran.
+ *
+ * Only assigned when missing, so a Node that ships `Temporal` natively is
+ * tested against its own implementation rather than this one. That the two
+ * agree is not assumed: `test/zotero/temporal.spec.ts` runs the cases where
+ * they could plausibly diverge -- `overflow: 'reject'`, the leap-second
+ * normalization, two-digit-year rollover -- against the real thing.
+ */
+globalThis.Temporal ??= Temporal
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
 /** `package.json` has a "private" key, and `export const private` is a syntax error. */

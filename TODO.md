@@ -20,8 +20,6 @@ items were about Citation Tally.
   physics; either use it or drop it from the default order.
 - The graph seeds from one item only. A graph over a whole collection is a
   different shape of question and a much larger set of requests.
-- `retryAge` and `temporalParse` fail in unmodified upstream too. Either fix
-  them or say why they are expected to fail.
 
 ## Known limits
 
