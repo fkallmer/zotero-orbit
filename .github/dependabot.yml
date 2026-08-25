@@ -14,3 +14,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # typescript-eslint refuses to load against the TypeScript 7 API and will
+      # until it ships support for >= 7.1 (typescript-eslint#10940). tsc itself
+      # is fine with 7.0 -- the build and both typechecks pass on it -- so a
+      # major bump costs the type-aware lint rules and buys nothing. Drop this
+      # once typescript-eslint catches up; minor and patch updates still come
+      # through the group above.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
