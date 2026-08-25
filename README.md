@@ -60,7 +60,7 @@ what cites it, and the picture above is what that looks like.
   works, only the ones you have, and only the ones you do not.
 - **Pointing at a mark** dims the rest, spells out its title, fills the strip
   above the plot, and lights the paths between it and its neighbours — the
-  citations *among* the surrounding works, which is where a line of descent
+  citations _among_ the surrounding works, which is where a line of descent
   becomes visible. How far the highlight reaches, and in which direction, are
   both settings.
 - **Clicking a mark** holds that state and opens a card: the full record, a
@@ -89,13 +89,13 @@ tick **Citations**.
 
 `Zotero → Settings → Orbit` on macOS, `Edit → Settings → Orbit` elsewhere.
 
-| | |
-|---|---|
-| **Databases** | Which sources to use and in what order. Default `crossref, semanticscholar`; for physics, `inspire, crossref, semanticscholar` is usually better. |
-| **Fetch for new items** | On. Counts are looked up as you add items. |
-| **Automatic updates** | Off. Turn on to refresh missing and outdated counts at the next start. |
-| **Outdated after** | 3, 6, 12 or 24 months. Default 6. |
-| **Colours** | On. Each source gets its own colour when more than one is shown. |
+|                              |                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Databases**                | Which sources to use and in what order. Default `crossref, semanticscholar`; for physics, `inspire, crossref, semanticscholar` is usually better.                                                                                                                                                                         |
+| **Fetch for new items**      | On. Counts are looked up as you add items.                                                                                                                                                                                                                                                                                |
+| **Automatic updates**        | Off. Turn on to refresh missing and outdated counts at the next start.                                                                                                                                                                                                                                                    |
+| **Outdated after**           | 3, 6, 12 or 24 months. Default 6.                                                                                                                                                                                                                                                                                         |
+| **Colours**                  | On. Each source gets its own colour when more than one is shown.                                                                                                                                                                                                                                                          |
 | **Semantic Scholar API key** | Optional but worth having. Without one you share an anonymous pool with every other client, so lookups are slower and fail more. Request one at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api). Zotero stores it unencrypted in its preferences; Orbit sends it only to Semantic Scholar. |
 
 Orbit looks work up **by DOI or arXiv ID only** — never by title, ISBN or PMID.
@@ -117,7 +117,7 @@ the base, and each success eases it back by 0.9, never below the base.
 Semantic Scholar runs its own scheduler — at least 1 second between keyed
 requests, 3 seconds without a key — and backs off exponentially with full
 jitter on a transient failure, never sooner than the server's `Retry-After`.
-OpenAlex is asked politely: give it a contact address (see *Building*) and it
+OpenAlex is asked politely: give it a contact address (see _Building_) and it
 raises the limits.
 
 A source that comes up empty for an item is not asked again immediately: 7
@@ -130,13 +130,13 @@ when a paper has picked up citations or the library has gained the work.
 
 ## Sources
 
-| | |
-|---|---|
-| [Crossref](https://www.crossref.org/) | DOI registration agency; broad coverage of journals and conferences |
-| [OpenAlex](https://openalex.org/) | Open catalogue of works; the record behind the item pane, and the graph |
-| [Semantic Scholar](https://www.semanticscholar.org/) | AI2's index; the reference lists, and influential-citation counts |
-| [INSPIRE](https://inspirehep.net/) | High-energy physics |
-| Google Scholar | Broadest coverage, no API; scraped, and rate-limited accordingly |
+|                                                      |                                                                         |
+| ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| [Crossref](https://www.crossref.org/)                | DOI registration agency; broad coverage of journals and conferences     |
+| [OpenAlex](https://openalex.org/)                    | Open catalogue of works; the record behind the item pane, and the graph |
+| [Semantic Scholar](https://www.semanticscholar.org/) | AI2's index; the reference lists, and influential-citation counts       |
+| [INSPIRE](https://inspirehep.net/)                   | High-energy physics                                                     |
+| Google Scholar                                       | Broadest coverage, no API; scraped, and rate-limited accordingly        |
 
 ## Building
 
