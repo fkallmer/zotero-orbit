@@ -6,6 +6,7 @@ import {
   cancelManualUpdate,
   cancelMonthlyCleanup,
   scheduleMonthlyCleanup,
+  setPostCountFollowUp,
   UIRegistrar,
   UX,
 } from './modules/citationTally'
@@ -14,6 +15,13 @@ import {
   maybeShowProactiveDegradedNotice,
   notifySemanticScholarUnavailable,
 } from './modules/degradedNotice'
+import { flushFwciStore, loadFwciStore } from './modules/fwciTracker'
+import {
+  refreshFwciAfterCounts,
+  refreshFwciForLibrary,
+  refreshFwciForSelection,
+  registerFwciMenus,
+} from './modules/fwciUpdate'
 import { installTabIconStyle, registerGraphMenus, removeTabIconStyle } from './modules/graphTab'
 import { registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } from './modules/libraryIndex'
 import { registerPrefsScripts, validateApiKeyUI, validateDatabaseOrderUI } from './modules/preferenceScript'
@@ -63,6 +71,19 @@ async function onStartup() {
   UIRegistrar.registerRetallyCitationsMenuItem()
   UIRegistrar.registerThemeObservers()
 
+  // The field-weighted impact column has no path of its own without these: the
+  // value used to arrive only as a by-product of an OpenAlex count lookup, and
+  // OpenAlex is not in the shipped database order.
+  registerFwciMenus()
+
+  // Wired here rather than imported into citationTally, which the refresh needs
+  // for its rate limiter and fetch wrapper. Dispatch is what hooks is for.
+  setPostCountFollowUp((items) => {
+    void refreshFwciAfterCounts(items).catch((err: unknown) => {
+      Zotero.debug(`Orbit: FWCI follow-up failed: ${String(err)}`)
+    })
+  })
+
   // Scaffolding for the graph tab: menus only, the tab itself draws a
   // placeholder until the rendering is confirmed to work in Zotero's chrome.
   registerGraphMenus()
@@ -87,6 +108,12 @@ async function onStartup() {
   // startup; the pane's first async render awaits it anyway.
   loadCache().catch((err: unknown) => {
     Zotero.debug(`Orbit: cache load failed: ${String(err)}`)
+  })
+
+  // The column draws from this, so it has to be in memory before the first
+  // redraw; failing to load leaves it empty rather than blocking startup.
+  loadFwciStore().catch((err: unknown) => {
+    Zotero.debug(`Orbit: FWCI store load failed: ${String(err)}`)
   })
 
   await Promise.all(Zotero.getMainWindows().map((win) => onMainWindowLoad(win)))
@@ -190,6 +217,8 @@ function onShutdown(): void {
     () => unregisterCitationPane(),
     () => unregisterLibraryIndexNotifier(),
     () => void flushCache(),
+    () => void flushFwciStore(),
+    () => setPostCountFollowUp(null),
     () => shutdownSemanticScholarClient(),
     () => closeDegradedNotice(),
     () => ztoolkit.unregisterAll(),
@@ -232,6 +261,14 @@ function onDialogEvents(type: string) {
       // Surface the degraded runtime at action time. Does nothing in full mode.
       notifySemanticScholarUnavailable()
       void startAutomaticUpdate(false, 'manual') // false = show progress UI
+      break
+    // No degraded-runtime notice on either: the refresh talks to OpenAlex, which
+    // needs neither the Semantic Scholar client nor a key.
+    case 'updateFwci':
+      void refreshFwciForSelection()
+      break
+    case 'refreshFwciLibrary':
+      void refreshFwciForLibrary()
       break
     default:
       break

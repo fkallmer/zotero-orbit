@@ -8,6 +8,7 @@ import { parseCitationStampDate, parseDateAddedInstant } from '../utils/temporal
 
 import { Helpers, updateItem } from './citationTally'
 import { effectiveDatabases } from './citationTypes'
+import { refreshFwciAfterCounts } from './fwciUpdate'
 import { GOOGLE_SCHOLAR_DATABASE } from './googleScholarClient.core'
 import { isSemanticScholarAvailable } from './semanticScholarClient'
 
@@ -594,6 +595,10 @@ function finishAutomaticUpdate(errorMessage?: string, silent: boolean = false) {
   const updatedCount = autoUpdateSuccessCount
   const totalCount = autoUpdateQueue.length
   const manual = autoUpdateTrigger === 'manual'
+  // Taken before the queue is reset below. Not awaited: this function is the
+  // end of the run, and the follow-up is a background pass of one request per
+  // fifty items against a queue that just spent one per item.
+  const counted = autoUpdateQueue.slice()
 
   // Show completion message
   if (!silent) {
@@ -630,6 +635,12 @@ function finishAutomaticUpdate(errorMessage?: string, silent: boolean = false) {
   autoUpdateRetryCount = 0
 
   ztoolkit.log(`Auto update completed: ${updatedCount}/${totalCount} items updated`)
+
+  if (addon.data.alive && counted.length > 0) {
+    void refreshFwciAfterCounts(counted).catch((err: unknown) => {
+      ztoolkit.log('FWCI follow-up after autoupdate failed', err)
+    })
+  }
 }
 
 export { cancelAutomaticUpdate, startAutomaticUpdate }

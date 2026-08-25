@@ -30,6 +30,7 @@ import { readCache, writeCache } from '../utils/recordCache'
 
 import { effectiveDatabases, semanticScholarUnavailableResult } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
+import { readFwci, recordFwci } from './fwciTracker'
 import {
   buildScholarUrl,
   extractResultTitle,
@@ -1223,7 +1224,13 @@ class DBInterface {
       }
 
       const record = normalizeWork(body)
-      if (record) writeCache(openAlexRecordCacheKey(lookupDoi), record)
+      if (record) {
+        writeCache(openAlexRecordCacheKey(lookupDoi), record)
+        // The column's own store, which outlives this cache. Free here:
+        // the record is already in hand, and the alternative is asking
+        // OpenAlex a second time for a field it just sent.
+        recordFwci(lookupDoi, record.fwci)
+      }
 
       const raw = (body as Record<string, unknown> | null)?.cited_by_count
       const count = parseCitationCount(raw)
@@ -1491,6 +1498,20 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
   void runUpdateQueue(operations, silent)
 }
 
+/**
+ * Run after a count queue finishes, with the items it covered.
+ *
+ * A seam rather than a direct call, because the follow-up is the field-weighted
+ * impact refresh, and that module needs this one's rate limiter and fetch
+ * wrapper. Importing it back from here would close the loop; `hooks` wires the
+ * two together instead.
+ */
+let postCountFollowUp: ((items: readonly Zotero.Item[]) => void) | null = null
+
+function setPostCountFollowUp(followUp: ((items: readonly Zotero.Item[]) => void) | null): void {
+  postCountFollowUp = followUp
+}
+
 /** Process manual updates sequentially until the queue completes or is cancelled. */
 async function runUpdateQueue(operations?: string[] | string, silent: boolean = false): Promise<void> {
   for (currentIndex = 0; currentIndex < totalItems; currentIndex++) {
@@ -1528,6 +1549,10 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
     successWindow.show()
     successWindow.startCloseTimer(4000)
   }
+
+  // Not awaited: the queue is done, and the follow-up is a background pass that
+  // must not hold up the summary the user is waiting for.
+  if (addon.data.alive && itemsToUpdate.length > 0) postCountFollowUp?.(itemsToUpdate.slice())
 }
 
 /**
@@ -1653,11 +1678,19 @@ class UIRegistrar {
       flex: 0,
       zoteroPersist: ['width', 'ordinal', 'hidden', 'sortDirection'],
       dataProvider: (item: Zotero.Item) => {
-        // Runs per visible row on every redraw: cache reads only, no fetching
-        // and no logging.
+        // Runs per visible row on every redraw: store and cache reads only, no
+        // fetching and no logging.
         if (!item.isRegularItem()) return ''
         for (const identifier of Helpers.getAllItemIdentifiers(item)) {
-          const record = readCache<ScholarlyRecord>(openAlexRecordCacheKey(toLookupDoi(identifier)))
+          const lookupDoi = toLookupDoi(identifier)
+          // The store first: it is the only source that neither expires nor
+          // evicts, so it is the one that can answer for a whole library.
+          const stored = readFwci(lookupDoi)
+          if (stored !== null) return stored.toFixed(2)
+          // Then the record cache, which the pane and the count path fill. It
+          // holds values this store has not been told about yet -- an item whose
+          // pane was opened before the first refresh run.
+          const record = readCache<ScholarlyRecord>(openAlexRecordCacheKey(lookupDoi))
           if (record?.fwci !== null && record?.fwci !== undefined) return record.fwci.toFixed(2)
         }
         return ''
@@ -1873,4 +1906,5 @@ export {
   scheduleMonthlyCleanup,
   cancelMonthlyCleanup,
   cancelManualUpdate,
+  setPostCountFollowUp,
 }

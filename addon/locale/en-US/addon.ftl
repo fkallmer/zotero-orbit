@@ -5,6 +5,10 @@ menuitem-update-citation-tallies =
     .label = Update Citation Tallies
 menuitem-retally-outdated-citations =
     .label = Retally outdated item citations
+menuitem-update-fwci =
+    .label = Update field-weighted impact
+menuitem-refresh-fwci-library =
+    .label = Fill in missing field-weighted impact
 prefs-title = Orbit
 
 # Progress window messages
@@ -12,6 +16,15 @@ progress-getting-citation-tallies = Getting citation tallies
 progress-no-valid-items = No valid items selected for citation tally update.
 progress-items-updated = Citation tallies updated for { $count } items.
 progress-item-counter = Item { $current } of { $total }
+
+# Field-weighted impact refresh. Asked in batches of fifty, so the counter
+# moves in jumps rather than one item at a time.
+progress-fwci-starting = Asking OpenAlex for field-weighted impact
+progress-fwci-counter = { $current } of { $total } works
+progress-fwci-nothing-to-do = Field-weighted impact is already up to date.
+progress-fwci-already-running = A field-weighted impact refresh is already running.
+progress-fwci-done = Field-weighted impact found for { $count } works.
+progress-fwci-stopped = Stopped early; field-weighted impact found for { $count } works. Try again later.
 
 # Auto-update messages
 auto-update-title = { $addonName } - Autoupdating (Click to Hide)

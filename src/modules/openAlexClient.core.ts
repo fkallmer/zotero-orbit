@@ -51,9 +51,6 @@ export function mailtoSuffix(contact: string): string {
   return contact.trim() === '' ? '' : `&mailto=${encodeURIComponent(contact.trim())}`
 }
 
-/** Fields the citation-count path needs. Kept minimal; it runs per item in bulk. */
-export const WORK_COUNT_SELECT = 'cited_by_count'
-
 /** Fields the item pane needs. Still a fraction of the full record. */
 export const WORK_FULL_SELECT = [
   'id',
@@ -140,6 +137,64 @@ export function buildWorksByDoiUrl(dois: readonly string[]): string {
     `&select=${encodeURIComponent(LINK_SELECT)}&per-page=${REFERENCE_CHUNK}` +
     `${mailtoSuffix(OPENALEX_CONTACT)}`
   )
+}
+
+/**
+ * Just the field-weighted impact, against a DOI to match it back to an item.
+ *
+ * The column needs one number per row and nothing else. Asking for the full
+ * record instead would carry authorships, funding and bibliographies for every
+ * item in a library-wide refresh -- three orders of magnitude more payload for
+ * a value that is a single float.
+ */
+export const FWCI_SELECT = 'doi,fwci'
+
+/**
+ * Field-weighted impact for many works in one request.
+ *
+ * This is what makes a library-wide refresh affordable: the count path spends
+ * one request per item, and OpenAlex takes a DOI OR-list of fifty, so the same
+ * coverage costs a fiftieth of the round trips.
+ */
+export function buildFwciByDoiUrl(dois: readonly string[]): string {
+  const bare = dois.map((doi) => doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase())
+  return (
+    `${API_ROOT}/works?filter=doi:${bare.map((doi) => encodeURIComponent(doi)).join('|')}` +
+    `&select=${encodeURIComponent(FWCI_SELECT)}&per-page=${REFERENCE_CHUNK}` +
+    `${mailtoSuffix(OPENALEX_CONTACT)}`
+  )
+}
+
+/** One work's field-weighted impact, keyed by the DOI it was asked for. */
+export interface WorkFwci {
+  /** Lower-cased and bare, so it matches what `buildFwciByDoiUrl` was given. */
+  doi: string
+  /** Null where OpenAlex holds the work but has no FWCI for it -- a recent paper, typically. */
+  fwci: number | null
+}
+
+/**
+ * Read a batch response.
+ *
+ * Entries without a DOI are dropped rather than kept: the DOI is the only thing
+ * tying a result back to the item that asked for it, and a result that cannot
+ * be attributed would either be discarded later or, worse, attached to the
+ * wrong row.
+ */
+export function normalizeFwciBatch(json: unknown): WorkFwci[] {
+  const body = asRecord(json)
+  const results = Array.isArray(body?.results) ? body.results : []
+  const out: WorkFwci[] = []
+  for (const entry of results) {
+    const work = asRecord(entry)
+    const doi = asNonEmptyString(work?.doi)
+    if (!doi) continue
+    out.push({
+      doi: doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase(),
+      fwci: asFiniteNumber(work?.fwci),
+    })
+  }
+  return out
 }
 
 /** A work, its DOI, and everything it cites -- all in OpenAlex ids. */
@@ -385,7 +440,7 @@ function normalizeFunding(work: Record<string, unknown>): RecordFunding[] {
   const seen = new Set<string>()
   const push = (funder: string | null, awardId: string | null) => {
     if (!funder) return
-    const key = `${funder} ${awardId ?? ''}`
+    const key = `${funder}\u0000${awardId ?? ''}`
     if (seen.has(key)) return
     seen.add(key)
     out.push({ funder, awardId })

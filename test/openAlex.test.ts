@@ -6,11 +6,15 @@ import { describe, it } from 'node:test'
 import { semanticScholarUrl } from '../src/modules/graphTab.ts'
 
 import {
+  buildFwciByDoiUrl,
   buildSourceUrl,
   buildWorkUrl,
+  FWCI_SELECT,
+  normalizeFwciBatch,
   normalizeSource,
   mailtoSuffix,
   normalizeWork,
+  REFERENCE_CHUNK,
   toChronologicalSeries,
   toLookupDoi,
 } from '../src/modules/openAlexClient.core.ts'
@@ -214,5 +218,74 @@ describe('semanticScholarUrl', () => {
     // paper; the api host redirects to the canonical one. Both were checked,
     // because a link that looks right and is not is worse than no link.
     assert.equal(semanticScholarUrl('10.3390/s19133005'), 'https://api.semanticscholar.org/10.3390/s19133005')
+  })
+})
+
+describe('buildFwciByDoiUrl', () => {
+  it('asks for a DOI OR-list and only the two fields the column needs', () => {
+    const url = buildFwciByDoiUrl(['10.1038/nature12373', '10.48550/arXiv.2401.00001'])
+    assert.ok(url.startsWith('https://api.openalex.org/works?filter=doi:'), url)
+    // Lower-cased, so the filter matches what OpenAlex stores, and the reply
+    // matches what fwciWritesForChunk asked for.
+    assert.ok(url.includes('10.1038%2Fnature12373|10.48550%2Farxiv.2401.00001'), url)
+    assert.ok(url.includes(`select=${encodeURIComponent(FWCI_SELECT)}`), url)
+    assert.ok(url.includes(`per-page=${REFERENCE_CHUNK}`), url)
+  })
+
+  it('strips a resolver prefix pasted into a DOI field', () => {
+    const url = buildFwciByDoiUrl(['https://doi.org/10.1/a', 'http://dx.doi.org/10.1/b'])
+    assert.ok(url.includes('doi:10.1%2Fa|10.1%2Fb'), url)
+  })
+
+  it('carries no mailto when no contact was built in', () => {
+    // __contact__ is absent in the tests, so this must not claim an empty one.
+    assert.ok(!buildFwciByDoiUrl(['10.1/a']).includes('mailto'))
+  })
+})
+
+describe('normalizeFwciBatch', () => {
+  it('reads DOI and value, lower-casing and stripping the resolver', () => {
+    const batch = normalizeFwciBatch({
+      results: [
+        { doi: 'https://doi.org/10.1038/NATURE12373', fwci: 2.5 },
+        { doi: '10.1/plain', fwci: 0 },
+      ],
+    })
+    assert.deepEqual(batch, [
+      { doi: '10.1038/nature12373', fwci: 2.5 },
+      { doi: '10.1/plain', fwci: 0 },
+    ])
+  })
+
+  it('keeps a work whose FWCI is absent, as a null', () => {
+    assert.deepEqual(normalizeFwciBatch({ results: [{ doi: '10.1/recent' }] }), [{ doi: '10.1/recent', fwci: null }])
+    assert.deepEqual(normalizeFwciBatch({ results: [{ doi: '10.1/recent', fwci: null }] }), [
+      { doi: '10.1/recent', fwci: null },
+    ])
+  })
+
+  it('drops a result with no DOI to attribute it to', () => {
+    assert.deepEqual(
+      normalizeFwciBatch({
+        results: [
+          { id: 'W1', fwci: 4 },
+          { doi: '', fwci: 4 },
+        ],
+      }),
+      [],
+    )
+  })
+
+  it('reads a non-numeric FWCI as no value rather than throwing', () => {
+    assert.deepEqual(normalizeFwciBatch({ results: [{ doi: '10.1/a', fwci: 'high' }] }), [
+      { doi: '10.1/a', fwci: null },
+    ])
+  })
+
+  it('survives a body that is not a result list', () => {
+    assert.deepEqual(normalizeFwciBatch(null), [])
+    assert.deepEqual(normalizeFwciBatch({}), [])
+    assert.deepEqual(normalizeFwciBatch({ results: 'nope' }), [])
+    assert.deepEqual(normalizeFwciBatch({ results: [null, 3] }), [])
   })
 })
