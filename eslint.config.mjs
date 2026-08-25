@@ -36,7 +36,7 @@ const projectFilesToIgnore = context === 'repository' ? [] : ['zotero-plugin.con
 const baseConfig = zotero({
   overrides: [
     {
-      name: 'zotero-citation-tally/stylistic',
+      name: 'orbit/stylistic',
       files: ['**/*.{ts,mts,cts,tsx,mtsx,js,mjs,cjs,jsx,mjsx}'],
       plugins: {
         '@stylistic': stylisticPlugin,
@@ -55,7 +55,7 @@ const baseConfig = zotero({
       },
     },
     {
-      name: 'zotero-citation-tally/import-order',
+      name: 'orbit/import-order',
       files: ['src/**/*.{ts,tsx}'],
       plugins: {
         'import-x': importX,
@@ -92,7 +92,7 @@ const baseConfig = zotero({
       },
     },
     {
-      name: 'zotero-citation-tally/src-restricted-globals',
+      name: 'orbit/src-restricted-globals',
       files: ['src/**/*.{ts,tsx}'],
       rules: {
         'no-restricted-globals': [
@@ -107,7 +107,7 @@ const baseConfig = zotero({
       },
     },
     {
-      name: 'zotero-citation-tally/project-ignores',
+      name: 'orbit/project-ignores',
       ignores: ['**/*-lintignore*', '**/*_lintignore*', 'scripts/', 'src/modules/examples.ts', ...projectFilesToIgnore],
     },
   ],
@@ -127,7 +127,7 @@ const noUnsafeWarn = Object.fromEntries(
 )
 
 export default defineConfig(baseConfig, {
-  name: 'zotero-citation-tally/type-checked',
+  name: 'orbit/type-checked',
   files: ['src/**/*.{ts,mts,cts,tsx}'],
   ignores: ['src/modules/examples.ts'],
   extends: [typeChecked],

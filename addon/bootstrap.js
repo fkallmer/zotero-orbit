@@ -112,7 +112,7 @@ function resolveRuntimeCapabilities() {
 }
 
 function makeUnavailableStub(name) {
-  return function citationTallyUnavailableCapability() {
+  return function orbitUnavailableCapability() {
     throw new Error('Orbit: ' + name + ' is unavailable in this Zotero runtime')
   }
 }
