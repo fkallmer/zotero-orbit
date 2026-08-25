@@ -15,10 +15,9 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 
-const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+const repoRoot = join(import.meta.dirname, '..')
 const bootstrapSource = readFileSync(join(repoRoot, 'addon', 'bootstrap.js'), 'utf8')
 
 class FakeAbortSignal {

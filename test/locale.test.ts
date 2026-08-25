@@ -10,12 +10,11 @@
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
 import { PREFS_MESSAGE_IDS } from '../src/modules/preferenceMessages.ts'
 
-const LOCALE_DIR = fileURLToPath(new URL('../addon/locale', import.meta.url))
+const LOCALE_DIR = join(import.meta.dirname, '../addon/locale')
 const REFERENCE_LOCALE = 'en-US'
 
 interface FtlMessage {
@@ -201,7 +200,7 @@ test('messages taking arguments declare the expected variable names', () => {
 const XUL_LABEL_WIDGETS = ['button', 'radio', 'menuitem'] as const
 
 function paneWidgetIds(): { tag: string; id: string }[] {
-  const markup = readFileSync(fileURLToPath(new URL('../addon/content/preferences.xhtml', import.meta.url)), 'utf8')
+  const markup = readFileSync(join(import.meta.dirname, '../addon/content/preferences.xhtml'), 'utf8')
   const found: { tag: string; id: string }[] = []
   for (const match of markup.matchAll(/<(\w+)\b([^>]*)>/g)) {
     const [, tag, attributes] = match
@@ -250,7 +249,7 @@ test('retired ids are gone', () => {
 // string is not a lint violation -- and esbuild quietly dropped both from the
 // bundle. These assertions are what would have caught it.
 
-const SOURCE_DIR = fileURLToPath(new URL('../src', import.meta.url))
+const SOURCE_DIR = join(import.meta.dirname, '../src')
 const MARKUP_FILES = ['../addon/content/preferences.xhtml']
 
 function sourceText(): string {
@@ -264,7 +263,7 @@ function sourceText(): string {
   }
   walk(SOURCE_DIR)
   for (const file of MARKUP_FILES) {
-    parts.push(readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8'))
+    parts.push(readFileSync(join(import.meta.dirname, file), 'utf8'))
   }
   return parts.join('\n')
 }

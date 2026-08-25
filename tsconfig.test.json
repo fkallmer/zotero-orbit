@@ -1,21 +1,26 @@
 {
-  "//": "Node-only test project. Includes tests and Zotero-independent modules; excludes Zotero globals and bundler-only imports from the main TypeScript project.",
+  "//": "The project for the tests Node runs. It once held only Zotero-independent modules, and said so; the pane and graph render tests import citationPane and graphTab, which pulls Zotero's own globals in whether the config names them or not. So it takes the same resolution and types as the main project -- bundler resolution for src's extensionless imports, and zotero-types for Document, HTMLElement and Zotero -- and keeps only what is genuinely test-specific: Node's types, and .ts extensions in the tests' own imports.",
   "compilerOptions": {
     "target": "esnext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "module": "esnext",
+    // Not nodenext: src/ is written for esbuild and imports `../utils/locale`
+    // without an extension, which nodenext rejects outright (TS2835). Node's own
+    // resolution at runtime is bridged by test/register.mjs, not by this.
+    "moduleResolution": "bundler",
     "lib": ["esnext"],
-    "types": ["node"],
+    "types": ["node", "zotero-types/entries/sandbox"],
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
   "include": [
     "test/**/*.ts",
+    // `addon` and `ztoolkit` are declared here, and the modules the render
+    // tests import use both.
+    "typings",
     "src/modules/citationTypes.ts",
     "src/modules/ignorePolicy.ts",
     "src/modules/preferenceMessages.ts",

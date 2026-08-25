@@ -41,6 +41,8 @@ function makeNode(partial: Partial<GraphNode> & { key: string }): GraphNode {
 // Top level, not in a hook: the stubs must exist before the module graph is
 // imported, and node:test cancels a suite whose async hook outlives it.
 const { window, document, DOMParser } = parseHTML('<html><body><div id="tab"></div></body></html>')
+/** parseHTML gives this document a body; its type allows null for documents without one. */
+const documentBody = document.body as HTMLElement
 {
   const noop = (): void => {}
   const anything = new Proxy(noop, { get: () => noop, apply: () => undefined })
@@ -88,9 +90,15 @@ function render(nodes: readonly GraphNode[]): Rendered {
   // SVG defs with it. Rendering without one here would let two graphs share
   // the ids and hide exactly the bug this guards against.
   container.id = `tab-${++containers}`
-  document.body.append(container)
+  documentBody.append(container)
   renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'A work' } as any, nodes as any)
-  return { container, plot: container.querySelector('[data-role="content"]')?.ownerSVGElement ?? container }
+  // querySelector types this as Element; ownerSVGElement lives on SVGElement.
+  // The cast back to Element is the linkedom boundary, same as the `as any`
+  // above: what this returns is a node the assertions read attributes off, and
+  // linkedom's SVG nodes do not line up with the SVG types Zotero's DOM
+  // declares.
+  const content = container.querySelector('[data-role="content"]') as SVGElement | null
+  return { container, plot: (content?.ownerSVGElement ?? container) as Element }
 }
 
 /**
@@ -241,6 +249,9 @@ describe('the tab as the reader sees it', () => {
     it('names it in the strip above the plot, and gives the strip back on leaving', () => {
       const { container } = render(nodes)
       const strip = container.querySelector('[data-role="strip"]')
+      // Asserted rather than assumed: a missing strip should say so, not throw
+      // a TypeError three lines down.
+      assert.ok(strip, 'no strip above the plot')
       const hint = strip.textContent
       hover(container, 'ref')
       assert.notEqual(strip.textContent, hint)
@@ -295,7 +306,7 @@ describe('the tab as the reader sees it', () => {
     const draw = () => {
       const container = document.createElement('div')
       container.id = `chain-${++containers}`
-      document.body.append(container)
+      documentBody.append(container)
       renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'x' } as any, chained, links)
       return container
     }
@@ -431,7 +442,7 @@ describe('the tab as the reader sees it', () => {
     const drawHeld = () => {
       const container = document.createElement('div')
       container.id = `pin-${++containers}`
-      document.body.append(container)
+      documentBody.append(container)
       renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'x' } as any, held, [
         { from: 'a', to: 'b' },
       ])
@@ -564,7 +575,7 @@ describe('the tab as the reader sees it', () => {
     const seedArg = { kind: 'items', itemIDs: [1], name: 'x' } as any
     const place = () => {
       const container = document.createElement('div')
-      document.body.append(container)
+      documentBody.append(container)
       return container
     }
     const widthAfter = (done: number, step: any) => {
@@ -604,7 +615,7 @@ describe('the tab as the reader sees it', () => {
     it('asks the caller to fetch again, once per press', () => {
       const container = document.createElement('div')
       container.id = `reload-${++containers}`
-      document.body.append(container)
+      documentBody.append(container)
       let asked = 0
       renderGraph(window as any, container as any, { kind: 'items', itemIDs: [1], name: 'x' } as any, nodes, [], () => {
         asked++

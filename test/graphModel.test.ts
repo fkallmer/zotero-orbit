@@ -13,7 +13,7 @@ import {
 } from '../src/modules/graphModel.core.ts'
 import { xmlErrors } from './svgWellFormed.ts'
 
-import type { GraphNode } from '../src/modules/graphModel.core.ts'
+import type { GraphNode, LayoutOptions } from '../src/modules/graphModel.core.ts'
 
 const theme = {
   seed: '#e34948',
@@ -185,7 +185,9 @@ describe('the markup the tab actually parses', () => {
   // DOMParser as image/svg+xml is XML, and XML mandates a value for every
   // attribute. `data-mark` written bare is ordinary HTML and fatal here: the
   // parse aborts and the tab renders nothing. Every other test still passed.
-  const shapes: [string, GraphNode[], Partial<typeof options>][] = [
+  // Partial<LayoutOptions>, not Partial<typeof options>: the local literal has
+  // no xMetric, so the narrower type rejected an option buildGraphLayout reads.
+  const shapes: [string, GraphNode[], Partial<LayoutOptions>][] = [
     ['the ordinary case', [node({ key: 'a' }), node({ key: 'b', role: 'seed', year: 2015 })], {}],
     ['a work already in the library', [node({ key: 'a', itemID: 7, role: 'seed' })], {}],
     [
@@ -200,7 +202,7 @@ describe('the markup the tab actually parses', () => {
   for (const [what, nodes, extra] of shapes) {
     it(`is well-formed XML for ${what}`, () => {
       const layout = buildGraphLayout(nodes, { ...options, ...extra })!
-      const svg = renderGraphSvg(layout, theme, { x: 'Year', y: 'Citations', inLibrary: 'in your library' })
+      const svg = renderGraphSvg(layout, theme, { x: 'Year', y: 'Citations' })
       assert.deepEqual(xmlErrors(svg), [])
     })
   }

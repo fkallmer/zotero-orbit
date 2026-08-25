@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { semanticScholarUrl } from '../src/modules/graphTab.ts'
@@ -15,9 +16,9 @@ import {
 } from '../src/modules/openAlexClient.core.ts'
 
 /** Recorded from the live API, not hand-written, so field drift shows up here. */
-const workFixture: unknown = JSON.parse(readFileSync(new URL('./fixtures/openalex-work.json', import.meta.url), 'utf8'))
+const workFixture: unknown = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/openalex-work.json'), 'utf8'))
 const sourceFixture: unknown = JSON.parse(
-  readFileSync(new URL('./fixtures/openalex-source.json', import.meta.url), 'utf8'),
+  readFileSync(join(import.meta.dirname, 'fixtures/openalex-source.json'), 'utf8'),
 )
 
 describe('toLookupDoi', () => {

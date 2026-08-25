@@ -9,6 +9,7 @@
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { parseHTML } from 'linkedom'
@@ -16,6 +17,8 @@ import { parseHTML } from 'linkedom'
 import { normalizeSource, normalizeWork } from '../src/modules/openAlexClient.core.ts'
 
 const { window, document, DOMParser } = parseHTML('<html><body></body></html>')
+/** parseHTML gives this document a body; its type allows null for documents without one. */
+const documentBody = document.body as HTMLElement
 const noop = (): void => {}
 const anything = new Proxy(noop, { get: () => noop, apply: () => undefined })
 /** The names the Extra field is written with, from addon.ftl. */
@@ -64,9 +67,9 @@ globals.ztoolkit = new Proxy({}, { get: () => noop })
 
 const { renderInto } = await import('../src/modules/citationPane.ts')
 
-const work = normalizeWork(JSON.parse(readFileSync(new URL('./fixtures/openalex-work.json', import.meta.url), 'utf8')))
+const work = normalizeWork(JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/openalex-work.json'), 'utf8')))
 const journal = normalizeSource(
-  JSON.parse(readFileSync(new URL('./fixtures/openalex-source.json', import.meta.url), 'utf8')),
+  JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/openalex-source.json'), 'utf8')),
 )
 
 /** An item whose Extra field carries counts, as a tallied item's does. */
@@ -76,7 +79,7 @@ function itemWith(extra: string): unknown {
 
 function render(extra = '', data: Record<string, unknown> = {}): Element {
   const body = document.createElement('div')
-  document.body.append(body)
+  documentBody.append(body)
   renderInto(
     document as never,
     body as never,
@@ -132,16 +135,18 @@ describe('the item pane section', () => {
 
   it('starts from an empty body, so a re-render cannot double up', () => {
     const body = document.createElement('div')
-    document.body.append(body)
+    documentBody.append(body)
+    // A tuple, so the spread has something to spread. `as never` on an array
+    // literal left the elements typed `never`, which no spread accepts.
     const args = [
       document,
       body,
       itemWith('Citations: 19 (Crossref)'),
       { record: work, journal, s2: null, references: [], inLibrary: new Map() },
-    ]
-    renderInto(...(args as never))
+    ] as unknown as Parameters<typeof renderInto>
+    renderInto(...args)
     const once = body.childNodes.length
-    renderInto(...(args as never))
+    renderInto(...args)
     assert.equal(body.childNodes.length, once)
   })
 })
