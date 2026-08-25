@@ -5,6 +5,7 @@
  * fixtures, mirroring `semanticScholarClient.core` and `googleScholarClient.core`.
  */
 
+import { effectiveContact } from '../utils/contact.ts'
 import { stripArxivVersion } from '../utils/identifiers.ts'
 
 import type { ItemIdentifier } from './citationTypes.ts'
@@ -37,7 +38,34 @@ const API_ROOT = 'https://api.openalex.org'
  */
 declare const __contact__: string | undefined
 
-export const OPENALEX_CONTACT = typeof __contact__ === 'string' ? __contact__ : ''
+/** What the build was given, if anything. A release carries none. */
+const BUILT_IN_CONTACT = typeof __contact__ === 'string' ? __contact__ : ''
+
+/**
+ * The address currently in use, preference first.
+ *
+ * Mutable rather than constant because the address is a setting now: a user who
+ * enters one should not have to restart Zotero for the next request to carry it.
+ * `hooks` sets this at startup and again whenever the preference changes; until
+ * then it is whatever the build carried, which is how it behaved when that was
+ * the only source.
+ */
+let activeContact = effectiveContact('', BUILT_IN_CONTACT)
+
+/** Apply a preference value. An empty one falls back to the build. */
+export function setOpenAlexContact(preferred: string | undefined | null): void {
+  activeContact = effectiveContact(preferred, BUILT_IN_CONTACT)
+}
+
+/** The address being sent, for the User-Agent and for tests. */
+export function openAlexContact(): string {
+  return activeContact
+}
+
+/** What the build carried, so the preferences pane can say a fallback exists. */
+export function builtInContact(): string {
+  return BUILT_IN_CONTACT
+}
 
 /**
  * The polite-pool parameter, or nothing at all.
@@ -93,7 +121,7 @@ export function buildWorksByIdUrl(openAlexIds: readonly string[]): string {
   return (
     `${API_ROOT}/works?filter=openalex_id:${bare.join('|')}` +
     `&select=${encodeURIComponent(REFERENCE_SELECT)}&per-page=${REFERENCE_CHUNK}` +
-    `${mailtoSuffix(OPENALEX_CONTACT)}`
+    `${mailtoSuffix(activeContact)}`
   )
 }
 
@@ -109,7 +137,7 @@ export function buildCitingWorksUrl(openAlexId: string, perPage: number): string
   return (
     `${API_ROOT}/works?filter=cites:${encodeURIComponent(bare)}` +
     `&select=${encodeURIComponent(REFERENCE_SELECT)}&per-page=${perPage}` +
-    `&sort=cited_by_count:desc${mailtoSuffix(OPENALEX_CONTACT)}`
+    `&sort=cited_by_count:desc${mailtoSuffix(activeContact)}`
   )
 }
 
@@ -135,7 +163,7 @@ export function buildWorksByDoiUrl(dois: readonly string[]): string {
   return (
     `${API_ROOT}/works?filter=doi:${bare.map((doi) => encodeURIComponent(doi)).join('|')}` +
     `&select=${encodeURIComponent(LINK_SELECT)}&per-page=${REFERENCE_CHUNK}` +
-    `${mailtoSuffix(OPENALEX_CONTACT)}`
+    `${mailtoSuffix(activeContact)}`
   )
 }
 
@@ -161,7 +189,7 @@ export function buildFwciByDoiUrl(dois: readonly string[]): string {
   return (
     `${API_ROOT}/works?filter=doi:${bare.map((doi) => encodeURIComponent(doi)).join('|')}` +
     `&select=${encodeURIComponent(FWCI_SELECT)}&per-page=${REFERENCE_CHUNK}` +
-    `${mailtoSuffix(OPENALEX_CONTACT)}`
+    `${mailtoSuffix(activeContact)}`
   )
 }
 
@@ -249,7 +277,7 @@ function encodePath(id: string): string {
 export function buildWorkUrl(lookupDoi: string, select: string): string {
   return (
     `${API_ROOT}/works/doi:${encodePath(lookupDoi)}` +
-    `?select=${encodeURIComponent(select)}${mailtoSuffix(OPENALEX_CONTACT)}`
+    `?select=${encodeURIComponent(select)}${mailtoSuffix(activeContact)}`
   )
 }
 
@@ -258,7 +286,7 @@ export function buildSourceUrl(sourceId: string): string {
   const bare = sourceId.replace(/^https?:\/\/openalex\.org\//i, '')
   return (
     `${API_ROOT}/sources/${encodeURIComponent(bare)}` +
-    `?select=${encodeURIComponent(SOURCE_SELECT)}${mailtoSuffix(OPENALEX_CONTACT)}`
+    `?select=${encodeURIComponent(SOURCE_SELECT)}${mailtoSuffix(activeContact)}`
   )
 }
 

@@ -96,6 +96,7 @@ tick **Citations**.
 | **Automatic updates**        | Off. Turn on to refresh missing and outdated counts at the next start.                                                                                                                                                                                                                                                    |
 | **Outdated after**           | 3, 6, 12 or 24 months. Default 6.                                                                                                                                                                                                                                                                                         |
 | **Colours**                  | On. Each source gets its own colour when more than one is shown.                                                                                                                                                                                                                                                          |
+| **Contact address**          | Optional. Crossref and OpenAlex give faster, higher limits to requests that say who is making them; yours is sent with those and with nothing else. Leave it empty and Orbit uses the common pool, which is slower but works.                                                                                             |
 | **Semantic Scholar API key** | Optional but worth having. Without one you share an anonymous pool with every other client, so lookups are slower and fail more. Request one at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api). Zotero stores it unencrypted in its preferences; Orbit sends it only to Semantic Scholar. |
 
 Orbit looks work up **by DOI or arXiv ID only** — never by title, ISBN or PMID.
@@ -117,8 +118,8 @@ the base, and each success eases it back by 0.9, never below the base.
 Semantic Scholar runs its own scheduler — at least 1 second between keyed
 requests, 3 seconds without a key — and backs off exponentially with full
 jitter on a transient failure, never sooner than the server's `Retry-After`.
-OpenAlex is asked politely: give it a contact address (see _Building_) and it
-raises the limits.
+OpenAlex is asked politely: put an address in **Settings → Contact address**
+and it raises the limits.
 
 A source that comes up empty for an item is not asked again immediately: 7
 days after the first failure, then 30, then 90, then 180. Selected-item updates
@@ -165,12 +166,18 @@ Every build raises the patch version. Zotero keys an installed plugin by
 version, and two builds sharing one are the same plugin as far as it is
 concerned — reinstalling can leave the old code in place.
 
-OpenAlex offers a faster request pool to callers who identify themselves. Put
-an address in `.orbit-contact` (untracked) or set `ORBIT_CONTACT`, and it is
-substituted into the build. Leave it unset and Orbit uses the common pool,
-which is slower but works. The address is deliberately not in this repository:
-it identifies whoever runs the build, and a fork must not go on sending an
-address that is not theirs.
+Crossref and OpenAlex offer a faster request pool to callers who identify
+themselves, and the address for it is a setting -- see **Contact address**
+above. Each user enters their own, which is the only arrangement that works for
+a published plugin: an address compiled into a release would identify whoever
+built it on every request every user makes, and would travel to everyone who
+downloads the file.
+
+A local build can still carry one, as a fallback for when the setting is empty:
+put it in `.orbit-contact` (untracked) or set `ORBIT_CONTACT`. Released builds
+are made without it. The address is deliberately not in this repository -- it
+identifies whoever runs the build, and a fork must not go on sending an address
+that is not theirs -- and a setting that is filled in always wins over it.
 
 ## Credit
 

@@ -61,4 +61,16 @@ pref-apikey-checking = Checking…
 pref-apikey-unavailable = Semantic Scholar is unavailable here
 pref-apikey-cleaned = Removed invisible characters from the pasted key ({ $characters }).
 
+# The polite-pool contact. Not a key, and not secret -- it is sent with every
+# request on purpose.
+pref-contact-heading = Contact address
+pref-contact-intro = Optional. Crossref and OpenAlex give faster, higher limits to requests that say who is making them. Yours is sent with those requests and with nothing else.
+pref-contact-label = Email
+pref-contact-field =
+    .placeholder = you@example.org
+pref-contact-in-use = ✓ Sent to Crossref and OpenAlex
+pref-contact-unusable = ✗ That does not look like an email address, so nothing is sent
+pref-contact-built-in = Using the address this copy was built with
+pref-contact-anonymous = Not set — using the common pool, which is slower
+
 pref-help = { $name } [Build { $version } { $time }]

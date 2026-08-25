@@ -28,6 +28,7 @@
     "src/modules/fwciUpdate.core.ts",
     "src/modules/semanticScholarClient.core.ts",
     "src/utils/abort.ts",
+    "src/utils/contact.ts",
     "src/utils/errors.ts",
     "src/utils/fwciStore.ts",
     "src/utils/httpOutcome.ts",

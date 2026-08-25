@@ -1,10 +1,12 @@
 import { config } from '../../package.json'
 import { normalizeApiKey } from '../utils/apiKey'
+import { contactState, normalizeContact } from '../utils/contact'
 import { getLocaleID } from '../utils/locale'
 import { getPref, setPref } from '../utils/prefs'
 
 import { SEMANTIC_SCHOLAR_DATABASE } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
+import { builtInContact, setOpenAlexContact } from './openAlexClient.core'
 import {
   apiKeyStatusMessage,
   apiKeyStatusTone,
@@ -25,6 +27,9 @@ const apiKeyStatusDetailId = `${apiKeyStatusId}-detail`
 const apiKeyStatusCleanedId = `${apiKeyStatusId}-cleaned`
 const apiKeyValidateId = `${apiKeyInputId}-validate`
 const apiKeyGroupId = `${apiKeyInputId}-group`
+const contactInputId = `${prefPrefix}-openAlexContact`
+const contactStatusId = `${contactInputId}-status`
+const contactStatusTextId = `${contactStatusId}-text`
 const databaseInputId = `${prefPrefix}-databaseOrderExposed`
 const databaseStatusId = `${prefPrefix}-database-status`
 
@@ -249,6 +254,48 @@ export function validateDatabaseOrderUI(window: Window, andSave: boolean = true)
   if (validation.databases.includes(SEMANTIC_SCHOLAR_DATABASE)) notifySemanticScholarUnavailable()
 }
 
+const CONTACT_MESSAGES = {
+  'in-use': { id: 'pref-contact-in-use', tone: 'ok' },
+  'unusable': { id: 'pref-contact-unusable', tone: 'error' },
+  'built-in': { id: 'pref-contact-built-in', tone: 'none' },
+  'anonymous': { id: 'pref-contact-anonymous', tone: 'none' },
+} as const
+
+function renderContactStatus(window: Window, typed: string): void {
+  const state = contactState(typed, builtInContact())
+  const message = CONTACT_MESSAGES[state]
+  applyMessage(window, contactStatusTextId, { id: message.id })
+  setStatusTone(window, contactStatusId, message.tone)
+}
+
+/**
+ * The polite-pool address.
+ *
+ * Persisted on the way out of the field rather than per keystroke, like the
+ * database order, and applied to the request path in the same breath: the
+ * providers read it on the next request, and waiting for a restart to honour a
+ * setting the pane says is in use would be a lie.
+ */
+function bindContactField(window: Window): void {
+  const input = byId<HTMLInputElement>(window, contactInputId)
+  if (!input) return
+
+  input.value = normalizeContact(getPref('openAlexContact'))
+  renderContactStatus(window, input.value)
+
+  input.addEventListener('input', () => {
+    renderContactStatus(window, input.value)
+  })
+
+  input.addEventListener('focusout', () => {
+    const cleaned = normalizeContact(input.value)
+    input.value = cleaned
+    setPref('openAlexContact', cleaned)
+    setOpenAlexContact(cleaned)
+    renderContactStatus(window, cleaned)
+  })
+}
+
 export function registerPrefsScripts(_window: Window) {
   // See addon/content/preferences.xhtml onpaneload
   if (!addon.data.prefs) {
@@ -264,6 +311,8 @@ export function registerPrefsScripts(_window: Window) {
 function bindPrefEvents() {
   const window = addon.data.prefs?.window
   if (!window) return
+
+  bindContactField(window)
 
   const databaseOrderElement = byId<HTMLInputElement>(window, databaseInputId)
   if (databaseOrderElement) {

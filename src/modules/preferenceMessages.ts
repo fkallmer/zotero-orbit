@@ -37,6 +37,9 @@ export type PrefsMessage =
         | 'pref-apikey-checking'
         | 'pref-apikey-unavailable'
     }
+  | {
+      readonly id: 'pref-contact-in-use' | 'pref-contact-unusable' | 'pref-contact-built-in' | 'pref-contact-anonymous'
+    }
 
 /**
  * Every id the pane can set, as runtime data. The `Record` turns a missing entry
@@ -57,6 +60,10 @@ const PREFS_MESSAGE_ID_SET: Record<PrefsMessage['id'], true> = {
   'pref-apikey-checking': true,
   'pref-apikey-unavailable': true,
   'pref-apikey-cleaned': true,
+  'pref-contact-in-use': true,
+  'pref-contact-unusable': true,
+  'pref-contact-built-in': true,
+  'pref-contact-anonymous': true,
 }
 
 export const PREFS_MESSAGE_IDS = Object.keys(PREFS_MESSAGE_ID_SET) as PrefsMessage['id'][]

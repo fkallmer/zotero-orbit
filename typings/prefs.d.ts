@@ -17,6 +17,7 @@ declare namespace _ZoteroTypes {
       "rateLimits": string;
       "googleScholarEndpoint": string;
       "semanticScholarApiKey": string;
+      "openAlexContact": string;
       "debugLogging": boolean;
       "graphScale": string;
       "graphAxisX": string;

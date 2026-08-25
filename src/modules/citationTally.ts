@@ -44,8 +44,8 @@ import { getIgnorePolicy } from './ignorePolicy'
 import {
   buildWorkUrl,
   normalizeWork,
-  OPENALEX_CONTACT,
   OPENALEX_DATABASE,
+  openAlexContact,
   openAlexRecordCacheKey,
   toLookupDoi,
   WORK_FULL_SELECT,
@@ -86,15 +86,26 @@ const REQUEST_TIMEOUT_MS = 20_000
  * "polite pool", which is better resourced than the anonymous one; the project
  * URL serves as that contact.
  */
-// The contact is appended only when the build was given one, for the same
-// reason the OpenAlex mailto is: naming somebody else is worse than naming
-// nobody. See OPENALEX_CONTACT.
-const USER_AGENT =
-  `Orbit/${version} (+https://github.com/fkallmer/zotero-orbit` +
-  `${OPENALEX_CONTACT.trim() === '' ? '' : `; mailto:${OPENALEX_CONTACT.trim()}`})`
+// The contact is appended only when there is a usable one, for the same reason
+// the OpenAlex mailto is: naming somebody else is worse than naming nobody.
+// See utils/contact.
+function userAgent(): string {
+  const contact = openAlexContact()
+  return (
+    `Orbit/${version} (+https://github.com/fkallmer/zotero-orbit` + `${contact === '' ? '' : `; mailto:${contact}`})`
+  )
+}
 
-/** Headers every provider request sends. */
-const REQUEST_HEADERS: Readonly<Record<string, string>> = { 'User-Agent': USER_AGENT }
+/**
+ * Headers every provider request sends.
+ *
+ * A function rather than the constant it was: the contact is a preference now,
+ * and a constant computed at module load would keep sending the old value --
+ * or none -- until Zotero restarted.
+ */
+function requestHeaders(): Readonly<Record<string, string>> {
+  return { 'User-Agent': userAgent() }
+}
 
 /**
  * Floors on request spacing, in milliseconds.
@@ -1015,7 +1026,7 @@ class DBInterface {
     }
 
     const primary = await attempt(`https://api.crossref.org/works/${edoi}/transform/application/${style}`, {
-      headers: REQUEST_HEADERS,
+      headers: requestHeaders(),
     })
 
     let outcome = primary
@@ -1025,7 +1036,7 @@ class DBInterface {
       debugLog('Citation debug - Crossref API unavailable, trying DOI.org')
       await RateLimitManager.waitForRateLimit('crossref')
       outcome = await attempt(`https://doi.org/${edoi}`, {
-        headers: { ...REQUEST_HEADERS, Accept: `application/${style}` },
+        headers: { ...requestHeaders(), Accept: `application/${style}` },
       })
     }
 
@@ -1095,7 +1106,7 @@ class DBInterface {
 
       let response: Response
       try {
-        response = await lookupFetch(url, { headers: REQUEST_HEADERS })
+        response = await lookupFetch(url, { headers: requestHeaders() })
       } catch (err) {
         debugLog(`Citation debug - INSPIRE request failed for ${identifier.id}:`, err)
         sawTransient = true
@@ -1193,7 +1204,7 @@ class DBInterface {
 
       let response: Response
       try {
-        response = await lookupFetch(url, { headers: REQUEST_HEADERS })
+        response = await lookupFetch(url, { headers: requestHeaders() })
       } catch (err) {
         debugLog(`Citation debug - OpenAlex request failed for ${lookupDoi}:`, err)
         sawTransient = true
@@ -1894,7 +1905,7 @@ export {
   // separately paced channel to OpenAlex.
   lookupFetch,
   RateLimitManager,
-  REQUEST_HEADERS,
+  requestHeaders,
   REQUEST_TIMEOUT_MS,
   DBInterface,
   Core,

@@ -18,7 +18,7 @@
 import { getLocaleID, getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
 
-import { Helpers, lookupFetch, RateLimitManager, REQUEST_HEADERS } from './citationTally'
+import { Helpers, lookupFetch, RateLimitManager, requestHeaders } from './citationTally'
 import { flushFwciStore, recordFwci, shouldRefreshFwci, storedFwciCount } from './fwciTracker'
 import { chunk, countValues, fwciWritesForChunk, planFwciLookups } from './fwciUpdate.core.ts'
 import {
@@ -57,7 +57,7 @@ async function fetchBatch(dois: readonly string[]): Promise<ReturnType<typeof no
 
   let response: Response
   try {
-    response = await lookupFetch(buildFwciByDoiUrl(dois), { headers: REQUEST_HEADERS })
+    response = await lookupFetch(buildFwciByDoiUrl(dois), { headers: requestHeaders() })
   } catch (err) {
     debugLog('Citation debug - FWCI batch request failed:', err)
     return null

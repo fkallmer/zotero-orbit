@@ -15,7 +15,7 @@
 import { debugLog } from '../utils/log'
 import { dropCache, readCache, writeCache } from '../utils/recordCache'
 
-import { lookupFetch, RateLimitManager, REQUEST_HEADERS } from './citationTally'
+import { lookupFetch, RateLimitManager, requestHeaders } from './citationTally'
 import {
   buildCitingWorksUrl,
   buildSourceUrl,
@@ -47,7 +47,7 @@ async function fetchJson(url: string): Promise<unknown> {
   await RateLimitManager.waitForRateLimit(OPENALEX_DATABASE)
   let response: Response
   try {
-    response = await lookupFetch(url, { headers: REQUEST_HEADERS })
+    response = await lookupFetch(url, { headers: requestHeaders() })
   } catch (err) {
     debugLog('Citation debug - OpenAlex enrichment request failed:', err)
     return null

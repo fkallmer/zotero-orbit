@@ -9,6 +9,9 @@ pref('rateLimits', '{"crossref":1000,"semanticscholar":3000,"inspire":1000,"open
 // Regional Scholar mirrors exist; a user behind one needs to point at it.
 pref('googleScholarEndpoint', 'https://scholar.google.com')
 pref('semanticScholarApiKey', '')
+// The address Crossref and OpenAlex are given for their polite pools. Empty
+// means anonymous, which both providers support. See utils/contact.
+pref('openAlexContact', '')
 // Diagnostics. A real boolean, not the 'true'/'false' strings the older prefs
 // above use -- that is a wart worth not extending. No UI: set it in Zotero's
 // Config Editor (extensions.zotero.orbit.debugLogging) when asked for

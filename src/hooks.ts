@@ -24,6 +24,7 @@ import {
 } from './modules/fwciUpdate'
 import { installTabIconStyle, registerGraphMenus, removeTabIconStyle } from './modules/graphTab'
 import { registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } from './modules/libraryIndex'
+import { setOpenAlexContact } from './modules/openAlexClient.core'
 import { registerPrefsScripts, validateApiKeyUI, validateDatabaseOrderUI } from './modules/preferenceScript'
 import {
   closeSemanticScholarWarning,
@@ -34,6 +35,7 @@ import {
 } from './modules/semanticScholarClient'
 import { adoptLegacyState } from './utils/adoptLegacyState'
 import { getString, initLocale } from './utils/locale'
+import { getPref } from './utils/prefs'
 import { flushCache, loadCache } from './utils/recordCache'
 
 async function onStartup() {
@@ -50,6 +52,10 @@ async function onStartup() {
   // Before anything reads a preference: the plugin was installed under a
   // different name, and its settings and cache are still filed under it.
   await adoptLegacyState()
+
+  // Before the first request, so the polite-pool address is the user's own from
+  // the outset rather than from whenever they next open the preferences.
+  setOpenAlexContact(getPref('openAlexContact'))
 
   // Key changes must be observed before any lookup can start. In the degraded
   // runtime the client is never constructed, but startup still has to finish.
