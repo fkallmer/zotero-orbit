@@ -6,7 +6,7 @@ import { debugLog, debugLogLazy } from '../utils/log'
 import { getPref } from '../utils/prefs'
 import { parseCitationStampDate, parseDateAddedInstant } from '../utils/temporalParse'
 
-import { Helpers, updateItem } from './citationTally'
+import { Helpers, updateItem } from './citationCounts'
 import { effectiveDatabases } from './citationTypes'
 import { refreshFwciAfterCounts } from './fwciUpdate'
 import { GOOGLE_SCHOLAR_DATABASE } from './googleScholarClient.core'

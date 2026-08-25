@@ -15,7 +15,7 @@
 import { debugLog } from '../utils/log'
 import { dropCache, readCache, writeCache } from '../utils/recordCache'
 
-import { lookupFetch, RateLimitManager, requestHeaders } from './citationTally'
+import { lookupFetch, RateLimitManager, requestHeaders } from './citationCounts'
 import {
   buildCitingWorksUrl,
   buildSourceUrl,

@@ -2,10 +2,10 @@
  * The loaded FWCI store, and the only place that touches its file.
  *
  * Split from `fwciUpdate` on purpose. The column and the citation-count path
- * both need to read and write these values, and both live in `citationTally`;
- * the fetching lives in `fwciUpdate`, which needs `citationTally`'s rate
+ * both need to read and write these values, and both live in `citationCounts`;
+ * the fetching lives in `fwciUpdate`, which needs `citationCounts`'s rate
  * limiter and fetch wrapper. Putting the store here -- depending on `utils` and
- * nothing else -- is what keeps `citationTally -> fwciUpdate -> citationTally`
+ * nothing else -- is what keeps `citationCounts -> fwciUpdate -> citationCounts`
  * from being a cycle.
  *
  * Writes are debounced, like `recordCache`: a library-wide refresh writes a few

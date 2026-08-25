@@ -18,7 +18,7 @@ import { readCache } from '../utils/recordCache'
 import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
-import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationTally'
+import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationCounts'
 import { buildScholarUrl } from './googleScholarClient.core.ts'
 import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchJournalMetrics, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'

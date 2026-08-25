@@ -2,7 +2,7 @@
  * Reading and rewriting the citation lines this plugin stores in an item's
  * Extra field.
  *
- * Extracted from `citationTally.ts` so the pattern set can be tested directly:
+ * Extracted from `citationCounts.ts` so the pattern set can be tested directly:
  * the patterns are built from *localized* database names, and two defects lived
  * here undetected because there was no way to exercise them without Zotero.
  *

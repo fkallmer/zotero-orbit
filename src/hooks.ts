@@ -1,5 +1,4 @@
 import { cancelAutomaticUpdate, startAutomaticUpdate } from './modules/citationAutoupdate'
-import { registerCitationPane, unregisterCitationPane } from './modules/citationPane'
 import {
   abortInFlightLookups,
   BasicRegistrar,
@@ -9,7 +8,8 @@ import {
   setPostCountFollowUp,
   UIRegistrar,
   UX,
-} from './modules/citationTally'
+} from './modules/citationCounts'
+import { registerCitationPane, unregisterCitationPane } from './modules/citationPane'
 import {
   closeDegradedNotice,
   maybeShowProactiveDegradedNotice,
@@ -82,7 +82,7 @@ async function onStartup() {
   // OpenAlex is not in the shipped database order.
   registerFwciMenus()
 
-  // Wired here rather than imported into citationTally, which the refresh needs
+  // Wired here rather than imported into citationCounts, which the refresh needs
   // for its rate limiter and fetch wrapper. Dispatch is what hooks is for.
   setPostCountFollowUp((items) => {
     void refreshFwciAfterCounts(items).catch((err: unknown) => {

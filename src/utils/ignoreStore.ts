@@ -104,7 +104,7 @@ export function getIgnoreRecord(store: IgnoreStore, database: string, itemId: nu
 /**
  * Whether enough time has passed to look this item up again.
  *
- * Previously defined identically in both `citationTally.ts` and
+ * Previously defined identically in both `citationCounts.ts` and
  * `citationAutoupdate.ts`, where the two copies could drift apart.
  */
 export function shouldRetryIgnoredItem(record: IgnoreRecord, now: Temporal.Instant): boolean {

@@ -18,7 +18,7 @@
 import { getLocaleID, getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
 
-import { Helpers, lookupFetch, RateLimitManager, requestHeaders } from './citationTally'
+import { Helpers, lookupFetch, RateLimitManager, requestHeaders } from './citationCounts'
 import { flushFwciStore, recordFwci, shouldRefreshFwci, storedFwciCount } from './fwciTracker'
 import { chunk, countValues, fwciWritesForChunk, planFwciLookups } from './fwciUpdate.core.ts'
 import {

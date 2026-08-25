@@ -17,7 +17,7 @@ import { getPref, setPref } from '../utils/prefs'
 import { readCache } from '../utils/recordCache'
 import { toS2PaperRefs } from '../utils/s2Identifiers'
 
-import { Helpers } from './citationTally'
+import { Helpers } from './citationCounts'
 import {
   AXIS_GUTTER,
   AXIS_METRICS,
