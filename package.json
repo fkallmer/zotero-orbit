@@ -60,7 +60,7 @@
   },
   "resolutions": {
     "@xmldom/xmldom": "npm:^0.8.13",
-    "adm-zip": "npm:^0.6.0",
+    "adm-zip": "npm:^0.6.1",
     "epubjs": "npm:^0.3.93",
     "pdfjs-dist": "npm:^4.10.0"
   },
