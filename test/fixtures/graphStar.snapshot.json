@@ -199,27 +199,21 @@
     "zoomed": [
       {
         "key": "seed",
-        "lines": [
-          "Soleimani 2015"
-        ],
+        "lines": ["Soleimani 2015"],
         "x": 585.9833448913602,
         "y": 181.3283784270195,
         "anchor": "end"
       },
       {
         "key": "r2",
-        "lines": [
-          "Babbage 2004"
-        ],
+        "lines": ["Babbage 2004"],
         "x": 105.14285714285714,
         "y": 173.8846492880258,
         "anchor": "middle"
       },
       {
         "key": "r3",
-        "lines": [
-          "2009"
-        ],
+        "lines": ["2009"],
         "x": 333.7142857142857,
         "y": 239.21290357220377,
         "anchor": "middle"
@@ -1241,127 +1235,98 @@
     "zoomed": [
       {
         "key": "n4",
-        "lines": [
-          "n4",
-          "822 citations"
-        ],
+        "lines": ["n4", "822 citations"],
         "x": 128.33333333333337,
         "y": 294.0488450653876,
         "anchor": "middle"
       },
       {
         "key": "n16",
-        "lines": [
-          "Author16 2011"
-        ],
+        "lines": ["Author16 2011"],
         "x": 39.46996890114143,
         "y": 13.5,
         "anchor": "start"
       },
       {
         "key": "n41",
-        "lines": [
-          "Author41 2017"
-        ],
+        "lines": ["Author41 2017"],
         "x": 681.7091034656191,
         "y": 63.107684529828134,
         "anchor": "end"
       },
       {
         "key": "n5",
-        "lines": [
-          "Author5 2015"
-        ],
+        "lines": ["Author5 2015"],
         "x": 468.33333333333326,
         "y": 245.4400844542734,
         "anchor": "middle"
       },
       {
         "key": "n11",
-        "lines": [
-          "Author11 2014"
-        ],
+        "lines": ["Author11 2014"],
         "x": 355,
         "y": 199.04425080766188,
         "anchor": "middle"
       },
       {
         "key": "n20",
-        "lines": [
-          "Author20 2014"
-        ],
+        "lines": ["Author20 2014"],
         "x": 355,
         "y": 253.71964386359775,
         "anchor": "middle"
       },
       {
         "key": "n34",
-        "lines": [
-          "Author34 2012"
-        ],
+        "lines": ["Author34 2012"],
         "x": 128.33333333333337,
         "y": 271.55690812938803,
         "anchor": "middle"
       },
       {
         "key": "n26",
-        "lines": [
-          "Author26 2017"
-        ],
+        "lines": ["Author26 2017"],
         "x": 675.5,
         "y": 259.4878665318504,
         "anchor": "end"
       },
       {
         "key": "n14",
-        "lines": [
-          "Author14 2013"
-        ],
+        "lines": ["Author14 2013"],
         "x": 241.66666666666652,
         "y": 288.43793637076175,
         "anchor": "middle"
       },
       {
         "key": "n37",
-        "lines": [
-          "Author37 2016"
-        ],
+        "lines": ["Author37 2016"],
         "x": 581.6666666666667,
         "y": 297.5399598284366,
         "anchor": "middle"
       },
       {
         "key": "n44",
-        "lines": [
-          "Author44 2014"
-        ],
+        "lines": ["Author44 2014"],
         "x": 355,
         "y": 361.4899285006205,
         "anchor": "middle"
       },
       {
         "key": "n29",
-        "lines": [
-          "Author29 2015"
-        ],
+        "lines": ["Author29 2015"],
         "x": 468.33333333333326,
         "y": 346.50558570395305,
         "anchor": "middle"
       },
       {
         "key": "n13",
-        "lines": [
-          "Author13 2013"
-        ],
+        "lines": ["Author13 2013"],
         "x": 241.66666666666652,
         "y": 358.17075928141213,
         "anchor": "middle"
       },
       {
         "key": "n35",
-        "lines": [
-          "Author35 2015"
-        ],
+        "lines": ["Author35 2015"],
         "x": 441.12810157087216,
         "y": 398.6102123356926,
         "anchor": "end"
@@ -1830,82 +1795,63 @@
     "zoomed": [
       {
         "key": "seed",
-        "lines": [
-          "seed",
-          "60 citations"
-        ],
+        "lines": ["seed", "60 citations"],
         "x": 252.3051525967506,
         "y": 82.3151137279659,
         "anchor": "middle"
       },
       {
         "key": "n11",
-        "lines": [
-          "Author11 2014"
-        ],
+        "lines": ["Author11 2014"],
         "x": 448.78236394906475,
         "y": 167.5356506671115,
         "anchor": "middle"
       },
       {
         "key": "n23",
-        "lines": [
-          "Author23 2016"
-        ],
+        "lines": ["Author23 2016"],
         "x": 379.3344950343344,
         "y": 80.55721704173085,
         "anchor": "middle"
       },
       {
         "key": "n8",
-        "lines": [
-          "Author8 2016"
-        ],
+        "lines": ["Author8 2016"],
         "x": 324.0769020278644,
         "y": 130.4957014653517,
         "anchor": "middle"
       },
       {
         "key": "n17",
-        "lines": [
-          "Author17 2009"
-        ],
+        "lines": ["Author17 2009"],
         "x": 238.37631793355342,
         "y": 13.5,
         "anchor": "end"
       },
       {
         "key": "n19",
-        "lines": [
-          "Author19 2012"
-        ],
+        "lines": ["Author19 2012"],
         "x": 212.09442518958934,
         "y": 267,
         "anchor": "middle"
       },
       {
         "key": "n10",
-        "lines": [
-          "Author10 2012"
-        ],
+        "lines": ["Author10 2012"],
         "x": 135.2296584420498,
         "y": 154.55191496157772,
         "anchor": "middle"
       },
       {
         "key": "n7",
-        "lines": [
-          "Author7 2012"
-        ],
+        "lines": ["Author7 2012"],
         "x": 132.89168541886858,
         "y": 25.52339531645424,
         "anchor": "start"
       },
       {
         "key": "n9",
-        "lines": [
-          "Author9 2023"
-        ],
+        "lines": ["Author9 2023"],
         "x": 154.51769316643382,
         "y": 83.2194391327248,
         "anchor": "middle"
