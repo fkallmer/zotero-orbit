@@ -62,3 +62,7 @@ logs
 # repository on purpose: it identifies whoever runs this build, and a fork
 # published from here must not carry someone else's address.
 .orbit-contact
+
+# Git worktrees Claude Code creates for parallel work. Each is a full checkout
+# of a branch in progress; lint and format run inside it, not over it.
+.claude/worktrees/
