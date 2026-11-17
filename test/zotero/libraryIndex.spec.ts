@@ -57,13 +57,19 @@ describe('Orbit library index', function () {
     ok(index.get('arxiv:1706.03762') === id, 'arXiv key missing')
   })
 
-  it('indexes the Extra lines of a type without a DOI field', async () => {
-    // Whichever common type lacks the field in this Zotero; the point is the
-    // field lookup that fails, not the type.
-    const type = ['webpage', 'thesis', 'book', 'report'].find((candidate) => !fieldValid(candidate, 'DOI'))
-    ok(type, 'every candidate type has a DOI field here; pick another')
+  it('indexes the Extra lines of an item with no DOI in its field', async () => {
+    // Zotero 10 gave most types a DOI field (webpage, thesis, book and report
+    // all have one), so prefer a type that still lacks it -- that is where
+    // getField throws -- and fall back to an empty DOI field on a webpage.
+    // Either way the Extra lines have to be read.
+    const types: { name: string }[] = Zotero.ItemTypes.getAll()
+    const without = types
+      .map((t) => t.name)
+      .find((name) => name !== 'note' && name !== 'attachment' && name !== 'annotation' && !fieldValid(name, 'DOI'))
+    const type = without ?? 'webpage'
+    Zotero.debug(`[library-index-spec] probing Extra on ${type} (${without ? 'no DOI field' : 'empty DOI field'})`)
     const id = await make(type, {
-      title: 'Orbit index probe: no DOI field',
+      title: 'Orbit index probe: DOI only in Extra',
       extra: 'DOI: 10.9999/orbit-probe\nPMID: 99999999\narXiv:1409.0473 [cs.CL]',
     })
     clearLibraryIndex()
