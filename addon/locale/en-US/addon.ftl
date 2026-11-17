@@ -50,10 +50,43 @@ column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
 
 # Gaps list (gaps-*, P8). Add strings below this line only.
-
+gaps-heading-reference = Cited by your items
+gaps-heading-citing = Citing your items
+gaps-empty = No gaps: every work that several of your items cite, or that cites several of them, is already in your library.
+gaps-year-unknown = no year
+gaps-citations = { $count ->
+    [one] 1 citation
+   *[other] { $count } citations
+  }
+gaps-citations-unknown = citations unknown
+gaps-score = score { $score }
+gaps-score-hint = How many of your items it is connected to, divided by the natural logarithm of its citation count plus two. High when several of your items lean on a work that is not cited everywhere anyway; a classic that everyone cites scores lower than a niche work your items share.
+gaps-cited-by = { $count ->
+    [one] cited by 1 of your items
+   *[other] cited by { $count } of your items
+  }
+gaps-cites = { $count ->
+    [one] cites 1 of your items
+   *[other] cites { $count } of your items
+  }
+gaps-probable-heading = Probably in your library ({ $count })
+gaps-probable-hint = Matched by title, year and first author rather than by an identifier. Check before importing these: the library most likely holds them already.
+gaps-show-item = Show item
 
 # Import by DOI (import-*, P8). Add strings below this line only.
-
+import-button = Import
+import-button-hint = Look up { $doi } and add it to your library
+import-running = Importing…
+import-done = ✓ In your library
+import-confirm-title = Add to your library?
+import-confirm-body = Look up this work by its DOI and add it to “{ $target }”?
+    { $title } ({ $year })
+    DOI: { $doi }
+import-confirm-no-year = no year
+import-failed-read-only = This library cannot be edited.
+import-failed-no-translator = No translator can look up DOIs.
+import-failed-no-result = The DOI lookup found nothing.
+import-failed-error = The import failed.
 
 # Item pane section
 # Attribute-only, like Zotero's own section strings (section-tags, sidenav-info).
