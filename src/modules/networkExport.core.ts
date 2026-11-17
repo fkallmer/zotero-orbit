@@ -4,14 +4,15 @@
  * Pure: every function takes a `CollectionNetwork` (or part of one) and returns
  * a string. Saving and opening happen in networkExport.ts.
  *
- * Two facts about the network shape shape the code here:
+ * Two things about the network's shape decide how the code here reads it:
  *
  * - `gaps` and `probable` are works too, and may or may not also appear in
  *   `works`. Every node set is therefore a union keyed by OpenAlex id, and an
  *   edge is written only when both of its ends made it into the set.
- * - `clusterOf` is keyed by seed. Looking a gap up in it gives `undefined`, not
- *   the `null` the type promises, so cluster numbers are read through
- *   `clusterNumber`, which treats anything that is not a number as "none".
+ * - `clusterOf` may lack an entry for a work (a gap, say), and looking it up
+ *   then gives `undefined` rather than the `null` the type promises. Cluster
+ *   numbers are read through `clusterNumber`, which treats anything that is
+ *   not a number as "none".
  *
  * Cluster numbers are written 1-based in every format (VOSviewer requires
  * 1..1000), so the same cluster carries the same number in each file.
@@ -113,10 +114,11 @@ function vosLabel(work: { authors: readonly string[]; year: number | null; title
  * VOSviewer Online JSON (https://app.vosviewer.com/docs/file-types/json-file-type/).
  *
  * Items are the seeds and the gaps. One link per item pair, its strength the
- * coupling count plus one for each citation between the two, in either
- * direction -- so a pair that is coupled and cited, or that cites both ways,
- * is one link with the sum. `Links` and `Total link strength` are counted from
- * the links written.
+ * coupling count plus one when either of the two cites the other. Citations
+ * are collapsed to unordered pairs first, so a pair that cites both ways, or
+ * appears twice in `citations`, still adds one; a pair that is coupled and
+ * cited gets the coupling count plus one. `Links` and `Total link strength`
+ * are counted from the links written.
  */
 export function toVosviewerJson(net: CollectionNetwork): string {
   const works: (SeedWork | Gap)[] = []
@@ -139,7 +141,12 @@ export function toVosviewerJson(net: CollectionNetwork): string {
     else strength.set(key, { source_id: source, target_id: target, strength: amount })
   }
   for (const edge of net.coupling) addLink(edge.a, edge.b, edge.shared)
-  for (const edge of net.citations) addLink(edge.from, edge.to, 1)
+  const cited = new Map<string, [OpenAlexId, OpenAlexId]>()
+  for (const edge of net.citations) {
+    const pair = pairKey(edge.from, edge.to)
+    cited.set(pair.join(' '), pair)
+  }
+  for (const [a, b] of cited.values()) addLink(a, b, 1)
 
   const links = [...strength.values()].sort((x, y) => x.source_id - y.source_id || x.target_id - y.target_id)
   const degree = new Map<number, number>()

@@ -93,7 +93,8 @@ function fixture(): CollectionNetwork {
     citations: [
       { from: 'W1', to: 'W10' },
       { from: 'W2', to: 'W10' },
-      { from: 'W10', to: 'W2' }, // reciprocal: collapses into the W2-W10 link
+      { from: 'W10', to: 'W2' }, // reciprocal: still one citation pair W2-W10
+      { from: 'W1', to: 'W10' }, // duplicate row: adds nothing
       { from: 'W2', to: 'W1' }, // coupled and cited: adds to the W1-W2 link
       { from: 'W1', to: 'W11' }, // W11 is not a VOSviewer item
       { from: 'W1', to: 'W98' }, // W98 is nowhere
@@ -102,7 +103,7 @@ function fixture(): CollectionNetwork {
       { id: 0, label: 'Big cluster', topicShare: 0.8, members: ['W1'] },
       { id: 1, label: 'Small & odd', topicShare: 0.5, members: ['W2'] },
     ],
-    // Keyed by seed only, as the builder leaves it: W10 looks up as undefined.
+    // No entry for the gap: W10 looks up as undefined, not null.
     clusterOf: { W1: 0, W2: 1, W3: null },
     gaps: [gap],
     probable: [probable],
@@ -198,7 +199,7 @@ describe('toVosviewerJson', () => {
     assert.deepEqual(links, [
       { source_id: 1, target_id: 2, strength: 4 }, // coupling 3 + W2->W1
       { source_id: 1, target_id: 4, strength: 1 },
-      { source_id: 2, target_id: 4, strength: 2 }, // W2->W10 and W10->W2
+      { source_id: 2, target_id: 4, strength: 1 }, // W2->W10 and W10->W2, one pair
     ])
     for (const link of links) assert.ok(link.source_id < link.target_id)
   })
