@@ -225,3 +225,13 @@ graph-scale-linear = Scale: linear
 graph-scale-hint = Logarithmic keeps orders of magnitude readable; linear separates works that are cited similarly often.
 
 # Exports and links to other tools (export-*, P6). Add strings below this line only.
+export-vosviewer = Export network for VOSviewer…
+export-graphml = Export network as GraphML…
+export-gaps-csv = Export gaps as CSV…
+export-gaps-ris = Export gaps as RIS…
+export-open-lcn = Open in Local Citation Network
+export-open-inciteful = Open in Inciteful
+export-filter-vosviewer = VOSviewer JSON
+export-filter-graphml = GraphML
+export-filter-csv = CSV
+export-filter-ris = RIS
