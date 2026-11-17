@@ -74,3 +74,5 @@ pref-contact-built-in = Using the address this copy was built with
 pref-contact-anonymous = Not set — using the common pool, which is slower
 
 pref-help = { $name } [Build { $version } { $time }]
+
+# OpenAlex API key and collection network limits (pref-openalex-key-*, pref-network-*, P1). Add strings below this line only.

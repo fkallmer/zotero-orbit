@@ -22,6 +22,11 @@
     // tests import use both.
     "typings",
     "src/modules/citationTypes.ts",
+    "src/modules/collectionTypes.ts",
+    // Every pure core, including the ones 0.3.0 adds (collectionNetwork,
+    // clustering, networkExport, openAlexNetwork, collectionGraph), without
+    // each package having to edit this list.
+    "src/modules/*.core.ts",
     "src/modules/ignorePolicy.ts",
     "src/modules/preferenceMessages.ts",
     "src/modules/semanticScholarKeyState.ts",

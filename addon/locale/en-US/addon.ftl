@@ -49,6 +49,12 @@ semantic-scholar-unavailable = Semantic Scholar isn't available and has been tur
 column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
 
+# Gaps list (gaps-*, P8). Add strings below this line only.
+
+
+# Import by DOI (import-*, P8). Add strings below this line only.
+
+
 # Item pane section
 # Attribute-only, like Zotero's own section strings (section-tags, sidenav-info).
 # A Fluent message with a *value* is written into the element's textContent,
@@ -112,6 +118,9 @@ column-fwci = Field-weighted impact
 pane-references-none = Semantic Scholar lists no references for this work.
 pane-references-elided = The publisher has asked Semantic Scholar not to serve this work's reference list through its API — { $count } references exist and are visible on the Semantic Scholar site. OpenAlex had none for this work either.
 pane-reference-cited-by = Citations of this cited work
+
+# Collection and library network (network-*, P4/P9). Add strings below this line only.
+
 
 # Citation graph tab
 graph-tab-title = Graph: { $name }
@@ -181,3 +190,5 @@ graph-empty = No OpenAlex record for this item, so there is nothing to graph. Wo
 graph-scale-log = Scale: logarithmic
 graph-scale-linear = Scale: linear
 graph-scale-hint = Logarithmic keeps orders of magnitude readable; linear separates works that are cited similarly often.
+
+# Exports and links to other tools (export-*, P6). Add strings below this line only.

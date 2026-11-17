@@ -2293,6 +2293,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"java-random@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "java-random@npm:0.4.0"
+  checksum: 10c0/f4e3a016dc4690b6269d4c9804904d1f5a5f864cf34ec1c5fab365280dd1fdae8a0d7f0ce465446120f04f1e33aa801ea330994c11c022a80288882ab33bc999
+  languageName: node
+  linkType: hard
+
 "jiti@npm:^2.6.1":
   version: 2.7.0
   resolution: "jiti@npm:2.7.0"
@@ -2472,6 +2479,15 @@ __metadata:
   version: 1.4.0
   resolution: "natural-compare@npm:1.4.0"
   checksum: 10c0/f5f9a7974bfb28a91afafa254b197f0f22c684d4a1731763dda960d2c8e375b36c7d690e0d9dc8fba774c537af14a7e979129bca23d88d052fbeb9466955e447
+  languageName: node
+  linkType: hard
+
+"networkanalysis-ts@npm:1.0.0":
+  version: 1.0.0
+  resolution: "networkanalysis-ts@npm:1.0.0"
+  dependencies:
+    java-random: "npm:^0.4.0"
+  checksum: 10c0/5300573a03ca5ac9b41d172f841c342eb7b022d5d2ae6f940856c76e998c6838ec335343d56c0828bf4c0ecdb88d38e40f2fec4dabb2f1ee38e99a381a17e92d
   languageName: node
   linkType: hard
 
@@ -3069,6 +3085,7 @@ __metadata:
     eslint-import-resolver-typescript: "npm:^4.4.5"
     eslint-plugin-import-x: "npm:^4.18.1"
     linkedom: "npm:^0.18.15"
+    networkanalysis-ts: "npm:1.0.0"
     prettier: "npm:^3.10.1"
     temporal-polyfill: "npm:^1.0.8"
     typescript: "npm:^6.0.3"
