@@ -12,7 +12,7 @@ import { describe, it } from 'node:test'
 
 import { parseHTML } from 'linkedom'
 
-import { formatScore, gapSections, seedsOfGap } from '../src/modules/gapsPanel.core.ts'
+import { formatScore, gapSections, seedsOfGap, sortGaps } from '../src/modules/gapsPanel.core.ts'
 
 import type { CollectionNetwork, Gap, NetworkWork, SeedWork } from '../src/modules/collectionTypes.ts'
 import type { ImportOutcome } from '../src/modules/doiImport.ts'
@@ -381,5 +381,62 @@ describe('gaps panel render', () => {
     assert.equal(root.querySelectorAll('.orbit-gaps-section').length, 0)
     // The probable matches still show beside the empty state.
     assert.ok(root.querySelector('.orbit-gaps-probable'))
+  })
+})
+
+describe('sorting the gaps', () => {
+  const sortable = [
+    gap('WA', 1, 'reference', { year: 2001, citedByCount: 10, referenceCount: 5 }),
+    gap('WB', 2, 'reference', { year: 2019, citedByCount: null, referenceCount: 90 }),
+    gap('WC', 3, 'reference', { year: null, citedByCount: 900, referenceCount: null }),
+    gap('WD', 4, 'reference', { year: 2019, citedByCount: 50, referenceCount: 40 }),
+  ]
+  const order = (sort: Parameters<typeof sortGaps>[1]): string[] => sortGaps(sortable, sort).map((g) => g.openAlexId)
+
+  it('orders by score rank by default', () => {
+    assert.deepEqual(order(undefined), ['WA', 'WB', 'WC', 'WD'])
+    assert.deepEqual(order('score'), ['WA', 'WB', 'WC', 'WD'])
+  })
+
+  it('orders by year, newest first, ties by rank, unknown last', () => {
+    assert.deepEqual(order('year'), ['WB', 'WD', 'WA', 'WC'])
+  })
+
+  it('orders by citations and by references, highest first, unknown last', () => {
+    assert.deepEqual(order('citations'), ['WC', 'WD', 'WA', 'WB'])
+    assert.deepEqual(order('references'), ['WB', 'WD', 'WA', 'WC'])
+  })
+
+  it('reorders the rows in place, keeping each rank number and an import already done', async () => {
+    const { root } = render(network(sortable))
+    const button = row(root, 'WA').querySelector<HTMLButtonElement>('.orbit-gap-import')
+    click(button)
+    await settle()
+    assert.equal(button?.getAttribute('data-state'), 'done')
+
+    const select = root.querySelector<HTMLSelectElement>('.orbit-gaps-sort-select')
+    assert.ok(select)
+    // linkedom's select.value has only a getter; Gecko's sets the choice.
+    Object.defineProperty(select, 'value', { value: 'citations', configurable: true })
+    select.dispatchEvent(new window.Event('change'))
+
+    const shown = rows(root, 'reference')
+    assert.deepEqual(
+      shown.map((r) => r.getAttribute('data-openalex')),
+      ['WC', 'WD', 'WA', 'WB'],
+    )
+    // Rank numbers are the score ranks, the numbers on the graph's marks.
+    assert.deepEqual(
+      shown.map((r) => r.querySelector('.orbit-gap-rank')?.textContent),
+      ['3', '4', '1', '2'],
+    )
+    // The same row element, so the finished import is still shown.
+    assert.equal(row(root, 'WA').querySelector('.orbit-gap-import')?.getAttribute('data-state'), 'done')
+  })
+
+  it('shows the reference count when it is known', () => {
+    const { root } = render(network(sortable))
+    assert.equal(row(root, 'WB').querySelector('.orbit-gap-references')?.textContent, 'orbit-gaps-references')
+    assert.equal(row(root, 'WC').querySelector('.orbit-gap-references'), null)
   })
 })

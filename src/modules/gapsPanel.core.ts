@@ -19,10 +19,43 @@ function byRank(a: Gap, b: Gap): number {
   return a.rank - b.rank || b.score - a.score
 }
 
-export function gapSections(gaps: readonly Gap[]): GapSections {
+/** What the list can be ordered by. `score` is the rank, and the default. */
+export type GapSort = 'score' | 'year' | 'citations' | 'references'
+
+export const GAP_SORTS: readonly GapSort[] = ['score', 'year', 'citations', 'references']
+
+const SORT_VALUE: Record<Exclude<GapSort, 'score'>, (gap: Gap) => number | null> = {
+  year: (gap) => gap.year,
+  citations: (gap) => gap.citedByCount,
+  references: (gap) => gap.referenceCount,
+}
+
+/**
+ * The gaps in the chosen order. Every order but `score` runs highest first --
+ * newest, most cited, longest reference list -- with unknown values last and
+ * ties kept in rank order, so the rank numbers stay what they were.
+ */
+export function sortGaps(gaps: readonly Gap[], sort: GapSort = 'score'): Gap[] {
+  if (sort === 'score') return [...gaps].sort(byRank)
+  const value = SORT_VALUE[sort]
+  return [...gaps].sort((a, b) => {
+    const va = value(a)
+    const vb = value(b)
+    if (va === null || vb === null) return va === vb ? byRank(a, b) : va === null ? 1 : -1
+    return vb - va || byRank(a, b)
+  })
+}
+
+export function gapSections(gaps: readonly Gap[], sort: GapSort = 'score'): GapSections {
   return {
-    reference: gaps.filter((gap) => gap.direction === 'reference').sort(byRank),
-    citing: gaps.filter((gap) => gap.direction === 'citing').sort(byRank),
+    reference: sortGaps(
+      gaps.filter((gap) => gap.direction === 'reference'),
+      sort,
+    ),
+    citing: sortGaps(
+      gaps.filter((gap) => gap.direction === 'citing'),
+      sort,
+    ),
   }
 }
 

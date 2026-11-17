@@ -59,6 +59,15 @@ gaps-citations = { $count ->
    *[other] { $count } citations
   }
 gaps-citations-unknown = citations unknown
+gaps-references = { $count ->
+    [one] 1 reference
+   *[other] { $count } references
+  }
+gaps-sort-label = Sort by
+gaps-sort-score = Score
+gaps-sort-year = Year
+gaps-sort-citations = Citations
+gaps-sort-references = References
 gaps-score = score { $score }
 gaps-score-hint = How many of your items it is connected to, divided by the base-10 logarithm of ten plus its citation count. The divisor is 1 for an uncited work (or an unknown count), 2 at ninety citations and 3 at a thousand, so fame lowers the score without cancelling it: a niche work several of your items share ranks above a classic everyone cites, but a work many of your items lean on stays high however well known it is.
 gaps-cited-by = { $count ->

@@ -13,10 +13,11 @@
 
 import { getString } from '../utils/locale'
 
-import { formatScore, gapSections, seedsOfGap } from './gapsPanel.core'
+import { formatScore, GAP_SORTS, gapSections, seedsOfGap, sortGaps } from './gapsPanel.core'
 
 import type { CollectionNetwork, Gap, NetworkWork, OpenAlexId } from './collectionTypes'
 import type { ImportOutcome } from './doiImport'
+import type { GapSort } from './gapsPanel.core'
 
 export interface GapsPanelHandlers {
   /** False hides every Import button: a read-only library, or nowhere to import to. */
@@ -84,12 +85,57 @@ export function renderGapsPanel(doc: Document, net: CollectionNetwork, handlers:
     empty.style.opacity = '0.7'
     root.append(empty)
   } else {
-    if (reference.length) root.append(section(doc, net, 'reference', reference, handlers))
-    if (citing.length) root.append(section(doc, net, 'citing', citing, handlers))
+    const lists: { list: HTMLElement; gaps: Gap[] }[] = []
+    const rows = new Map<OpenAlexId, HTMLElement>()
+    const addSection = (direction: Gap['direction'], gaps: Gap[]): void => {
+      const built = section(doc, net, direction, gaps, handlers, rows)
+      lists.push({ list: built.list, gaps })
+      root.append(built.wrap)
+    }
+    root.append(
+      sortControl(doc, (sort) => {
+        // The rows are moved, not rebuilt: an import running or done in a row
+        // keeps its state, and the rank on each row stays its score rank, the
+        // number the graph shows on the mark.
+        for (const { list, gaps } of lists) {
+          for (const gap of sortGaps(gaps, sort)) {
+            const row = rows.get(gap.openAlexId)
+            if (row) list.append(row)
+          }
+        }
+      }),
+    )
+    if (reference.length) addSection('reference', reference)
+    if (citing.length) addSection('citing', citing)
   }
 
   if (net.probable.length) root.append(probableSection(doc, net.probable, handlers))
   return root
+}
+
+/** Written out, not built from the sort name, so each string is findable. */
+const SORT_LABEL = {
+  score: 'gaps-sort-score',
+  year: 'gaps-sort-year',
+  citations: 'gaps-sort-citations',
+  references: 'gaps-sort-references',
+} as const satisfies Record<GapSort, string>
+
+/** "Sort by" with the four orders; calls back with the one chosen. */
+function sortControl(doc: Document, onSort: (sort: GapSort) => void): HTMLElement {
+  const wrap = el(doc, 'label', 'orbit-gaps-sort')
+  wrap.style.cssText = 'display:flex;align-items:center;gap:6px;opacity:.85'
+  wrap.append(el(doc, 'span', undefined, getString('gaps-sort-label')))
+  const select = el(doc, 'select', 'orbit-gaps-sort-select') as HTMLSelectElement
+  select.style.cssText = 'font:inherit;font-size:12px'
+  for (const sort of GAP_SORTS) {
+    const option = el(doc, 'option', undefined, getString(SORT_LABEL[sort])) as HTMLOptionElement
+    option.value = sort
+    select.append(option)
+  }
+  select.addEventListener('change', () => onSort(select.value as GapSort))
+  wrap.append(select)
+  return wrap
 }
 
 function section(
@@ -98,7 +144,8 @@ function section(
   direction: Gap['direction'],
   gaps: Gap[],
   handlers: GapsPanelHandlers,
-): HTMLElement {
+  rows: Map<OpenAlexId, HTMLElement>,
+): { wrap: HTMLElement; list: HTMLElement } {
   const wrap = el(doc, 'section', 'orbit-gaps-section')
   wrap.setAttribute('data-direction', direction)
   const heading = el(
@@ -111,9 +158,13 @@ function section(
   wrap.append(heading)
   const list = el(doc, 'ol', 'orbit-gaps-list')
   list.style.cssText = 'list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px'
-  for (const gap of gaps) list.append(gapRow(doc, net, gap, handlers))
+  for (const gap of gaps) {
+    const row = gapRow(doc, net, gap, handlers)
+    rows.set(gap.openAlexId, row)
+    list.append(row)
+  }
   wrap.append(list)
-  return wrap
+  return { wrap, list }
 }
 
 function gapRow(doc: Document, net: CollectionNetwork, gap: Gap, handlers: GapsPanelHandlers): HTMLElement {
@@ -143,6 +194,11 @@ function gapRow(doc: Document, net: CollectionNetwork, gap: Gap, handlers: GapsP
         : getString('gaps-citations', { args: { count: gap.citedByCount } }),
     ),
   )
+  if (gap.referenceCount !== null) {
+    meta.append(
+      el(doc, 'span', 'orbit-gap-references', getString('gaps-references', { args: { count: gap.referenceCount } })),
+    )
+  }
   const score = el(doc, 'span', 'orbit-gap-score', getString('gaps-score', { args: { score: formatScore(gap.score) } }))
   score.setAttribute('title', getString('gaps-score-hint'))
   score.style.cursor = 'help'
