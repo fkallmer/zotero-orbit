@@ -200,6 +200,12 @@ function importControl(doc: Document, gap: Gap, handlers: GapsPanelHandlers): HT
         message: error instanceof Error ? error.message : String(error),
       }))
       .then((outcome) => {
+        if (outcome.status === 'cancelled') {
+          button.disabled = false
+          button.setAttribute('data-state', 'idle')
+          button.textContent = getString('import-button')
+          return
+        }
         if (outcome.status === 'failed') {
           button.disabled = false
           button.setAttribute('data-state', 'failed')

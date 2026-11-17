@@ -340,6 +340,19 @@ describe('gaps panel render', () => {
     assert.deepEqual(calls.imported, ['WR1', 'WR1'])
   })
 
+  it('goes quietly back to idle when the user declines the confirmation', async () => {
+    const { root } = render(mixed, { outcome: () => Promise.resolve({ status: 'cancelled' }) })
+    const control = row(root, 'WR1')
+    const button = control.querySelector<HTMLButtonElement>('.orbit-gap-import')
+    click(button)
+    await settle()
+    assert.equal(button?.getAttribute('data-state'), 'idle')
+    assert.equal(button?.disabled, false)
+    assert.equal(button?.textContent, 'orbit-import-button')
+    // A deliberate No is not an error, so no error note appears.
+    assert.equal(control.querySelector<HTMLElement>('.orbit-gap-import-error')?.style.display, 'none')
+  })
+
   it('collapses the probable matches behind their count, each with Show item', () => {
     const { root, calls } = render(mixed)
     const probable = root.querySelector('.orbit-gaps-probable')

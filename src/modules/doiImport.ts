@@ -31,6 +31,12 @@ export type ImportOutcome =
   | { status: 'imported'; itemID: number }
   | { status: 'exists'; itemID: number; addedToCollection: boolean }
   | { status: 'failed'; reason: 'read-only' | 'no-translator' | 'no-result' | 'error'; message?: string }
+  /**
+   * The user said no to the confirmation. Not a failure: the row goes back to
+   * where it was, without an error note. `importByDoi` itself never returns
+   * this; the caller that asks returns it.
+   */
+  | { status: 'cancelled' }
 
 /**
  * Minimal shape of the parts of Zotero.Translate.Search this module uses.
