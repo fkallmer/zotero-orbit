@@ -6,6 +6,9 @@ import { describe, it } from 'node:test'
 import { semanticScholarUrl } from '../src/modules/graphTab.ts'
 
 import {
+  hasOpenAlexApiKey,
+  openAlexAuthHeaders,
+  setOpenAlexApiKey,
   buildFwciByDoiUrl,
   buildSourceUrl,
   buildWorkUrl,
@@ -287,5 +290,26 @@ describe('normalizeFwciBatch', () => {
     assert.deepEqual(normalizeFwciBatch({}), [])
     assert.deepEqual(normalizeFwciBatch({ results: 'nope' }), [])
     assert.deepEqual(normalizeFwciBatch({ results: [null, 3] }), [])
+  })
+})
+
+describe('the OpenAlex API key', () => {
+  it('is sent as a bearer header when set, and nothing when not', () => {
+    setOpenAlexApiKey('')
+    assert.equal(hasOpenAlexApiKey(), false)
+    assert.deepEqual(openAlexAuthHeaders(), {})
+
+    setOpenAlexApiKey(`  abc${String.fromCodePoint(0x200b)}def \n`)
+    assert.equal(hasOpenAlexApiKey(), true)
+    assert.deepEqual(openAlexAuthHeaders(), { Authorization: 'Bearer abcdef' })
+
+    setOpenAlexApiKey(null)
+    assert.deepEqual(openAlexAuthHeaders(), {})
+  })
+
+  it('is dropped rather than sent when a header cannot carry it', () => {
+    setOpenAlexApiKey('abc€def')
+    assert.equal(hasOpenAlexApiKey(), false)
+    assert.deepEqual(openAlexAuthHeaders(), {})
   })
 })

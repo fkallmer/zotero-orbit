@@ -5,6 +5,7 @@
  * fixtures, mirroring `semanticScholarClient.core` and `googleScholarClient.core`.
  */
 
+import { normalizeApiKey } from '../utils/apiKey.ts'
 import { effectiveContact } from '../utils/contact.ts'
 import { stripArxivVersion } from '../utils/identifiers.ts'
 
@@ -60,6 +61,33 @@ export function setOpenAlexContact(preferred: string | undefined | null): void {
 /** The address being sent, for the User-Agent and for tests. */
 export function openAlexContact(): string {
   return activeContact
+}
+
+/**
+ * The OpenAlex API key, or empty.
+ *
+ * Optional. Without one OpenAlex answers from a smaller daily budget, and
+ * cursor paging stops after the first page -- which is what the collection
+ * graph needs for the works that cite it. Sent as a bearer token and never in
+ * a URL: request URLs reach the debug log, and users paste that log.
+ */
+let activeApiKey = ''
+
+/** Set from the preference at startup and whenever it is saved. */
+export function setOpenAlexApiKey(raw: string | null | undefined): void {
+  const normalized = normalizeApiKey(raw ?? '')
+  // A key that cannot go into a header would throw on every request; better
+  // to send none and let the preferences pane say why.
+  activeApiKey = normalized.unusable.length > 0 ? '' : normalized.key
+}
+
+export function hasOpenAlexApiKey(): boolean {
+  return activeApiKey !== ''
+}
+
+/** Headers to merge into every OpenAlex request; empty without a key. */
+export function openAlexAuthHeaders(): Record<string, string> {
+  return activeApiKey === '' ? {} : { Authorization: `Bearer ${activeApiKey}` }
 }
 
 /** What the build carried, so the preferences pane can say a fallback exists. */
