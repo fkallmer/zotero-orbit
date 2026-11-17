@@ -114,6 +114,7 @@ export type FluentMessageId =
   | 'menuitem-retally-outdated-citations'
   | 'menuitem-update-citation-tallies'
   | 'menuitem-update-fwci'
+  | 'network-cluster-fallback'
   | 'pane-divergence-note'
   | 'pane-header'
   | 'pane-heading-access'

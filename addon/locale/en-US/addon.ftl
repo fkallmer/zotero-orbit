@@ -155,6 +155,8 @@ pane-references-elided = The publisher has asked Semantic Scholar not to serve t
 pane-reference-cited-by = Citations of this cited work
 
 # Collection and library network (network-*, P4/P9). Add strings below this line only.
+# Name of a topic cluster none of whose papers has an OpenAlex topic. $number counts from 1.
+network-cluster-fallback = Cluster { $number }
 
 
 # Citation graph tab
