@@ -17,7 +17,19 @@
  * that shape is one dropdown away rather than a different plot.
  */
 
+import type { MatchConfidence } from './collectionTypes'
+
 export type GraphRole = 'seed' | 'reference' | 'citing'
+
+/**
+ * What the plot is of.
+ *
+ * `star` is one paper and what surrounds it: every other work is drawn joined
+ * to the seed, because that relation is what put it on the plot. `network` is a
+ * collection: any number of seeds, and no work stands in a privileged relation
+ * to any one of them, so the only lines are the citations actually passed in.
+ */
+export type GraphMode = 'star' | 'network'
 
 export interface GraphNode {
   /** Stable within one graph; a DOI where there is one. */
@@ -44,6 +56,26 @@ export interface GraphNode {
    * being able to go to it is worth more.
    */
   itemID: number | null
+  /**
+   * Which community of the collection the work belongs to, when one was found.
+   *
+   * Indexes `GraphTheme.clusters`. Null is "clustered, but in none worth a
+   * colour" and draws in the neutral; absent leaves the role's hue alone.
+   */
+  cluster?: number | null
+  /**
+   * How sure the library match behind `itemID` is.
+   *
+   * A refinement of `itemID`, not a replacement: the collar still appears only
+   * when there is an item to go to, and `probable` -- a title match rather than
+   * an identifier -- draws it dashed.
+   */
+  match?: MatchConfidence | null
+  /**
+   * A work the collection points at but does not hold: drawn as a ring rather
+   * than a disc, so absence reads as a shape and survives greyscale.
+   */
+  hollow?: boolean
 }
 
 export interface PlacedNode extends GraphNode {
@@ -75,6 +107,13 @@ export interface GraphLayout {
   links: GraphLink[]
   /** Works missing a value on either axis, which cannot be placed at all. */
   dropped: number
+  /** Carried so the renderer knows whether to draw the star. */
+  mode: GraphMode
+  /**
+   * The roles that were given labels, for the caller to pass back to
+   * placeLabels on every zoom. Null is every role.
+   */
+  labelRoles: readonly GraphRole[] | null
 }
 
 export interface LayoutOptions {
@@ -88,6 +127,28 @@ export interface LayoutOptions {
   yMetric?: AxisMetric
   /** Citing/cited pairs among the surrounding works themselves. */
   links?: readonly GraphLink[]
+  /** Defaults to `star`, the single-paper graph. */
+  mode?: GraphMode
+  /**
+   * Which roles carry a name at rest. Defaults to all of them.
+   *
+   * At six hundred works most names cannot fit anyway, and the ones that do
+   * should be the works the reader came for rather than whichever happened to
+   * land in a clear spot. Marks of the other roles still keep labels clear of
+   * themselves.
+   */
+  labelRoles?: readonly GraphRole[]
+}
+
+/** The optional half of placeLabels, kept apart so the common call stays four arguments. */
+export interface LabelOptions {
+  /** Null or absent: every role. The pointed-at mark is labelled whatever its role. */
+  labelRoles?: readonly GraphRole[] | null
+  /**
+   * In `network` the seeds are many and none is the one the reader opened the
+   * tab to find, so they take a nearby spot or none, like everything else.
+   */
+  mode?: GraphMode
 }
 
 /** One work in the graph citing another work in the same graph. */
@@ -216,9 +277,11 @@ export function citationScale(count: number, kind: ScaleKind = 'log'): number {
  * paper among its own influences would otherwise be the smallest dot on a plot
  * that is about it.
  */
-function radiusFor(referenceCount: number | null, role: GraphRole): number {
+function radiusFor(referenceCount: number | null, role: GraphRole, mode: GraphMode): number {
   const radius = 6 + Math.sqrt(referenceCount ?? 0) * 1.9
-  return role === 'seed' ? Math.max(radius, 16) : radius
+  // In a network the seeds are the collection, hundreds of them, and a floor
+  // meant to make one mark findable would only make the field a carpet.
+  return role === 'seed' && mode === 'star' ? Math.max(radius, 16) : radius
 }
 
 /**
@@ -315,6 +378,75 @@ function overlaps(a: Box, b: Box): boolean {
   return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1
 }
 
+/** Side of a bucket in the occupancy grid, in screen pixels. About one short label. */
+const CELL = 48
+
+/**
+ * Everything already on the plot, bucketed by where it sits.
+ *
+ * Checking each candidate spot against every box placed so far is quadratic,
+ * and at six hundred marks with up to thirty-two spots each that adds up on
+ * every zoom step. A box is filed under every cell it touches, so a candidate
+ * need only be tested against the boxes in its own cells -- the same exact
+ * test as before, on fewer boxes, and therefore the same answer.
+ *
+ * Only the view is gridded. A candidate has already been held inside it, so a
+ * box wholly outside cannot touch one, and the part of a box that reaches in
+ * is all that needs a cell.
+ */
+class Occupancy {
+  private readonly cells = new Map<number, Box[]>()
+  private readonly columns: number
+  private readonly rows: number
+  private readonly width: number
+  private readonly height: number
+
+  constructor(width: number, height: number) {
+    this.width = width
+    this.height = height
+    this.columns = Math.max(1, Math.ceil(width / CELL))
+    this.rows = Math.max(1, Math.ceil(height / CELL))
+  }
+
+  private span(box: Box): [number, number, number, number] | null {
+    if (box.x2 < 0 || box.y2 < 0 || box.x1 > this.width || box.y1 > this.height) return null
+    const clamp = (value: number, last: number): number => Math.min(last, Math.max(0, Math.floor(value / CELL)))
+    return [
+      clamp(box.x1, this.columns - 1),
+      clamp(box.y1, this.rows - 1),
+      clamp(box.x2, this.columns - 1),
+      clamp(box.y2, this.rows - 1),
+    ]
+  }
+
+  add(box: Box): void {
+    const span = this.span(box)
+    if (!span) return
+    const [c1, r1, c2, r2] = span
+    for (let column = c1; column <= c2; column++) {
+      for (let row = r1; row <= r2; row++) {
+        const key = row * this.columns + column
+        const bucket = this.cells.get(key)
+        if (bucket) bucket.push(box)
+        else this.cells.set(key, [box])
+      }
+    }
+  }
+
+  collides(box: Box): boolean {
+    const span = this.span(box)
+    if (!span) return false
+    const [c1, r1, c2, r2] = span
+    for (let column = c1; column <= c2; column++) {
+      for (let row = r1; row <= r2; row++) {
+        const bucket = this.cells.get(row * this.columns + column)
+        if (bucket?.some((other) => overlaps(box, other))) return true
+      }
+    }
+    return false
+  }
+}
+
 /**
  * Where the plot sits inside the frame. Identity is the fitted view.
  *
@@ -397,13 +529,18 @@ export function placeLabels(
   view: Viewport,
   emphasis: string | null = null,
   describe?: Describe,
+  options: LabelOptions = {},
 ): LabelPlacement[] {
+  const labelRoles = options.labelRoles ?? null
+  const mode = options.mode ?? 'star'
   const at = (node: PlacedNode): { x: number; y: number } => ({
     x: node.x * view.kx + view.tx,
     y: node.y * view.ky + view.ty,
   })
 
-  const byImportance = [...nodes].sort((a, b) => {
+  // Roles without names are left out of the queue, not out of the obstacles.
+  const named = labelRoles ? nodes.filter((node) => node.key === emphasis || labelRoles.includes(node.role)) : nodes
+  const byImportance = [...named].sort((a, b) => {
     // The mark being pointed at goes down first: its label is the longest and
     // the one certainly wanted, so it must not lose a spot to a neighbour.
     if ((a.key === emphasis) !== (b.key === emphasis)) return a.key === emphasis ? -1 : 1
@@ -413,15 +550,16 @@ export function placeLabels(
 
   // The marks are obstacles too, not just the labels. Checking only label
   // against label is what let a title be painted straight across the seed.
-  const taken: Box[] = nodes.map((node) => {
+  const taken = new Occupancy(view.width, view.height)
+  for (const node of nodes) {
     const point = at(node)
-    return {
+    taken.add({
       x1: point.x - node.radius - 2,
       y1: point.y - node.radius - 2,
       x2: point.x + node.radius + 2,
       y2: point.y + node.radius + 2,
-    }
-  })
+    })
+  }
 
   const placed: LabelPlacement[] = []
   for (const node of byImportance) {
@@ -507,7 +645,7 @@ export function placeLabels(
        * absorb, because that mark is what the reader opened the tab to find.
        * The same goes for whatever the pointer is on.
        */
-      const radii = node.role === 'seed' || pointed ? [1, 1.8, 2.8, 4.2] : [1]
+      const radii = (node.role === 'seed' && mode === 'star') || pointed ? [1, 1.8, 2.8, 4.2] : [1]
       const fits = radii
         .flatMap((factor) => spotsAt((node.radius + 4) * factor))
         .find(
@@ -518,11 +656,11 @@ export function placeLabels(
             candidate.box.x2 <= view.width - 2 &&
             candidate.box.y1 >= 0 &&
             candidate.box.y2 <= view.height - AXIS_GUTTER.bottom - 2 &&
-            (overNeighbours || !taken.some((other) => overlaps(candidate.box, other))),
+            (overNeighbours || !taken.collides(candidate.box)),
         )
       if (!fits) continue
 
-      taken.push(fits.box)
+      taken.add(fits.box)
       placed.push({ key: node.key, lines, x: fits.x, y: fits.y, anchor: fits.anchor })
       break
     }
@@ -531,9 +669,9 @@ export function placeLabels(
 }
 
 /** The fitted-view placement, written back onto the nodes for the first paint. */
-function assignLabels(nodes: PlacedNode[], width: number, height: number): void {
+function assignLabels(nodes: PlacedNode[], width: number, height: number, options: LabelOptions): void {
   const byKey = new Map(nodes.map((node) => [node.key, node]))
-  for (const placement of placeLabels(nodes, FITTED(width, height))) {
+  for (const placement of placeLabels(nodes, FITTED(width, height), null, undefined, options)) {
     const node = byKey.get(placement.key)
     if (!node) continue
     node.label = placement.lines.join(' ')
@@ -599,6 +737,8 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
 
   const { width, height, padding } = options
   const scale: ScaleKind = options.scale ?? 'log'
+  const mode: GraphMode = options.mode ?? 'star'
+  const labelRoles = options.labelRoles ?? null
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
 
@@ -617,11 +757,11 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
     ...node,
     x: padding.left + xAxis.fraction(metricValue(node, xMetric) as number) * plotWidth,
     y: padding.top + plotHeight - yAxis.fraction(metricValue(node, yMetric) as number) * plotHeight,
-    radius: radiusFor(node.referenceCount, node.role),
+    radius: radiusFor(node.referenceCount, node.role, mode),
     label: null,
   }))
 
-  assignLabels(placed, width, height)
+  assignLabels(placed, width, height, { labelRoles, mode })
 
   // The seed last so it paints over its neighbours rather than under them.
   placed.sort((a, b) => Number(a.role === 'seed') - Number(b.role === 'seed'))
@@ -642,7 +782,7 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
   const present = new Set(placed.map((node) => node.key))
   const links = (options.links ?? []).filter((link) => present.has(link.from) && present.has(link.to))
 
-  return { nodes: placed, xTicks, yTicks, width, height, xMetric, yMetric, dropped, links }
+  return { nodes: placed, xTicks, yTicks, width, height, xMetric, yMetric, dropped, links, mode, labelRoles }
 }
 
 /**
@@ -665,7 +805,42 @@ export interface GraphTheme {
   muted: string
   /** The tab background, for the ring that separates overlapping marks. */
   surface: string
+  /**
+   * One hue per cluster, indexed by `GraphNode.cluster`.
+   *
+   * Absent, clusters are not shown and every mark keeps its role's hue. A
+   * work in no cluster, or in one past the end of the palette, takes `muted`:
+   * a community too small to name should not borrow the colour of one that is.
+   */
+  clusters?: readonly string[]
 }
+
+/**
+ * Tableau 10, without its grey.
+ *
+ * A categorical set built for telling marks apart at a glance, with mid
+ * lightness throughout, so each hue holds against a white tab and a dark one
+ * alike -- Okabe-Ito would have been the stricter colour-blind choice, but its
+ * black vanishes in dark mode, its yellow on white, and it leaves six hues. The
+ * grey is dropped because grey is what "no cluster" looks like. Two caveats:
+ * red against green and orange against pink can merge for deuteranopes, which
+ * is why the legend names every cluster; and the blue sits near the default
+ * reference hue, which matters only if a caller mixes role and cluster
+ * colouring on one plot.
+ */
+export const CLUSTER_PALETTE: readonly string[] = [
+  // As d3-scale-chromatic's schemeTableau10 has them, which round three of
+  // Tableau's published values by one step; the difference is invisible.
+  '#4e79a7',
+  '#f28e2c',
+  '#e15759',
+  '#76b7b2',
+  '#59a14f',
+  '#edc949',
+  '#af7aa1',
+  '#ff9da7',
+  '#9c755f',
+]
 
 function escapeXml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -707,6 +882,16 @@ export function edgeEnds(
 
 function colorFor(role: GraphRole, theme: GraphTheme): string {
   return role === 'seed' ? theme.seed : role === 'reference' ? theme.reference : theme.citing
+}
+
+/**
+ * The hue of one mark: its cluster's when the theme has a palette and the
+ * work has a say in it, its role's otherwise.
+ */
+export function hueFor(node: GraphNode, theme: GraphTheme): string {
+  if (!theme.clusters || node.cluster === undefined) return colorFor(node.role, theme)
+  if (node.cluster === null) return theme.muted
+  return theme.clusters[node.cluster] ?? theme.muted
 }
 
 /**
@@ -752,7 +937,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     )
     .join('')
 
-  const seed = layout.nodes.find((node) => node.role === 'seed')
+  // A network has no one seed to draw the star round; its lines are the links.
+  const seed = layout.mode === 'network' ? undefined : layout.nodes.find((node) => node.role === 'seed')
 
   /**
    * Edges, drawn from citer to cited so the arrowhead states the direction.
@@ -869,9 +1055,9 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
 
   const marks = layout.nodes
     .map((node) => {
-      const fill = colorFor(node.role, theme)
+      const fill = hueFor(node, theme)
       const halo =
-        node.role === 'seed'
+        node.role === 'seed' && layout.mode !== 'network'
           ? `<circle r="${(node.radius + 7).toFixed(1)}" fill="none" stroke="${fill}" ` +
             `stroke-width="1" opacity="0.35" pointer-events="none"/>`
           : ''
@@ -890,7 +1076,10 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         node.itemID === null
           ? ''
           : `<circle r="${(node.radius + 2.6).toFixed(1)}" fill="none" stroke="${theme.muted}" ` +
-            `stroke-width="1.6" opacity="0.85" pointer-events="none"/>`
+            // Dashed when the match rests on a title rather than an id: filed,
+            // probably, and worth checking before trusting.
+            `stroke-width="1.6" ${node.match === 'probable' ? 'stroke-dasharray="2 2" ' : ''}` +
+            `opacity="0.85" pointer-events="none"/>`
 
       // The geometry sits at the origin and the group carries the position, so
       // zoom moves the mark without resizing it. Litmaps' behaviour, and the
@@ -900,7 +1089,12 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         `transform="translate(${node.x.toFixed(1)},${node.y.toFixed(1)})">` +
         halo +
         collar +
-        `<circle r="${node.radius.toFixed(1)}" fill="${fill}" stroke="${theme.surface}" stroke-width="2" ` +
+        // A hollow mark is its own hue in outline. The interior still answers
+        // the pointer, or a ring would be clickable only along its edge.
+        (node.hollow
+          ? `<circle r="${node.radius.toFixed(1)}" fill="none" stroke="${fill}" stroke-width="2" ` +
+            `pointer-events="all" `
+          : `<circle r="${node.radius.toFixed(1)}" fill="${fill}" stroke="${theme.surface}" stroke-width="2" `) +
         `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
         `data-item="${node.itemID ?? ''}" ` +
         // No <title>: the native tooltip would put the same title in a box at

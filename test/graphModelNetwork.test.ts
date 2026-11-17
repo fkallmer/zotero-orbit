@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { buildGraphLayout, placeLabels, renderGraphSvg } from '../src/modules/graphModel.core.ts'
+import {
+  buildGraphLayout,
+  CLUSTER_PALETTE,
+  FITTED,
+  hueFor,
+  placeLabels,
+  renderGraphSvg,
+} from '../src/modules/graphModel.core.ts'
+import { xmlErrors } from './svgWellFormed.ts'
 
 import type { GraphLink, GraphNode, LayoutOptions, Viewport } from '../src/modules/graphModel.core.ts'
 
@@ -15,7 +24,7 @@ import type { GraphLink, GraphNode, LayoutOptions, Viewport } from '../src/modul
  * out of this module byte for byte as it did then. `ORBIT_UPDATE_SNAPSHOT=1`
  * rewrites it, which is only ever right when the star graph is meant to change.
  */
-const FIXTURE = new URL('./fixtures/graphStar.snapshot.json', import.meta.url)
+const FIXTURE = join(import.meta.dirname, 'fixtures/graphStar.snapshot.json')
 
 const theme = {
   seed: '#e34948',
@@ -200,5 +209,189 @@ describe('star mode', () => {
     if (process.env.ORBIT_UPDATE_SNAPSHOT === '1') writeFileSync(FIXTURE, `${JSON.stringify(current, null, 2)}\n`)
     const frozen: unknown = JSON.parse(readFileSync(FIXTURE, 'utf8'))
     assert.deepStrictEqual(current, frozen)
+  })
+})
+
+const padding = { top: 10, right: 10, bottom: 20, left: 30 }
+const network: LayoutOptions = { width: 640, height: 360, padding, mode: 'network' }
+const clustered = { ...theme, clusters: ['#111111', '#222222', '#333333'] }
+
+/** The markup of one mark's group, by key. */
+function markOf(svg: string, key: string): string {
+  const match = new RegExp(`<g data-mark="1" data-key="${key}"[^>]*>(.*?)</g>`).exec(svg)
+  assert.ok(match, `no mark for ${key}`)
+  return match[1]
+}
+
+const field = (): GraphNode[] => [
+  node({ key: 's1', role: 'seed', year: 2010, citedByCount: 300, author: 'Ada', cluster: 0 }),
+  node({ key: 's2', role: 'seed', year: 2014, citedByCount: 40, author: 'Babbage', cluster: 1 }),
+  node({ key: 's3', role: 'seed', year: 2018, citedByCount: 5, author: 'Curie', cluster: null }),
+  node({ key: 'g1', role: 'reference', year: 2001, citedByCount: 9000, author: 'Darwin', hollow: true }),
+  node({ key: 'c1', role: 'citing', year: 2021, citedByCount: 2, author: 'Euler', itemID: 4, match: 'probable' }),
+  node({ key: 'c2', role: 'citing', year: 2022, citedByCount: 1, author: 'Fermat', itemID: 5, match: 'exact' }),
+]
+
+describe('network mode', () => {
+  it('draws no star edges when no links are passed', () => {
+    const layout = buildGraphLayout(field(), network)
+    assert.ok(layout)
+    const svg = renderGraphSvg(layout, clustered)
+    assert.deepEqual(xmlErrors(svg), [])
+    assert.ok(!svg.includes('data-edge'), 'an edge was drawn with no link to draw it from')
+  })
+
+  it('draws the links it is given and nothing else', () => {
+    const links: GraphLink[] = [
+      { from: 's2', to: 's1' },
+      { from: 'c1', to: 's3' },
+    ]
+    const layout = buildGraphLayout(field(), { ...network, links })
+    assert.ok(layout)
+    const svg = renderGraphSvg(layout, clustered)
+    assert.equal(svg.match(/data-edge="1"/g)?.length, 2)
+    assert.equal(svg.match(/data-link="/g)?.length, 2)
+  })
+
+  it('leaves star mode drawing one edge per surrounding work', () => {
+    const layout = buildGraphLayout(field(), { ...network, mode: 'star' })
+    assert.ok(layout)
+    // Three seeds, three others: the star runs from the first seed found.
+    assert.equal(renderGraphSvg(layout, theme).match(/data-edge="1"/g)?.length, 3)
+  })
+
+  it('takes any number of seeds and gives none of them a halo or a size floor', () => {
+    const layout = buildGraphLayout(field(), network)
+    assert.ok(layout)
+    const seeds = layout.nodes.filter((n) => n.role === 'seed')
+    assert.equal(seeds.length, 3)
+    // referenceCount null gives the base radius; the star's floor is 16.
+    for (const seed of seeds) assert.equal(seed.radius, 6)
+    assert.ok(!renderGraphSvg(layout, clustered).includes('opacity="0.35"'), 'a seed halo was drawn')
+  })
+
+  it('reports its mode and label roles on the layout', () => {
+    const layout = buildGraphLayout(field(), { ...network, labelRoles: ['seed'] })
+    assert.equal(layout?.mode, 'network')
+    assert.deepEqual(layout?.labelRoles, ['seed'])
+    const star = buildGraphLayout(field(), { width: 640, height: 360, padding })
+    assert.equal(star?.mode, 'star')
+    assert.equal(star?.labelRoles, null)
+  })
+})
+
+describe('cluster colour', () => {
+  it('fills a mark with its cluster hue when the theme has a palette', () => {
+    const layout = buildGraphLayout(field(), network)
+    assert.ok(layout)
+    const svg = renderGraphSvg(layout, clustered)
+    assert.match(markOf(svg, 's1'), /fill="#111111"/)
+    assert.match(markOf(svg, 's2'), /fill="#222222"/)
+    assert.match(markOf(svg, 's3'), new RegExp(`fill="${theme.muted}"`))
+  })
+
+  it('falls back to the muted neutral for no cluster or one past the palette', () => {
+    assert.equal(hueFor(node({ key: 'a', cluster: null }), clustered), theme.muted)
+    assert.equal(hueFor(node({ key: 'b', cluster: 7 }), clustered), theme.muted)
+  })
+
+  it('leaves the role hue alone without a palette, or for a work with no cluster field', () => {
+    assert.equal(hueFor(node({ key: 'a', role: 'seed', cluster: 1 }), theme), theme.seed)
+    assert.equal(hueFor(node({ key: 'b', role: 'citing' }), clustered), theme.citing)
+  })
+
+  it('ships a default palette of distinct hues', () => {
+    assert.equal(new Set(CLUSTER_PALETTE).size, CLUSTER_PALETTE.length)
+    assert.ok(CLUSTER_PALETTE.length >= 9)
+    for (const hue of CLUSTER_PALETTE) assert.match(hue, /^#[0-9a-f]{6}$/)
+  })
+})
+
+describe('mark shape', () => {
+  it('draws a hollow work as a ring in its hue that still takes the pointer', () => {
+    const layout = buildGraphLayout(field(), network)
+    assert.ok(layout)
+    const mark = markOf(renderGraphSvg(layout, clustered), 'g1')
+    assert.match(mark, /fill="none" stroke="#2a78d6" stroke-width="2" pointer-events="all"/)
+    assert.match(mark, /data-key="g1"/)
+  })
+
+  it('dashes the collar of a probable match and keeps an exact one solid', () => {
+    const layout = buildGraphLayout(field(), network)
+    assert.ok(layout)
+    const svg = renderGraphSvg(layout, clustered)
+    assert.match(markOf(svg, 'c1'), /stroke-dasharray="2 2"/)
+    assert.ok(markOf(svg, 'c2').includes('stroke-width="1.6" opacity'))
+    assert.ok(!markOf(svg, 'c2').includes('dasharray'))
+  })
+
+  it('draws no collar without an item, whatever the match says', () => {
+    const layout = buildGraphLayout([node({ key: 'x', match: 'probable' })], network)
+    assert.ok(layout)
+    assert.ok(!renderGraphSvg(layout, theme).includes('stroke-width="1.6"'))
+  })
+})
+
+describe('labelRoles', () => {
+  it('labels only the roles asked for at the fitted view', () => {
+    const layout = buildGraphLayout(field(), { ...network, labelRoles: ['seed'] })
+    assert.ok(layout)
+    const labelled = layout.nodes.filter((n) => n.label !== null)
+    assert.ok(labelled.length > 0)
+    assert.ok(labelled.every((n) => n.role === 'seed'))
+  })
+
+  it('still labels the pointed-at mark whatever its role', () => {
+    const layout = buildGraphLayout(field(), network)
+    assert.ok(layout)
+    const placements = placeLabels(layout.nodes, FITTED(640, 360), 'g1', undefined, { labelRoles: ['seed'] })
+    assert.ok(placements.some((p) => p.key === 'g1'))
+    assert.ok(placements.every((p) => p.key === 'g1' || p.key.startsWith('s')))
+  })
+
+  it('keeps unlabelled marks as obstacles', () => {
+    // A small seed under a large unnamed reference: every spot a network seed
+    // tries lies inside the reference's disc, so it goes without a name --
+    // and gets one the moment the reference is taken away.
+    const nodes = [
+      node({ key: 'big', role: 'reference', year: 2015, citedByCount: 100, referenceCount: 400 }),
+      node({ key: 's', role: 'seed', year: 2015, citedByCount: 100, author: 'Ada' }),
+      node({ key: 'a', role: 'reference', year: 2000, citedByCount: 1 }),
+      node({ key: 'b', role: 'reference', year: 2030, citedByCount: 10000 }),
+    ]
+    const layout = buildGraphLayout(nodes, network)
+    assert.ok(layout)
+    const only = { labelRoles: ['seed'] as const }
+    const crowded = placeLabels(layout.nodes, FITTED(640, 360), null, undefined, only)
+    assert.ok(!crowded.some((p) => p.key === 's'), 'the seed was named on top of an unnamed mark')
+    const clear = placeLabels(
+      layout.nodes.filter((n) => n.key !== 'big'),
+      FITTED(640, 360),
+      null,
+      undefined,
+      only,
+    )
+    assert.ok(clear.some((p) => p.key === 's'))
+  })
+})
+
+describe('performance', () => {
+  it('lays out and labels six hundred works quickly', () => {
+    const nodes = largeField()
+    const opts: LayoutOptions = { width: 900, height: 560, padding, mode: 'network' }
+    const view = { kx: 2, ky: 1.5, tx: -400, ty: -150, width: 900, height: 560 }
+    const run = (): number => {
+      const start = performance.now()
+      const layout = buildGraphLayout(nodes, opts)
+      assert.ok(layout)
+      placeLabels(layout.nodes, view, 'w300', undefined, { mode: 'network' })
+      return performance.now() - start
+    }
+    for (let i = 0; i < 3; i++) run()
+    const times = Array.from({ length: 9 }, run).sort((a, b) => a - b)
+    const median = times[4]
+    console.log(`600 works, layout + placeLabels: median ${median.toFixed(2)} ms, max ${times[8].toFixed(2)} ms`)
+    // The target is 25 ms; the bound is loose because test files run in parallel.
+    assert.ok(median < 100, `median ${median.toFixed(1)} ms`)
   })
 })
