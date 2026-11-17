@@ -140,6 +140,7 @@ globalThis.ztoolkit = new Proxy({}, { get: () => noop })
 
 const { normalizeReferences, normalizeSource, normalizeWork } = await import('../src/modules/openAlexClient.core.ts')
 const { renderInto } = await import('../src/modules/citationPane.ts')
+const { normalizeDoi } = await import('../src/modules/libraryMatch.core.ts')
 
 const workJson = await openAlex(`works/doi:${encodeURIComponent(DOI)}?select=${encodeURIComponent(FULL_SELECT)}`)
 const record = normalizeWork(workJson)
@@ -216,7 +217,8 @@ const item = {
 // Two references marked as held, so the ✓ rows appear beside the linked ones.
 const inLibrary = new Map()
 for (const reference of references.slice(0, 2)) {
-  if (reference.doi) inLibrary.set(reference.doi.toLowerCase(), 100 + inLibrary.size)
+  // Keyed the way the library index keys them: namespaced, normalized.
+  if (reference.doi) inLibrary.set(`doi:${normalizeDoi(reference.doi)}`, 100 + inLibrary.size)
 }
 
 const body = document.createElement('div')
