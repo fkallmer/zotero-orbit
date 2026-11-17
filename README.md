@@ -1,24 +1,64 @@
-# Orbit
+<p align="center">
+  <img src="addon/content/icons/orbit.svg" width="72" alt="" />
+</p>
 
-> A Zotero plugin that puts a paper in context: how often it has been cited, according to whom, what it builds on, and what has built on it since.
+<h1 align="center">Orbit</h1>
 
-[![Zotero 10](https://img.shields.io/badge/Zotero-10-CC2936?logo=zotero&logoColor=CC2936)](https://www.zotero.org/)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-brightgreen.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Google Scholar client: MPL-2.0](https://img.shields.io/badge/Scholar%20client-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+<p align="center">
+  Citation counts, context and collection analysis for Zotero.<br />
+  See how often a paper is cited and by whom, what your collection rests on, and what it is missing.
+</p>
+
+<p align="center">
+  <a href="https://www.zotero.org/"><img src="https://img.shields.io/badge/Zotero-10-CC2936?logo=zotero&logoColor=CC2936" alt="Zotero 10" /></a>
+  <a href="https://github.com/fkallmer/zotero-orbit/releases/latest"><img src="https://img.shields.io/github/v/release/fkallmer/zotero-orbit" alt="Latest release" /></a>
+  <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL%203.0-brightgreen.svg" alt="License: AGPL-3.0" /></a>
+  <a href="https://opensource.org/licenses/MPL-2.0"><img src="https://img.shields.io/badge/Scholar%20client-MPL%202.0-brightgreen.svg" alt="Google Scholar client: MPL-2.0" /></a>
+</p>
+
 ![Test Coverage - Lines](https://img.shields.io/badge/lines-74.84%25-yellow.svg)
 ![Test Coverage - Branches](https://img.shields.io/badge/branches-87.93%25-brightgreen.svg)
 ![Test Coverage - Functions](https://img.shields.io/badge/functions-67.32%25-yellow.svg)
 
 ![The graph tab, with one work pointed at](docs/assets/readme/graph.png)
 
+## Contents
+
+- [Why Orbit](#why-orbit)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Settings](#settings)
+- [Data sources and costs](#data-sources-and-costs)
+- [Privacy](#privacy)
+- [Limits and FAQ](#limits-and-faq)
+- [Contributing](#contributing)
+- [Credit](#credit)
+- [License](#license)
+
+## Why Orbit
+
 Five sources disagree about how often a paper has been cited, and the
-disagreement is often the interesting part. Orbit shows them side by side,
-puts the record behind the numbers in the item pane, and draws a paper's
-surroundings as a graph you can walk.
+disagreement is often the interesting part. Web tools such as Connected Papers,
+Inciteful or VOSviewer map the literature around a paper or a reading list, but
+they do not know what is already in your library. Orbit works inside Zotero, so
+it does: it shows the counts side by side, puts the record behind them in the
+item pane, draws a paper's surroundings as a graph you can walk — and reads a
+whole collection as one network, to tell you which works it rests on that you
+do not have yet.
 
-## What it adds
+## Features
 
-### A Citations column
+|                         |                                                                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Citations column**    | Counts from Crossref, OpenAlex, Semantic Scholar, INSPIRE and Google Scholar side by side, plus a sortable field-weighted citation impact column. |
+| **Item pane section**   | The OpenAlex record behind the numbers, and the paper's references, marked when you already hold them.                                            |
+| **Paper graph**         | What a paper cites and what cites it, on axes you choose, with the citations among its neighbours.                                                |
+| **Collection analysis** | A whole collection or library as one network, grouped into named clusters.                                                                        |
+| **Gaps and import**     | The works your items lean on that you lack, ranked — and filed into the collection with one click.                                                |
+| **Export**              | VOSviewer, Gephi (GraphML), CSV and RIS, and links into Local Citation Network and Inciteful.                                                     |
+
+### Citations column
 
 ![The Citations column and the field-weighted impact column, over eleven well-known papers](docs/assets/readme/column.png)
 
@@ -26,170 +66,217 @@ Counts from Crossref, OpenAlex, Semantic Scholar, INSPIRE and Google Scholar,
 in the order you choose, each in its own colour, separated by `|`. Hovering a
 cell says which number came from where.
 
-There is a second, sortable column for OpenAlex's field-weighted citation
-impact — how a paper compares to others of its field, year and type, where 1.0
-is average. Above, it separates AlexNet from Watson and Crick: 4424 against 55,
-on 75,675 citations against 13,303. A raw count cannot say that, and a `–`
-means that source has no number for the work rather than a count of zero.
+A second, sortable column shows OpenAlex's field-weighted citation impact — how
+a paper compares to others of its field, year and type, where 1.0 is average.
+Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675
+citations against 13,303. A raw count cannot say that. A `–` means that source
+has no number for the work, not a count of zero.
 
-### An item pane section
+### Item pane section
 
 ![The item pane section, over a paper three sources disagree about](docs/assets/readme/item-pane.png)
 
 The same counts, spelled out and linked to their sources — the disagreement
 above is real, and it is the ordinary case rather than a bad day. Then the
-OpenAlex record behind the numbers: citations per year as a chart with a
-running total, the field-weighted impact and its percentile, open-access status
-with a link to the full text, journal metrics, authors with their ORCIDs,
-institutions with their RORs, funding, and a retraction warning where there is
-one.
+OpenAlex record: citations per year with a running total, the field-weighted
+impact and its percentile, open-access status with a link to the full text,
+journal metrics, authors with their ORCIDs, institutions with their RORs,
+funding, and a retraction warning where there is one.
 
-Underneath, the works this paper cites, resolved through Semantic Scholar,
-which finds consistently more of them than OpenAlex does. Each is marked if it
-is already in your library, and clicking it goes there. A work counts as held
-when it shares a DOI, arXiv ID or PubMed ID with one of your items — read from
-the DOI field, Archive ID, an arxiv.org URL, or `DOI:`, `arXiv:` and `PMID:`
-lines in Extra. Titles are never compared: two papers called "Deep Learning"
-are not the same paper.
+Underneath, the works this paper cites, from Semantic Scholar (which finds
+consistently more of them than OpenAlex). A ✓ marks one you already hold, and
+clicking it goes there; a ○ marks one you _probably_ hold (see
+[how matching works](#how-does-orbit-know-what-i-already-have)).
 
-### A graph tab
+### Paper graph
 
-Right-click an item → **Citation graph**. It plots what the paper cites and
-what cites it, and the picture above is what that looks like.
+Right-click an item → **Citation graph**.
 
 - **Both axes are yours to choose** — publication year, citations, or
-  references cited. Logarithmic or linear, where the axis is a count.
+  references cited; logarithmic or linear where the axis is a count.
 - **Mark size** is how many works each one cites, so a review stands apart from
-  a letter. Citations already own an axis; size says something else.
+  a letter.
 - **Arrows run from the citing work to the cited one**, so the direction of
   influence is drawn rather than inferred.
-- **A ring** means the work is already in your library. The legend doubles as a
-  filter: click an entry to take that group out, or cycle the ring between all
-  works, only the ones you have, and only the ones you do not.
-- **Pointing at a mark** dims the rest, spells out its title, fills the strip
-  above the plot, and lights the paths between it and its neighbours — the
-  citations _among_ the surrounding works, which is where a line of descent
-  becomes visible. How far the highlight reaches, and in which direction, are
-  both settings.
-- **Clicking a mark** holds that state and opens a card: the full record, a
-  link to the work at Semantic Scholar and at its publisher, and a button to
-  open a graph from that work — whether or not you have it.
-- Scroll to zoom, drag to pan, Shift or Alt to stretch one axis alone. Marks
-  keep their size, so zooming pulls a crowded field apart instead of
-  magnifying it, and names appear as room is made for them.
+- **A ring** means the work is already in your library; a dashed ring, probably.
+  The legend doubles as a filter.
+- **Pointing at a mark** spells out its title and lights the paths between it
+  and its neighbours — the citations _among_ the surrounding works, where a line
+  of descent becomes visible.
+- **Clicking a mark** opens a card with the full record, links to Semantic
+  Scholar and the publisher, and a button to open a graph from that work.
+- Scroll to zoom, drag to pan, Shift or Alt to stretch one axis alone.
 
-## Requirements
+### Collection analysis
 
-Zotero 10. Orbit has no releases before it; for Zotero 7, 8 or 9 use
-[Citation Tally](https://github.com/daeh/zotero-citation-tally/releases),
-which Orbit is forked from.
+Right-click a collection → **Citation graph**, or `Tools → Citation graph for
+this library`.
+
+Orbit looks up every item in the collection at OpenAlex and draws them as one
+network:
+
+- **Clusters.** Items that cite the same works are grouped (bibliographic
+  coupling, Leiden algorithm) and each group is named after its most common
+  OpenAlex topic. Click a cluster in the legend to hide or show it.
+- **Shared references.** Works cited by at least two of your items appear
+  beside them, and the citations between everything on screen are drawn.
+- **Who cites your collection.** With an [OpenAlex API key](#settings), Orbit
+  also finds works that cite at least two of your items.
+
+Large collections are handled by a setting: above 300 items (adjustable),
+Orbit either analyses the first 300, asks first with an estimate of the
+requests it will make, or always analyses everything.
+
+### Gaps and import
+
+Beside the network, a list of the works your items lean on that your library
+does not hold. Each is ranked by how many of your items cite it, divided by
+`log10(10 + its citation count)` — so a niche work several of your items share
+ranks above a classic everyone cites, while a work many of your items depend on
+stays high however famous it is. Expanding an entry shows which of your items
+cite it.
+
+**Import** files a work into the analysed collection through Zotero's own DOI
+lookup, after asking. If the work is already somewhere in your library, it is
+added to the collection instead of imported twice.
+
+### Export
+
+From the graph's export menu:
+
+| Format         | For                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| VOSviewer JSON | [VOSviewer](https://www.vosviewer.com/) and [VOSviewer Online](https://app.vosviewer.com/), with clusters and years             |
+| GraphML        | [Gephi](https://gephi.org/) and other graph tools; keeps the direction of citations                                             |
+| CSV            | The gaps list in a spreadsheet                                                                                                  |
+| RIS            | The gaps as references, for any reference manager                                                                               |
+| Links          | Open the collection in [Local Citation Network](https://localcitationnetwork.github.io/) or [Inciteful](https://inciteful.xyz/) |
 
 ## Installation
+
+| Zotero  | Orbit                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 10      | [latest release](https://github.com/fkallmer/zotero-orbit/releases/latest)                                               |
+| 7, 8, 9 | not supported — use [Citation Tally](https://github.com/daeh/zotero-citation-tally/releases), which Orbit is forked from |
 
 1. Download `orbit.xpi` from the [latest release](https://github.com/fkallmer/zotero-orbit/releases/latest).
 2. In Zotero: `Tools → Plugins`, then `Install Plugin From File…` from the gear icon ⛭.
 3. Choose the file, and restart Zotero.
 
-If the Citations column does not appear, right-click the column headers and
-tick **Citations**.
+Orbit updates itself through Zotero's plugin updates.
+
+## Quick start
+
+1. If the **Citations** column does not appear, right-click the column headers
+   and tick it.
+2. New items get their counts as you add them. For existing items, select them,
+   right-click and choose **Update Citation Tallies**, or run
+   `Tools → Retally outdated item citations`.
+3. Select an item and open the **Citation Details** section in the item pane.
+4. Right-click an item or a collection → **Citation graph**.
+5. Optional, but worth it: add a free [OpenAlex API key](https://openalex.org/)
+   and a [Semantic Scholar API key](https://www.semanticscholar.org/product/api)
+   in the settings.
 
 ## Settings
 
 `Zotero → Settings → Orbit` on macOS, `Edit → Settings → Orbit` elsewhere.
 
-|                              |                                                                                                                                                                                                                                                                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Databases**                | Which sources to use and in what order. Default `crossref, semanticscholar`; for physics, `inspire, crossref, semanticscholar` is usually better.                                                                                                                                                                         |
-| **Fetch for new items**      | On. Counts are looked up as you add items.                                                                                                                                                                                                                                                                                |
-| **Automatic updates**        | Off. Turn on to refresh missing and outdated counts at the next start.                                                                                                                                                                                                                                                    |
-| **Outdated after**           | 3, 6, 12 or 24 months. Default 6.                                                                                                                                                                                                                                                                                         |
-| **Colours**                  | On. Each source gets its own colour when more than one is shown.                                                                                                                                                                                                                                                          |
-| **Contact address**          | Optional. Crossref and OpenAlex give faster, higher limits to requests that say who is making them; yours is sent with those and with nothing else. Leave it empty and Orbit uses the common pool, which is slower but works.                                                                                             |
-| **Semantic Scholar API key** | Optional but worth having. Without one you share an anonymous pool with every other client, so lookups are slower and fail more. Request one at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api). Zotero stores it unencrypted in its preferences; Orbit sends it only to Semantic Scholar. |
+| Setting                      | Default                     | What it does                                                                                                                                             |
+| ---------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Databases**                | `crossref, semanticscholar` | Which sources to count from, and in what order. For physics, `inspire, crossref, semanticscholar` is usually better.                                     |
+| **Fetch for new items**      | On                          | Counts are looked up as you add items.                                                                                                                   |
+| **Automatic updates**        | Off                         | Refresh missing and outdated counts at the next start.                                                                                                   |
+| **Outdated after**           | 6 months                    | 3, 6, 12 or 24.                                                                                                                                          |
+| **Colours**                  | On                          | Each source gets its own colour when more than one is shown.                                                                                             |
+| **Contact address**          | empty                       | Sent to Crossref and OpenAlex. Crossref gives faster, higher limits to requests that say who is making them; OpenAlex now goes by the API key instead.   |
+| **OpenAlex API key**         | empty                       | Raises OpenAlex's daily budget tenfold and lets the collection graph find the works that cite your items. Free at [openalex.org](https://openalex.org/). |
+| **Semantic Scholar API key** | empty                       | Without one you share an anonymous pool with every other client, so lookups are slower and fail more.                                                    |
+| **Collection limit**         | 300, ask first              | Above this many items: analyse only the first N, ask first with an estimate, or always analyse everything.                                               |
 
-Orbit looks work up **by DOI or arXiv ID only** — never by title, ISBN or PMID.
-Journal articles and conference papers usually carry a DOI; web pages, theses
-and datasets often carry neither. The DOI field is read first, then Archive ID,
-Report Number, Extra, URL and Call Number for an arXiv ID.
+## Data sources and costs
 
-New items are tallied as they arrive; existing ones are not backfilled. To
-catch up, run `Tools → Retally outdated item citations`, or select items,
-right-click, and choose **Update Citation Tallies**.
+| Source                                               | Used for                                                                 | Cost to you                                                                                                                                        |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Crossref](https://www.crossref.org/)                | Citation counts                                                          | Free                                                                                                                                               |
+| [OpenAlex](https://openalex.org/)                    | Counts, the item pane record, the graphs and the collection analysis     | Free within a daily budget: $0.10 without a key, $1 with a free key. A 300-item analysis uses about 40 requests, roughly 4% of the keyless budget. |
+| [Semantic Scholar](https://www.semanticscholar.org/) | Counts, reference lists, influential citations                           | Free; an API key makes it faster                                                                                                                   |
+| [INSPIRE](https://inspirehep.net/)                   | Counts for high-energy physics                                           | Free                                                                                                                                               |
+| Google Scholar                                       | Counts; no API, so it is read from the result page and paced accordingly | Free                                                                                                                                               |
 
-## How it behaves under load
+Every source paces itself, so a large update takes a while by design. Crossref
+and INSPIRE start at one request per second and slow down on rate-limit errors;
+Semantic Scholar waits at least 1 second between keyed requests and 3 without a
+key, and respects `Retry-After`. OpenAlex requests are paced by the budget its
+own response headers report. A source that comes up empty for an item is not
+asked again for 7 days, then 30, 90 and 180.
 
-Every source paces itself, so a large update takes a while by design.
+Records and collection networks are cached on disk for 14 days. The graph's
+reload button refetches.
 
-Crossref and INSPIRE start at one request per second and are throttled
-independently: a rate-limit error multiplies the delay by 1.5 up to ten times
-the base, and each success eases it back by 0.9, never below the base.
-Semantic Scholar runs its own scheduler — at least 1 second between keyed
-requests, 3 seconds without a key — and backs off exponentially with full
-jitter on a transient failure, never sooner than the server's `Retry-After`.
-OpenAlex is asked politely: put an address in **Settings → Contact address**
-and it raises the limits.
+## Privacy
 
-A source that comes up empty for an item is not asked again immediately: 7
-days after the first failure, then 30, then 90, then 180. Selected-item updates
-bypass that schedule. A library scan will not start if Zotero is offline, and
-stops between items if it goes offline part way.
+Orbit sends only what a lookup needs, and only to the source that answers it:
 
-Records are cached on disk. The graph's reload button is the way past that,
-when a paper has picked up citations or the library has gained the work.
+- **Identifiers** (DOI, arXiv ID, PMID) of the items you look up, to the
+  sources you enabled. Titles and authors are sent only to Google Scholar,
+  which has no other way to search.
+- **Your contact address**, if you set one, to Crossref and OpenAlex.
+- **Your API keys**, each only to its own service, in a request header — never
+  in a URL, so they do not appear in debug logs. Zotero stores them
+  unencrypted in its preferences.
+- **Nothing else.** No telemetry, no account, no server of Orbit's own.
+  Citation counts are written to each item's Extra field; everything else stays
+  in a local cache file (`orbit-cache.json` in the Zotero data directory).
 
-## Sources
+The **Import** button and the **Local Citation Network** and **Inciteful**
+links send DOIs to Zotero's DOI lookup and to those sites respectively, and only
+when you click them.
 
-|                                                      |                                                                         |
-| ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| [Crossref](https://www.crossref.org/)                | DOI registration agency; broad coverage of journals and conferences     |
-| [OpenAlex](https://openalex.org/)                    | Open catalogue of works; the record behind the item pane, and the graph |
-| [Semantic Scholar](https://www.semanticscholar.org/) | AI2's index; the reference lists, and influential-citation counts       |
-| [INSPIRE](https://inspirehep.net/)                   | High-energy physics                                                     |
-| Google Scholar                                       | Broadest coverage, no API; scraped, and rate-limited accordingly        |
+## Limits and FAQ
 
-## Building
+### How does Orbit know what I already have?
 
-```sh
-yarn install
-yarn build          # → .scaffold/build/orbit.xpi
-yarn test:unit
-yarn test:coverage  # runs the suite and rewrites the coverage badges above
-yarn test           # the specs in test/zotero, inside a real Zotero
-```
+A work counts as held when it shares a DOI, arXiv ID or PubMed ID with one of
+your items — read from the DOI field, Archive ID, an arxiv.org URL, or `DOI:`,
+`arXiv:` and `PMID:` lines in Extra. When no identifier matches, Orbit marks a
+work as _probably_ held only if its normalized title is exactly equal, the year
+is within one, and at least one author matches by surname and initial — and no
+identifier on either side contradicts it. Two papers called "Deep Learning" are
+not the same paper.
 
-`yarn test` launches Zotero itself and has to be told where it is, or it stops
-at `No Zotero Found.` before starting anything. Put the path in an untracked
-`.env`, which the scaffold reads:
+### Why is a paper missing a count, or the whole item pane?
 
-```sh
-ZOTERO_PLUGIN_ZOTERO_BIN_PATH=/Applications/Zotero.app/Contents/MacOS/zotero
-```
+Orbit looks work up by DOI or arXiv ID only. Journal articles and conference
+papers usually carry one; web pages, theses and datasets often do not.
 
-It runs against its own profile and data directory under `.scaffold/test/`, so
-your library is not involved. Close any running Zotero first, and expect the
-test window to stay open when the run ends — the command returns once it is
-closed.
+### Why are some clusters called "Cluster 3"?
 
-Every build raises the patch version. Zotero keys an installed plugin by
-version, and two builds sharing one are the same plugin as far as it is
-concerned — reinstalling can leave the old code in place.
+A cluster is named after the OpenAlex topic most of its items share. When
+OpenAlex has no topic for them, it gets a number.
 
-Crossref and OpenAlex offer a faster request pool to callers who identify
-themselves, and the address for it is a setting -- see **Contact address**
-above. Each user enters their own, which is the only arrangement that works for
-a published plugin: an address compiled into a release would identify whoever
-built it on every request every user makes, and would travel to everyone who
-downloads the file.
+### Why can I not switch on "works citing my collection"?
 
-A local build can still carry one, as a fallback for when the setting is empty:
-put it in `.orbit-contact` (untracked) or set `ORBIT_CONTACT`. Released builds
-are made without it. The address is deliberately not in this repository -- it
-identifies whoever runs the build, and a fork must not go on sending an address
-that is not theirs -- and a setting that is filled in always wins over it.
+Finding them needs OpenAlex's paged search, which requires an API key. Add one
+in the settings.
+
+### What does the gap score mean?
+
+How many of your items cite the work, divided by `log10(10 + citations)`. The
+divisor is 1 for an uncited work, 2 at 90 citations and 3 at 1,000.
+
+## Contributing
+
+Bug reports and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for building, testing and how the code is
+laid out, and [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+
+If you use Orbit in your research, GitHub's **Cite this repository** button
+gives a citation from [CITATION.cff](CITATION.cff).
 
 ## Credit
 
-Orbit is not written from nothing. Two projects carry most of what makes it
+Orbit is not written from nothing. Two projects carry much of what makes it
 work, and both are named here because a licence file is a legal minimum and not
 the same thing as saying who did the work.
 
@@ -203,9 +290,9 @@ framework the sources plug into, the rate limiting with its backoff ladder and
 circuit breaker, the preferences, the storage in the item's Extra field, and
 the build. Everything Orbit adds sits on top of it.
 
-Added here: the OpenAlex and Google Scholar providers, the item pane section
-with the record and the yearly chart, the reference list from Semantic Scholar,
-the field-weighted-impact column, and the graph tab.
+Added here: the OpenAlex and Google Scholar providers, the item pane section,
+the reference list, the field-weighted-impact column, the graph tab, and the
+collection analysis with its clusters, gaps, import and exports.
 
 ### Google Scholar Citation Count — Justin Ribeiro
 
@@ -218,19 +305,26 @@ allows that combination. The file was rewritten in TypeScript, but the
 substance is that project's: which markers in Scholar's HTML identify a result
 and its citation count, and the distinction between a page carrying a result
 but no count, which means zero, and a page carrying no result at all, which
-means unknown. Scholar publishes no API and no schema for any of this; it was
-worked out against the live site, and that is the expensive part.
+means unknown.
 
 ### Also
 
-Built on [zotero-plugin-scaffold and zotero-plugin-toolkit](https://github.com/windingwind)
-by windingwind. Related work worth knowing about:
-[ZoteroCitationCountsManager](https://github.com/FrLars21/ZoteroCitationCountsManager)
-by FrLars21 and [zotero-citationcounts](https://github.com/eschnett/zotero-citationcounts)
-by eschnett.
+- [networkanalysis-ts](https://github.com/neesjanvaneck/networkanalysis-ts) by
+  Nees Jan van Eck (MIT), the Leiden implementation behind VOSviewer, clusters
+  the collection network; it uses
+  [java-random](https://www.npmjs.com/package/java-random) (ISC).
+- The guarded title match follows the rule of
+  [Cita](https://github.com/zotero-cita/zotero-cita); the gap ranking follows
+  [zotero-citation-graph](https://github.com/Jajaho/zotero-citation-graph).
+  Both are reimplemented, not copied.
+- Built on [zotero-plugin-scaffold and zotero-plugin-toolkit](https://github.com/windingwind)
+  by windingwind. Related work worth knowing about:
+  [ZoteroCitationCountsManager](https://github.com/FrLars21/ZoteroCitationCountsManager)
+  by FrLars21 and [zotero-citationcounts](https://github.com/eschnett/zotero-citationcounts)
+  by eschnett.
 
 ## License
 
 GNU Affero General Public License v3.0, with one exception:
 `src/modules/googleScholarClient.core.ts` is under the Mozilla Public License
-2.0. See `LICENSE` and `LICENSE-MPL-2.0`.
+2.0. See [`LICENSE`](LICENSE) and [`LICENSE-MPL-2.0`](LICENSE-MPL-2.0).
