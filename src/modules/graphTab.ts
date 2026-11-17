@@ -1703,8 +1703,8 @@ export function renderGraph(
 
   const root = el(doc, 'div')
   root.style.cssText = networkMode
-    ? 'display:flex;flex-direction:column;height:100%;flex:1;min-width:0;padding:14px 18px;box-sizing:border-box'
-    : 'display:flex;flex-direction:column;height:100%;width:100%;padding:14px 18px;box-sizing:border-box'
+    ? 'display:flex;flex-direction:column;height:100%;flex:1;min-width:0;overflow:hidden;padding:14px 18px;box-sizing:border-box'
+    : 'display:flex;flex-direction:column;height:100%;width:100%;min-width:0;padding:14px 18px;box-sizing:border-box'
 
   const title = el(doc, 'div', seed.name)
   title.style.cssText = 'font-weight:600;font-size:14px;padding-bottom:2px'
@@ -1929,7 +1929,11 @@ export function renderGraph(
     aside.append(heading)
 
     const outer = el(doc, 'div')
-    outer.style.cssText = 'display:flex;flex-direction:row;height:100%;width:100%'
+    // min-width:0 and overflow:hidden: the detail strip above the plot does not
+    // wrap, so without them the frame grew to the width of whatever title was
+    // pointed at -- pushing the gaps list off a narrow window, and in and out
+    // of view on every hover. The window decides the width, not the content.
+    outer.style.cssText = 'display:flex;flex-direction:row;height:100%;width:100%;min-width:0;overflow:hidden'
     outer.append(root, aside)
     container.replaceChildren(outer)
   } else container.replaceChildren(root)
