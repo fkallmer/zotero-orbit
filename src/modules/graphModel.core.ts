@@ -107,13 +107,16 @@ export interface GraphLayout {
   links: GraphLink[]
   /** Works missing a value on either axis, which cannot be placed at all. */
   dropped: number
-  /** Carried so the renderer knows whether to draw the star. */
-  mode: GraphMode
+  /**
+   * Carried so the renderer knows whether to draw the star. Always set by
+   * buildGraphLayout; absent reads as `star`.
+   */
+  mode?: GraphMode
   /**
    * The roles that were given labels, for the caller to pass back to
-   * placeLabels on every zoom. Null is every role.
+   * placeLabels on every zoom. Null or absent is every role.
    */
-  labelRoles: readonly GraphRole[] | null
+  labelRoles?: readonly GraphRole[] | null
 }
 
 export interface LayoutOptions {
@@ -818,19 +821,21 @@ export interface GraphTheme {
 /**
  * Tableau 10, without its grey.
  *
- * A categorical set built for telling marks apart at a glance, with mid
- * lightness throughout, so each hue holds against a white tab and a dark one
- * alike -- Okabe-Ito would have been the stricter colour-blind choice, but its
- * black vanishes in dark mode, its yellow on white, and it leaves six hues. The
- * grey is dropped because grey is what "no cluster" looks like. Two caveats:
- * red against green and orange against pink can merge for deuteranopes, which
- * is why the legend names every cluster; and the blue sits near the default
- * reference hue, which matters only if a caller mixes role and cluster
- * colouring on one plot.
+ * A categorical set built for telling marks apart at a glance, mid lightness
+ * throughout, so no hue disappears into either a white tab or a dark one --
+ * Okabe-Ito would have been the stricter colour-blind choice, but its black
+ * vanishes in dark mode and leaves six usable hues. The grey is dropped
+ * because grey is what "no cluster" looks like.
+ *
+ * Caveats, measured against the tab's surfaces: on white the yellow (1.6:1),
+ * the pink (2.0:1), the teal (2.3:1) and the orange (2.4:1) fall under the 3:1
+ * asked of graphics, while on the dark surface all nine clear it. Red against
+ * green and orange against pink may also merge for deuteranopes (not
+ * simulated). Both are reasons the legend names every cluster rather than
+ * leaving the hue to carry it alone.
  */
 export const CLUSTER_PALETTE: readonly string[] = [
-  // As d3-scale-chromatic's schemeTableau10 has them, which round three of
-  // Tableau's published values by one step; the difference is invisible.
+  // As in d3-scale-chromatic's schemeTableau10.
   '#4e79a7',
   '#f28e2c',
   '#e15759',
