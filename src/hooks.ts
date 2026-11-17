@@ -24,7 +24,7 @@ import {
 } from './modules/fwciUpdate'
 import { installTabIconStyle, registerGraphMenus, removeTabIconStyle } from './modules/graphTab'
 import { registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } from './modules/libraryIndex'
-import { setOpenAlexContact } from './modules/openAlexClient.core'
+import { setOpenAlexApiKey, setOpenAlexContact } from './modules/openAlexClient.core'
 import { registerPrefsScripts, validateApiKeyUI, validateDatabaseOrderUI } from './modules/preferenceScript'
 import {
   closeSemanticScholarWarning,
@@ -56,6 +56,7 @@ async function onStartup() {
   // Before the first request, so the polite-pool address is the user's own from
   // the outset rather than from whenever they next open the preferences.
   setOpenAlexContact(getPref('openAlexContact'))
+  setOpenAlexApiKey(getPref('openAlexApiKey'))
 
   // Key changes must be observed before any lookup can start. In the degraded
   // runtime the client is never constructed, but startup still has to finish.

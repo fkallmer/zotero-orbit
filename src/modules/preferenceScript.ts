@@ -6,7 +6,7 @@ import { getPref, setPref } from '../utils/prefs'
 
 import { SEMANTIC_SCHOLAR_DATABASE } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
-import { builtInContact, setOpenAlexContact } from './openAlexClient.core'
+import { builtInContact, setOpenAlexApiKey, setOpenAlexContact } from './openAlexClient.core'
 import {
   apiKeyStatusMessage,
   apiKeyStatusTone,
@@ -16,6 +16,12 @@ import {
   type StatusTone,
   validateDatabaseOrder,
 } from './preferenceMessages'
+import {
+  normalizeSeedLimit,
+  normalizeSeedPolicy,
+  type OpenAlexKeyMessage,
+  openAlexKeyStatus,
+} from './preferenceSettings.core'
 import { type CommitResult, getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
 
 const prefPrefix = `zotero-prefpane-${config.addonRef}`
@@ -30,6 +36,12 @@ const apiKeyGroupId = `${apiKeyInputId}-group`
 const contactInputId = `${prefPrefix}-openAlexContact`
 const contactStatusId = `${contactInputId}-status`
 const contactStatusTextId = `${contactStatusId}-text`
+const openAlexKeyInputId = `${prefPrefix}-openAlexApiKey`
+const openAlexKeyStatusId = `${openAlexKeyInputId}-status`
+const openAlexKeyStatusTextId = `${openAlexKeyStatusId}-text`
+const openAlexKeyStatusCleanedId = `${openAlexKeyStatusId}-cleaned`
+const seedLimitInputId = `${prefPrefix}-networkSeedLimit`
+const seedPolicyGroupId = `${prefPrefix}-networkSeedPolicy`
 const databaseInputId = `${prefPrefix}-databaseOrderExposed`
 const databaseStatusId = `${prefPrefix}-database-status`
 
@@ -75,7 +87,7 @@ function localization(window: Window) {
  * `DocumentL10n` has `setAttributes` but no `removeAttributes`, so clearing is
  * done by hand.
  */
-function applyMessage(window: Window, elementId: string, message: PrefsMessage | null): void {
+function applyMessage(window: Window, elementId: string, message: PrefsMessage | OpenAlexKeyMessage | null): void {
   const el = byId(window, elementId)
   if (!el) return
   if (message === null) {
@@ -296,6 +308,81 @@ function bindContactField(window: Window): void {
   })
 }
 
+function renderOpenAlexKeyStatus(window: Window, typed: string): void {
+  const status = openAlexKeyStatus(typed)
+  applyMessage(window, openAlexKeyStatusTextId, status.message)
+  applyMessage(window, openAlexKeyStatusCleanedId, status.cleaned)
+  setStatusTone(window, openAlexKeyStatusId, status.tone)
+}
+
+/**
+ * The OpenAlex key. Same life cycle as the contact field: saved and applied to
+ * the request path on the way out of the field. OpenAlex offers no cheap probe
+ * that tells a bad key from a good one, so there is no Validate button; the
+ * status says what will be sent. The key itself is never logged.
+ */
+function bindOpenAlexKeyField(window: Window): void {
+  const input = byId<HTMLInputElement>(window, openAlexKeyInputId)
+  if (!input) return
+
+  input.value = openAlexKeyStatus(getPref('openAlexApiKey')).key
+  renderOpenAlexKeyStatus(window, input.value)
+
+  input.addEventListener('input', () => {
+    renderOpenAlexKeyStatus(window, input.value)
+  })
+
+  const commit = () => {
+    const typed = input.value
+    const { key } = openAlexKeyStatus(typed)
+    // Show the cleaned key, so the field matches what is stored.
+    if (input.value !== key) input.value = key
+    setPref('openAlexApiKey', key)
+    setOpenAlexApiKey(key)
+    // Rendered from what was typed, so the row can still say what was stripped.
+    renderOpenAlexKeyStatus(window, typed)
+  }
+
+  input.addEventListener('focusout', commit)
+  input.addEventListener('keydown', (event: Event) => {
+    if ((event as KeyboardEvent).key === 'Enter') {
+      event.preventDefault()
+      commit()
+    }
+  })
+}
+
+/**
+ * The collection-network limit and what to do above it. Bound by hand rather
+ * than through `preference=`, so a stored value that is out of range or not
+ * one of the three policies shows, and is saved, as its fallback.
+ */
+function bindNetworkLimitFields(window: Window): void {
+  const limitInput = byId<HTMLInputElement>(window, seedLimitInputId)
+  if (limitInput) {
+    const stored = getPref('networkSeedLimit')
+    const limit = normalizeSeedLimit(stored)
+    if (limit !== stored) setPref('networkSeedLimit', limit)
+    limitInput.value = String(limit)
+    limitInput.addEventListener('change', () => {
+      const next = normalizeSeedLimit(limitInput.value)
+      limitInput.value = String(next)
+      setPref('networkSeedLimit', next)
+    })
+  }
+
+  const policyGroup = byId<XULRadioGroupElement>(window, seedPolicyGroupId)
+  if (policyGroup) {
+    const stored = getPref('networkSeedPolicy')
+    const policy = normalizeSeedPolicy(stored)
+    if (policy !== stored) setPref('networkSeedPolicy', policy)
+    policyGroup.value = policy
+    policyGroup.addEventListener('command', () => {
+      setPref('networkSeedPolicy', normalizeSeedPolicy(policyGroup.value))
+    })
+  }
+}
+
 export function registerPrefsScripts(_window: Window) {
   // See addon/content/preferences.xhtml onpaneload
   if (!addon.data.prefs) {
@@ -313,6 +400,8 @@ function bindPrefEvents() {
   if (!window) return
 
   bindContactField(window)
+  bindOpenAlexKeyField(window)
+  bindNetworkLimitFields(window)
 
   const databaseOrderElement = byId<HTMLInputElement>(window, databaseInputId)
   if (databaseOrderElement) {
