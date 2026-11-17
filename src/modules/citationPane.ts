@@ -20,10 +20,12 @@ import { toS2PaperRefs } from '../utils/s2Identifiers'
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
 import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationCounts'
 import { buildScholarUrl } from './googleScholarClient.core.ts'
-import { findInLibrary, getLibraryIndex } from './libraryIndex'
+import { getLibraryMatcher, matchInLibrary } from './libraryIndex'
 import { fetchJournalMetrics, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
+import type { MatchResult } from './collectionTypes'
+import type { LibraryMatcher } from './libraryIndex'
 import type { JournalMetrics, ScholarlyRecord } from './openAlexClient.core.ts'
 import type { S2Details } from './semanticScholarClient.core'
 
@@ -49,6 +51,12 @@ export interface PaneData {
   references: PaneReference[]
   /** Identifier key -> item id, for the references the user already holds. See libraryMatch.core. */
   inLibrary: Map<string, number>
+  /**
+   * Normalized title -> library items, for references no identifier finds.
+   * Optional so a caller that only has identifiers still renders; without it
+   * nothing is marked as probable.
+   */
+  libraryTitles?: LibraryMatcher['titles']
 }
 
 /** How many references to list before collapsing the rest into a count. */
@@ -418,6 +426,8 @@ interface PaneReference {
   pmid?: string | null
   year: number | null
   citedByCount: number | null
+  /** Every author's display name, when the source gave them: the title match needs them. */
+  authors?: readonly string[] | null
 }
 
 /**
@@ -453,16 +463,26 @@ function renderReferences(doc: Document, body: HTMLElement, data: PaneData): voi
     return
   }
 
-  const held = new Set<PaneReference>(refs.filter((ref) => findInLibrary(data.inLibrary, ref) !== null))
+  const matcher: LibraryMatcher = { ids: data.inLibrary, titles: data.libraryTitles ?? new Map() }
+  const matches = new Map<PaneReference, MatchResult>()
+  for (const ref of refs) {
+    const match = matchInLibrary(matcher, ref)
+    if (match) matches.set(ref, match)
+  }
+  const exact = [...matches.values()].filter((match) => match.confidence === 'exact').length
+  const probable = matches.size - exact
   body.append(
     row(doc, getString('pane-label-references'), String(known ?? refs.length), getString('pane-hint-references')),
   )
-  if (held.size > 0) body.append(row(doc, getString('pane-label-references-held'), String(held.size)))
+  if (exact > 0) body.append(row(doc, getString('pane-label-references-held'), String(exact)))
+  // Counted apart: a title match is a good guess, not a fact to add to one.
+  if (probable > 0) body.append(row(doc, getString('pane-reference-probable-count'), String(probable)))
 
-  // Held first, then by how often each is cited: the ones worth opening rise
-  // to the top instead of arriving in whatever order the source listed them.
+  // Held first, probable ones included, then by how often each is cited: the
+  // ones worth opening rise to the top instead of arriving in whatever order
+  // the source listed them.
   const ordered = [...refs].sort((a, b) => {
-    const heldDiff = Number(held.has(b)) - Number(held.has(a))
+    const heldDiff = Number(matches.has(b)) - Number(matches.has(a))
     if (heldDiff !== 0) return heldDiff
     return (b.citedByCount ?? -1) - (a.citedByCount ?? -1)
   })
@@ -473,12 +493,22 @@ function renderReferences(doc: Document, body: HTMLElement, data: PaneData): voi
     const line = el(doc, 'div')
     line.style.cssText = 'display:flex;align-items:baseline;gap:6px;padding:1px 0;line-height:1.35'
 
-    const mark = el(doc, 'span', undefined, held.has(ref) ? '\u2713' : '')
-    mark.style.cssText = 'flex:none;width:9px;opacity:.65'
-    if (held.has(ref)) mark.setAttribute('title', getString('pane-reference-in-library'))
+    const match = matches.get(ref)
+    // A solid tick for an identifier match, a hollow ring for a title match:
+    // different glyphs rather than one in two shades, so the difference
+    // survives a theme that flattens opacity.
+    const probably = match?.confidence === 'probable'
+    const mark = el(doc, 'span', undefined, match ? (probably ? '\u25cb' : '\u2713') : '')
+    mark.style.cssText = `flex:none;width:9px;opacity:${probably ? '.5' : '.65'}`
+    if (match) {
+      mark.setAttribute(
+        'title',
+        getString(probably ? 'pane-reference-probable-in-library' : 'pane-reference-in-library'),
+      )
+    }
 
     const label = `${ref.title ?? ref.doi ?? ''}${ref.year ? ` (${ref.year})` : ''}`
-    const itemID = findInLibrary(data.inLibrary, ref) ?? undefined
+    const itemID = match?.itemID
     let name: HTMLElement
     if (itemID !== undefined) {
       // Selecting rather than opening: the point is to land on it in the
@@ -587,6 +617,7 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
     pmid: ref.pmid,
     year: ref.year,
     citedByCount: ref.citedByCount,
+    authors: ref.authors,
   }))
   if (references.length === 0 && record) {
     references = (await fetchReferences(record, { force })).map((ref) => ({
@@ -597,8 +628,17 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
     }))
   }
 
-  const inLibrary = references.length > 0 ? await getLibraryIndex(item.libraryID) : new Map<string, number>()
-  return { record, journal, s2, references, inLibrary }
+  if (references.length === 0) return { record, journal, s2, references, inLibrary: new Map() }
+  const library = await getLibraryMatcher(item.libraryID)
+  return {
+    record,
+    journal,
+    s2,
+    references,
+    // The cached maps themselves, which are never written once built.
+    inLibrary: library.ids as Map<string, number>,
+    libraryTitles: library.titles,
+  }
 }
 
 export function registerCitationPane(): void {

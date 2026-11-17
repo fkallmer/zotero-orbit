@@ -9,7 +9,19 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { findInLibrary, itemKeys, normalizeDoi, workKeys } from '../src/modules/libraryMatch.core.ts'
+import {
+  creatorAuthor,
+  findInLibrary,
+  itemKeys,
+  matchInLibrary,
+  normalizeDoi,
+  normalizeTitle,
+  parseAuthor,
+  titleKey,
+  workKeys,
+} from '../src/modules/libraryMatch.core.ts'
+
+import type { LibraryMatcher, TitleCandidate } from '../src/modules/libraryMatch.core.ts'
 
 describe('normalizeDoi', () => {
   it('drops resolver prefixes, case and surrounding space', () => {
@@ -160,5 +172,237 @@ describe('findInLibrary', () => {
   it('finds nothing for a work that shares no identifier', () => {
     assert.equal(findInLibrary(index, { doi: '10.1/other', arxiv: '1810.04805', pmid: '1' }), null)
     assert.equal(findInLibrary(index, {}), null)
+  })
+})
+
+describe('normalizeTitle and titleKey', () => {
+  it('folds accents, case, punctuation, markup and spacing', () => {
+    assert.equal(normalizeTitle('Étude  sur les réseaux—NEURONAUX!'), 'etude sur les reseaux neuronaux')
+    assert.equal(normalizeTitle('  The <i>E. coli</i> genome: a survey '), 'the e coli genome a survey')
+    assert.equal(normalizeTitle('Long Short-Term Memory'), 'long short term memory')
+    // Compatibility forms: a ligature and full-width digits fold to plain ones.
+    assert.equal(normalizeTitle('Eﬃcient models in 2００'), 'efficient models in 200')
+  })
+
+  it('keeps letters of every script, not only Latin', () => {
+    assert.equal(normalizeTitle('Über Größe & Maß'), 'uber große maß')
+    assert.equal(normalizeTitle('Модели языка'), 'модели языка')
+  })
+
+  it('refuses titles too short or generic to identify a work', () => {
+    assert.equal(titleKey('Introduction'), null)
+    assert.equal(titleKey('Editorial'), null)
+    assert.equal(titleKey('Book Reviews'), null)
+    // Three words, but under twenty characters.
+    assert.equal(titleKey('A New Model'), null)
+    // Twenty characters, but two words.
+    assert.equal(titleKey('Thermodynamics Revisited'), null)
+    assert.equal(titleKey(''), null)
+    assert.equal(titleKey(null), null)
+    assert.equal(titleKey('Attention Is All You Need'), 'attention is all you need')
+  })
+})
+
+describe('parseAuthor', () => {
+  it('reads "Given Family"', () => {
+    assert.deepEqual(parseAuthor('Ashish Vaswani'), { surname: 'vaswani', initial: 'a' })
+    assert.deepEqual(parseAuthor('J. R. R. Tolkien'), { surname: 'tolkien', initial: 'j' })
+    assert.deepEqual(parseAuthor('J. Smith'), { surname: 'smith', initial: 'j' })
+  })
+
+  it('reads "Family, Given"', () => {
+    assert.deepEqual(parseAuthor('Smith, John'), { surname: 'smith', initial: 'j' })
+    assert.deepEqual(parseAuthor('Smith, J.'), { surname: 'smith', initial: 'j' })
+    assert.deepEqual(parseAuthor('van der Berg, Jan'), { surname: 'van der berg', initial: 'j' })
+  })
+
+  it('keeps particles with the surname, and drops a generational suffix', () => {
+    assert.deepEqual(parseAuthor('Jan van der Berg'), { surname: 'van der berg', initial: 'j' })
+    assert.deepEqual(parseAuthor('Ludwig von Mises'), { surname: 'von mises', initial: 'l' })
+    assert.deepEqual(parseAuthor('Martin Luther King Jr.'), { surname: 'king', initial: 'm' })
+  })
+
+  it('folds accents and keeps hyphenated surnames whole', () => {
+    assert.deepEqual(parseAuthor('Émile Durkheim'), { surname: 'durkheim', initial: 'e' })
+    assert.deepEqual(parseAuthor('Anna Müller-Lüdenscheidt'), { surname: 'muller ludenscheidt', initial: 'a' })
+  })
+
+  it('gives a single name no initial, and nothing for an empty one', () => {
+    assert.deepEqual(parseAuthor('Plato'), { surname: 'plato', initial: null })
+    assert.deepEqual(parseAuthor('Smith,'), { surname: 'smith', initial: null })
+    assert.equal(parseAuthor(''), null)
+    assert.equal(parseAuthor('  ,  '), null)
+  })
+})
+
+describe('creatorAuthor', () => {
+  it('folds a Zotero creator the same way as a parsed name', () => {
+    assert.deepEqual(creatorAuthor('Müller', 'Jürgen'), parseAuthor('Jürgen Müller'))
+    assert.deepEqual(creatorAuthor('van der Berg', 'J.'), parseAuthor('Jan van der Berg'))
+    assert.deepEqual(creatorAuthor('World Health Organization', ''), {
+      surname: 'world health organization',
+      initial: null,
+    })
+    assert.equal(creatorAuthor('', 'Jan'), null)
+  })
+})
+
+describe('matchInLibrary', () => {
+  const TITLE = 'A Theory of Everything in Particular'
+  const smith = { surname: 'smith', initial: 'j' }
+
+  function candidate(itemID: number, overrides: Partial<TitleCandidate> = {}): TitleCandidate {
+    return { itemID, year: 2010, authors: [smith], keys: [], ...overrides }
+  }
+
+  function matcher(candidates: TitleCandidate[], ids: [string, number][] = []): LibraryMatcher {
+    return { ids: new Map(ids), titles: new Map([[normalizeTitle(TITLE), candidates]]) }
+  }
+
+  const work = { title: TITLE, year: 2010, authors: ['John Smith'] }
+
+  describe('the identifier route', () => {
+    it('is exact, and says which identifier matched', () => {
+      const ids: [string, number][] = [
+        ['doi:10.1/a', 1],
+        ['arxiv:1706.03762', 2],
+        ['pmid:9377276', 3],
+      ]
+      const m = matcher([], ids)
+      assert.deepEqual(matchInLibrary(m, { doi: '10.1/A' }), { itemID: 1, confidence: 'exact', via: 'doi' })
+      assert.deepEqual(matchInLibrary(m, { arxiv: '1706.03762v2' }), { itemID: 2, confidence: 'exact', via: 'arxiv' })
+      assert.deepEqual(matchInLibrary(m, { pmid: '9377276' }), { itemID: 3, confidence: 'exact', via: 'pmid' })
+      // An arXiv DOI the library holds only as an arXiv id.
+      assert.deepEqual(matchInLibrary(m, { doi: '10.48550/arXiv.1706.03762' }), {
+        itemID: 2,
+        confidence: 'exact',
+        via: 'arxiv',
+      })
+    })
+
+    it('runs in findInLibrary order and wins over a title match', () => {
+      const m = matcher([candidate(9)], [['doi:10.1/a', 1]])
+      assert.deepEqual(matchInLibrary(m, { ...work, doi: '10.1/a' }), { itemID: 1, confidence: 'exact', via: 'doi' })
+    })
+  })
+
+  describe('the title route', () => {
+    it('is probable when title, year and an author agree', () => {
+      assert.deepEqual(matchInLibrary(matcher([candidate(7)]), work), {
+        itemID: 7,
+        confidence: 'probable',
+        via: 'title',
+      })
+    })
+
+    it('ignores accents, punctuation and case in the title', () => {
+      const m: LibraryMatcher = {
+        ids: new Map(),
+        titles: new Map([[normalizeTitle('Étude des réseaux neuronaux profonds'), [candidate(7)]]]),
+      }
+      const accented = { ...work, title: 'ETUDE des reseaux: neuronaux, profonds.' }
+      assert.equal(matchInLibrary(m, accented)?.itemID, 7)
+    })
+
+    it('matches "Family, Given" against "Given Family", and particles in full', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, authors: ['Smith, J.'] })?.itemID, 7)
+      const berg = candidate(8, { authors: [{ surname: 'van der berg', initial: 'j' }] })
+      assert.equal(matchInLibrary(matcher([berg]), { ...work, authors: ['Jan van der Berg'] })?.itemID, 8)
+    })
+
+    it('allows a year either side, for online-first versus issue', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7, { year: 2011 })]), work)?.itemID, 7)
+      assert.equal(matchInLibrary(matcher([candidate(7, { year: 2009 })]), work)?.itemID, 7)
+    })
+
+    it('needs only one shared author among several', () => {
+      const others = { surname: 'doe', initial: 'a' }
+      const m = matcher([candidate(7, { authors: [others, smith] })])
+      assert.equal(matchInLibrary(m, { ...work, authors: ['Ann Roe', 'John Smith'] })?.itemID, 7)
+    })
+
+    it('accepts identifiers on both sides that agree, or on one side only', () => {
+      const withDoi = candidate(7, { keys: ['doi:10.1/a', 'pmid:1'] })
+      // Not in `ids` (as with a duplicate the index kept the other copy of), so
+      // the title route is reached; the identifiers agree.
+      assert.equal(matchInLibrary(matcher([withDoi]), { ...work, doi: '10.1/a' })?.confidence, 'probable')
+      assert.equal(matchInLibrary(matcher([withDoi]), work)?.itemID, 7)
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, doi: '10.1/a' })?.itemID, 7)
+      // A different namespace on each side is no disagreement.
+      assert.equal(matchInLibrary(matcher([withDoi]), { ...work, arxiv: '1706.03762' })?.itemID, 7)
+    })
+  })
+
+  describe('what must not match by title', () => {
+    it('a year off by two', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7, { year: 2012 })]), work), null)
+      assert.equal(matchInLibrary(matcher([candidate(7, { year: 2008 })]), work), null)
+    })
+
+    it('a year missing on either side', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7, { year: null })]), work), null)
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, year: null }), null)
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { title: TITLE, authors: ['John Smith'] }), null)
+    })
+
+    it('the same surname with a different initial', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, authors: ['K. Smith'] }), null)
+    })
+
+    it('a surname with no initial on one side', () => {
+      // A bare "Smith" is too common to vouch for a match, from either side.
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, authors: ['Smith'] }), null)
+      const bare = candidate(7, { authors: [{ surname: 'smith', initial: null }] })
+      assert.equal(matchInLibrary(matcher([bare]), work), null)
+    })
+
+    it('no authors on either side', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, authors: [] }), null)
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, authors: null }), null)
+      assert.equal(matchInLibrary(matcher([candidate(7, { authors: [] })]), work), null)
+    })
+
+    it('a conflicting DOI', () => {
+      const m = matcher([candidate(7, { keys: ['doi:10.1/a'] })])
+      assert.equal(matchInLibrary(m, { ...work, doi: '10.1/b' }), null)
+    })
+
+    it('a conflicting PMID', () => {
+      const m = matcher([candidate(7, { keys: ['pmid:111'] })])
+      assert.equal(matchInLibrary(m, { ...work, pmid: '222' }), null)
+    })
+
+    it('a conflicting arXiv id', () => {
+      const m = matcher([candidate(7, { keys: ['arxiv:1706.03762'] })])
+      assert.equal(matchInLibrary(m, { ...work, arxiv: '1810.04805' }), null)
+    })
+
+    it('a journal DOI against the arXiv DOI of the preprint', () => {
+      // Strict on purpose: two DOIs are two registered works, even when one
+      // is the preprint of the other.
+      const m = matcher([candidate(7, { keys: ['doi:10.48550/arxiv.1706.03762', 'arxiv:1706.03762'] })])
+      assert.equal(matchInLibrary(m, { ...work, doi: '10.1/journal' }), null)
+    })
+
+    it('two library items that both fit', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7), candidate(8)]), work), null)
+    })
+
+    it('but one fitting item beside one ruled out is still a match', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7), candidate(8, { year: 1990 })]), work)?.itemID, 7)
+    })
+
+    it('a different title, however close', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, title: `${TITLE}, Part II` }), null)
+    })
+
+    it('short generic titles, even with everything else agreeing', () => {
+      const m: LibraryMatcher = { ids: new Map(), titles: new Map([['introduction', [candidate(7)]]]) }
+      assert.equal(matchInLibrary(m, { ...work, title: 'Introduction' }), null)
+    })
+
+    it('a work with no title', () => {
+      assert.equal(matchInLibrary(matcher([candidate(7)]), { ...work, title: null }), null)
+    })
   })
 })

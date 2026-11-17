@@ -151,6 +151,8 @@ export type FluentMessageId =
   | 'pane-no-openalex'
   | 'pane-reference-cited-by'
   | 'pane-reference-in-library'
+  | 'pane-reference-probable-count'
+  | 'pane-reference-probable-in-library'
   | 'pane-references-elided'
   | 'pane-references-more'
   | 'pane-references-none'

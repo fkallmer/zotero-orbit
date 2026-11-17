@@ -9,7 +9,7 @@
  * Bundled by the scaffold into the Zotero test window, like startup.spec.ts.
  */
 
-import { clearLibraryIndex, getLibraryIndex } from '../../src/modules/libraryIndex'
+import { clearLibraryIndex, getLibraryIndex, getLibraryMatcher, matchInLibrary } from '../../src/modules/libraryIndex'
 
 declare const Zotero: any
 declare function describe(title: string, fn: (this: { timeout: (ms: number) => void }) => void): void
@@ -28,10 +28,15 @@ describe('Orbit library index', function () {
   this.timeout(30000)
   const created: number[] = []
 
-  async function make(type: string, fields: Record<string, string>): Promise<number> {
+  async function make(
+    type: string,
+    fields: Record<string, string>,
+    creators: { firstName: string; lastName: string; creatorType: string }[] = [],
+  ): Promise<number> {
     const item = new Zotero.Item(type)
     item.libraryID = Zotero.Libraries.userLibraryID
     for (const [name, value] of Object.entries(fields)) item.setField(name, value)
+    if (creators.length > 0) item.setCreators(creators)
     // skipNotifier: with fetchOnAdd on, a notified add would send these probes
     // to Crossref and Semantic Scholar and write counts into them mid-test.
     await item.saveTx({ skipNotifier: true })
@@ -77,5 +82,22 @@ describe('Orbit library index', function () {
     ok(index.get('doi:10.9999/orbit-probe') === id, `Extra DOI key missing on ${type}`)
     ok(index.get('pmid:99999999') === id, `PMID key missing on ${type}`)
     ok(index.get('arxiv:1409.0473') === id, `Extra arXiv key missing on ${type}`)
+  })
+
+  it('finds an item with no identifier by title, year and author, as probable', async () => {
+    // What the Node tests stub and cannot vouch for: the year Zotero's own
+    // date parser reads off a free-text date, and the creators getCreators
+    // returns after a save.
+    const title = 'Orbit index probe: a work only its title can find'
+    const id = await make('journalArticle', { title, date: 'March 3, 2009' }, [
+      { firstName: 'Quentin', lastName: 'Orbitprobe', creatorType: 'author' },
+    ])
+    clearLibraryIndex()
+    const matcher = await getLibraryMatcher(Zotero.Libraries.userLibraryID)
+    const match = matchInLibrary(matcher, { title, year: 2010, authors: ['Q. Orbitprobe'] })
+    ok(match?.itemID === id, `title match missing: ${JSON.stringify(match)}`)
+    ok(match.confidence === 'probable' && match.via === 'title', `wrong confidence: ${JSON.stringify(match)}`)
+    // And the guard holds against the real item: another initial is not it.
+    ok(matchInLibrary(matcher, { title, year: 2009, authors: ['K. Orbitprobe'] }) === null, 'initial ignored')
   })
 })

@@ -153,6 +153,14 @@ export interface S2Reference {
   citedByCount: number | null
   /** First author's surname, for a graph label that fits beside a mark. */
   author: string | null
+  /**
+   * Every author's display name, in order, as Semantic Scholar gives it. The
+   * library's title match compares surname and initial against these.
+   *
+   * Optional for the same reason as `arxiv`: an entry cached before it was
+   * kept lacks it, and its references then match by identifier only.
+   */
+  authors?: string[] | null
   /** How many works it cites; the graph's size channel. */
   referenceCount: number | null
 }
@@ -206,6 +214,9 @@ export function parseS2Details(bodyText: string): S2Details | null {
     // A reference with neither a title nor a DOI cannot be shown or matched.
     if (!title && !doi) continue
     const authors = Array.isArray(ref.authors) ? ref.authors : []
+    const names = authors
+      .map((author) => asText((author as { name?: unknown } | null)?.name))
+      .filter((name): name is string => name !== null)
     const firstName = asText((authors[0] as { name?: unknown } | undefined)?.name)
     references.push({
       title,
@@ -217,6 +228,7 @@ export function parseS2Details(bodyText: string): S2Details | null {
       citedByCount: asInt(ref.citationCount),
       // Surname only: a label has room for "Li 2016", not for the full name.
       author: firstName ? (firstName.trim().split(/\s+/).pop() ?? null) : null,
+      authors: names,
       referenceCount: asInt(ref.referenceCount),
     })
   }

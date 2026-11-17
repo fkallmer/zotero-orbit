@@ -10,7 +10,10 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
 
+import { matchInLibrary, normalizeTitle } from '../src/modules/libraryMatch.core.ts'
 import { parseS2Details } from '../src/modules/semanticScholarClient.core.ts'
+
+import type { S2Reference } from '../src/modules/semanticScholarClient.core.ts'
 
 function details(references: unknown[]): string {
   return JSON.stringify({ citationCount: 1, references })
@@ -49,4 +52,59 @@ it('leaves the ids empty when a reference has none, or has them in the wrong sha
     assert.equal(ref.arxiv, null)
     assert.equal(ref.pmid, null)
   }
+})
+
+it('keeps every author name in order, beside the first surname', () => {
+  const parsed = parseS2Details(
+    details([
+      {
+        paperId: 'e',
+        title: 'Attention Is All You Need',
+        authors: [
+          { authorId: '1', name: 'Ashish Vaswani' },
+          { authorId: null, name: '  ' },
+          { name: 'Noam Shazeer' },
+          null,
+          { name: 7 },
+        ],
+      },
+      { paperId: 'f', title: 'No authors at all' },
+    ]),
+  )
+  assert.ok(parsed)
+  const [attention, bare] = parsed.references
+  assert.deepEqual(attention?.authors, ['Ashish Vaswani', 'Noam Shazeer'])
+  assert.equal(attention?.author, 'Vaswani')
+  assert.deepEqual(bare?.authors, [])
+  assert.equal(bare?.author, null)
+})
+
+it('reads a cached reference from before authors were kept as having none', () => {
+  // What an older cache entry holds: no `authors` key at all, as it comes back
+  // out of JSON. The title route then has no author to vouch for the match
+  // and leaves the reference unmarked rather than throwing or guessing.
+  const cached = JSON.parse(
+    JSON.stringify({
+      title: 'A Theory of Everything in Particular',
+      doi: null,
+      paperId: 'g',
+      year: 2010,
+      citedByCount: 1,
+      author: 'Smith',
+      referenceCount: null,
+    }),
+  ) as S2Reference
+  assert.equal(cached.authors, undefined)
+  const library = {
+    ids: new Map<string, number>(),
+    titles: new Map([
+      [
+        normalizeTitle('A Theory of Everything in Particular'),
+        [{ itemID: 7, year: 2010, authors: [{ surname: 'smith', initial: 'j' }], keys: [] }],
+      ],
+    ]),
+  }
+  assert.equal(matchInLibrary(library, cached), null)
+  // The same reference refreshed with its authors does match.
+  assert.equal(matchInLibrary(library, { ...cached, authors: ['John Smith'] })?.confidence, 'probable')
 })
