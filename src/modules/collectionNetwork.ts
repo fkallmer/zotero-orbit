@@ -33,10 +33,12 @@ import {
   citersOfSeveral,
   CITING_PAGE_CAP,
   couplingEdges,
+  fromCacheEntry,
   networkCacheKey,
   rankGaps,
   rematch,
   sharedReferences,
+  toCacheEntry,
 } from './collectionNetwork.core'
 import { getLibraryMatcher, matchInLibrary } from './libraryIndex'
 import { itemKeys } from './libraryMatch.core'
@@ -278,7 +280,13 @@ export async function buildCollectionNetwork(
   const fetchPage = async (url: string): Promise<unknown> => {
     checkAbort()
     requestsMade++
-    return fetchOpenAlexPage(url)
+    try {
+      return await fetchOpenAlexPage(url)
+    } catch (err) {
+      // Whatever a request cancelled mid-flight throws, the caller asked to stop.
+      if (signal?.aborted) throw abortError()
+      throw err
+    }
   }
 
   // 1. Identifiers.
@@ -394,7 +402,7 @@ export async function buildCollectionNetwork(
       const matcher = await getLibraryMatcher(scope.libraryID)
       return rematch(
         {
-          ...cached,
+          ...fromCacheEntry(cached),
           scope,
           seeds: cached.seeds.map((seed) => ({ ...seed, itemID: itemOf.get(seed.openAlexId) ?? seed.itemID })),
           coverage: {
@@ -520,6 +528,6 @@ export async function buildCollectionNetwork(
   )
 
   // 8. Cache, unless something failed on the way.
-  if (!failedRequest) writeCache(cacheKey, net)
+  if (!failedRequest) writeCache(cacheKey, toCacheEntry(net))
   return net
 }

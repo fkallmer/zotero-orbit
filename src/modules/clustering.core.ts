@@ -31,14 +31,24 @@ interface LeidenNode {
  * anyone else's output.
  */
 function quietly(run: () => void): void {
-  const target = typeof console === 'object' && console !== null ? console : null
+  // A plugin scope is not guaranteed a `console` (zotero-plugin-toolkit checks
+  // for one too), and `run()` calls it unguarded: lend it a silent one.
+  if (typeof console === 'undefined') {
+    Reflect.set(globalThis, 'console', { log: () => undefined })
+    try {
+      run()
+    } finally {
+      Reflect.deleteProperty(globalThis, 'console')
+    }
+    return
+  }
   // Held and put back as it is, never called, so it needs no binding.
-  const original: unknown = target ? Reflect.get(target, 'log') : undefined
-  if (target) Reflect.set(target, 'log', () => undefined)
+  const original: unknown = Reflect.get(console, 'log')
+  Reflect.set(console, 'log', () => undefined)
   try {
     run()
   } finally {
-    if (target) Reflect.set(target, 'log', original)
+    Reflect.set(console, 'log', original)
   }
 }
 

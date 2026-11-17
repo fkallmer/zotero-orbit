@@ -9,6 +9,7 @@ import {
   citersOfSeveral,
   couplingEdges,
   estimateRequests,
+  fromCacheEntry,
   gapScore,
   MIN_SHARED,
   networkCacheKey,
@@ -16,6 +17,7 @@ import {
   rematch,
   SHARED_REFS_PER_SEED,
   sharedReferences,
+  toCacheEntry,
 } from '../src/modules/collectionNetwork.core.ts'
 
 import type {
@@ -353,10 +355,13 @@ describe('networkCacheKey', () => {
 describe('a synthetic 300-seed network', () => {
   it('assembles in under 500 ms and stays JSON-safe', () => {
     const random = prng(7)
-    // Three topical neighbourhoods, fifty references a seed.
+    // Three topical neighbourhoods, fifty references a seed, a fifth of them
+    // from a pool all three share -- so the coupling network is connected.
     const seeds = Array.from({ length: 300 }, (_, i) => {
       const topic = i % 3
-      const referenced = Array.from({ length: 50 }, () => `R${topic * 2000 + Math.floor(random() * 2000)}`)
+      const referenced = Array.from({ length: 50 }, () =>
+        random() < 0.2 ? `R${9000 + Math.floor(random() * 400)}` : `R${topic * 2000 + Math.floor(random() * 400)}`,
+      )
       return seed(`W${String(i).padStart(4, '0')}`, referenced, {
         primaryTopic: { id: `T${topic}`, name: ['Ecology', 'Genetics', 'Optics'][topic] },
       })
@@ -389,12 +394,47 @@ describe('a synthetic 300-seed network', () => {
     assert.ok(elapsed < 500, `took ${elapsed.toFixed(0)} ms`)
     assert.ok(shared.size > 1000)
     assert.ok(coupling.length > 0)
-    assert.ok(clusters.length >= 3, `${clusters.length} clusters`)
-    // The three neighbourhoods do not mix.
-    for (const cluster of clusters) assert.equal(cluster.topicShare, 1, cluster.label)
+    // Exactly the three planted neighbourhoods, unmixed, despite the bridges.
+    assert.deepEqual(
+      clusters.map((cluster) => [cluster.members.length, cluster.topicShare]),
+      [
+        [100, 1],
+        [100, 1],
+        [100, 1],
+      ],
+    )
+    assert.ok([...assignment.values()].every((id) => id !== null))
     assert.ok(gaps.length > 0 && citations.length > 0)
     assert.equal(probable.length, 0)
-    const net = { seeds, works, coupling, clusters, clusterOf: Object.fromEntries(assignment), gaps, citations }
+    const net: CollectionNetwork = {
+      version: 1,
+      scope: { kind: 'collection', collectionID: 3, libraryID: 1, name: 'Synthetic' },
+      builtAt: 1,
+      seeds,
+      works,
+      coupling,
+      citations,
+      clusters,
+      clusterOf: Object.fromEntries(assignment),
+      gaps,
+      probable,
+      coverage: {
+        itemsInScope: 300,
+        analysed: 300,
+        capped: false,
+        resolved: 300,
+        unresolved: [],
+        citingIncluded: false,
+        citingTruncated: false,
+        requestsMade: 39,
+      },
+    }
     assert.deepEqual(JSON.parse(JSON.stringify(net)), net)
+
+    // The cached form drops what follows from the rest, and gets it all back.
+    const entry = toCacheEntry(net)
+    const cachedSize = JSON.stringify(entry).length
+    assert.ok(cachedSize < JSON.stringify(net).length / 2, `${cachedSize} bytes cached`)
+    assert.deepEqual(fromCacheEntry(JSON.parse(JSON.stringify(entry)) as CollectionNetwork), net)
   })
 })

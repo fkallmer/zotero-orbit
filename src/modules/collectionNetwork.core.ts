@@ -341,3 +341,25 @@ export function networkCacheKey(seedIds: readonly OpenAlexId[], citing: boolean)
   const ids = [...new Set(seedIds)].sort()
   return `collnet:v1:${hash53(`${citing ? 'c1' : 'c0'}|${ids.join(',')}`)}:${ids.length}`
 }
+
+/**
+ * The network as it is cached: without the parts that follow from the rest.
+ *
+ * Coupling, citation edges, gaps and probable matches are recomputed from the
+ * seeds and works in well under a second, and together they are more than
+ * half the entry -- the gaps alone repeat most of the works. The cache file is
+ * rewritten whole on every flush, so a 300-seed analysis is worth keeping lean.
+ */
+export function toCacheEntry(net: CollectionNetwork): CollectionNetwork {
+  return { ...net, coupling: [], citations: [], gaps: [], probable: [] }
+}
+
+/** The full network from a cached entry, the derived parts recomputed. */
+export function fromCacheEntry(entry: CollectionNetwork): CollectionNetwork {
+  return {
+    ...entry,
+    coupling: couplingEdges(entry.seeds),
+    citations: citationEdges(entry.seeds, entry.works),
+    ...rankGaps(entry.works),
+  }
+}
