@@ -157,6 +157,51 @@ pane-reference-cited-by = Citations of this cited work
 # Collection and library network (network-*, P4/P9). Add strings below this line only.
 # Name of a topic cluster none of whose papers has an OpenAlex topic. $number counts from 1.
 network-cluster-fallback = Cluster { $number }
+# The steps of an analysis, under the progress bar.
+network-step-seeds = Reading your items' identifiers
+network-step-lookup = Looking your items up in OpenAlex
+network-step-references = Resolving the works they cite in common
+network-step-citing = Finding works that cite several of them
+network-step-library = Checking your library
+network-step-clusters = Grouping them into topics
+# $step is one of the network-step-* strings above.
+network-step-count = { $step } ({ $done } of { $total })
+network-scope-gone = This collection no longer exists.
+network-scope-empty = There are no regular items here to analyse.
+network-none-resolved = None of the { $count } items could be found in OpenAlex. An item needs a DOI, an arXiv ID or a PMID to be looked up.
+# Asked in the tab when a collection holds more items than the limit in the settings.
+network-confirm-title = A large analysis
+network-confirm-body = “{ $name }” holds { $count } items, more than the { $limit } set in Orbit's settings.
+# $usd is in US dollars; $share is a percentage of OpenAlex's daily budget, possibly "<1".
+network-confirm-estimate-all = All { $count }: about { $requests } OpenAlex requests, US$ { $usd }, { $share } % of today's budget.
+network-confirm-estimate-cap = The first { $limit }: about { $requests } OpenAlex requests, US$ { $usd }, { $share } % of today's budget.
+network-confirm-all = Analyse all { $count }
+network-confirm-cap = Analyse the first { $limit }
+network-confirm-cancel = Cancel
+network-cancelled = Not analysed.
+network-ask-again = Choose again
+network-capped = Analysing { $analysed } of { $total } items, as set in Orbit's settings.
+network-legend-unclustered = Unclustered
+network-legend-cluster-hint = Show or hide the items of this topic
+network-legend-gaps = Not in your library
+network-legend-held = In your library
+network-legend-citing = Citing works
+network-legend-citing-add = Add citing works
+network-citing-needs-key = needs an OpenAlex API key
+network-role-seed = Your item
+network-probably-in-library = Probably in your library
+network-center-seeds = Centre on your items
+network-gaps-title = Missing works
+network-export = Export and open…
+network-card-import = Import
+network-card-cited-by = Cited by (OpenAlex)
+network-card-connected-papers = Connected Papers
+network-import-done = “{ $title }” is in { $target } now.
+network-coverage-unresolved = { $count ->
+    [one] 1 item not found in OpenAlex
+   *[other] { $count } items not found in OpenAlex
+  }
+network-coverage-citing-truncated = citing works incomplete
 
 
 # Citation graph tab
