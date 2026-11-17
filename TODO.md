@@ -6,8 +6,6 @@ items were about Citation Tally.
 ## Worth doing
 
 - Offer the OpenAlex provider back to Citation Tally. Open an issue there first.
-- INSPIRE is still in the configured databases for a library that is not
-  physics; either use it or drop it from the default order.
 - The graph seeds from one item only. A graph over a whole collection is a
   different shape of question and a much larger set of requests.
 
