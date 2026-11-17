@@ -126,10 +126,21 @@ export function sharedReferences(seeds: readonly SeedRefs[]): Map<OpenAlexId, Op
  * its citers -- so the cost follows the shared references, not the square of
  * the seed count times their bibliographies.
  */
+/**
+ * A reference cited by more seeds than this is left out of the coupling.
+ *
+ * Pairs grow with the square of a reference's citers: one textbook cited by
+ * 2,000 seeds alone makes two million pairs, and measured on a skewed 2,000
+ * seed library the coupling and clustering took 13 s on the main thread. A
+ * reference nearly every seed cites also says nothing about which seeds
+ * belong together, so dropping it costs the clusters nothing.
+ */
+export const MAX_COUPLING_CITERS = 200
+
 export function couplingEdges(seeds: readonly SeedRefs[]): CouplingEdge[] {
   const pairs = new Map<string, CouplingEdge>()
   for (const citers of citersByReference(seeds).values()) {
-    if (citers.length < 2) continue
+    if (citers.length < 2 || citers.length > MAX_COUPLING_CITERS) continue
     for (let i = 0; i < citers.length; i++) {
       for (let j = i + 1; j < citers.length; j++) {
         // `citers` is sorted, so citers[i] < citers[j].

@@ -11,6 +11,7 @@ import {
   estimateRequests,
   fromCacheEntry,
   gapScore,
+  MAX_COUPLING_CITERS,
   MIN_SHARED,
   networkCacheKey,
   rankGaps,
@@ -447,5 +448,23 @@ describe('a synthetic 300-seed network', () => {
     const cachedSize = JSON.stringify(entry).length
     assert.ok(cachedSize < JSON.stringify(net).length / 2, `${cachedSize} bytes cached`)
     assert.deepEqual(fromCacheEntry(JSON.parse(JSON.stringify(entry)) as CollectionNetwork), net)
+  })
+})
+
+describe('the coupling cap', () => {
+  it('leaves out a reference cited by more than MAX_COUPLING_CITERS seeds', () => {
+    const many = Array.from({ length: MAX_COUPLING_CITERS + 1 }, (_, i) =>
+      seed(`W${String(i).padStart(4, '0')}`, ['Rtextbook', ...(i < 2 ? ['Rniche'] : [])]),
+    )
+    const edges = couplingEdges(many)
+    // Only the niche reference the first two share couples anything.
+    assert.deepEqual(edges, [{ a: 'W0000', b: 'W0001', shared: 1 }])
+  })
+
+  it('still couples through a reference exactly at the cap', () => {
+    const atCap = Array.from({ length: MAX_COUPLING_CITERS }, (_, i) =>
+      seed(`W${String(i).padStart(4, '0')}`, ['Rtextbook']),
+    )
+    assert.equal(couplingEdges(atCap).length, (MAX_COUPLING_CITERS * (MAX_COUPLING_CITERS - 1)) / 2)
   })
 })

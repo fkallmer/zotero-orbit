@@ -42,7 +42,7 @@ import {
 import { getLibraryMatcher, matchInLibrary } from './libraryIndex'
 import { itemKeys } from './libraryMatch.core'
 import { hasOpenAlexApiKey, toLookupDoi } from './openAlexClient.core'
-import { fetchOpenAlexPage } from './openAlexEnrichment'
+import { fetchOpenAlexPage, OpenAlexHttpError } from './openAlexEnrichment'
 import {
   buildCitingAnyUrl,
   buildWorksListUrl,
@@ -233,6 +233,23 @@ function isCachedNetwork(value: unknown, seedIds: ReadonlySet<OpenAlexId>): valu
  * failed citing request keeps what came in and marks the citing side
  * truncated. Nothing is cached after a failed request.
  */
+/** Retries for one OpenAlex page after a transient failure. */
+const PAGE_RETRIES = 3
+
+/** Rate limits, server errors and timeouts pass; a 4xx other than 429 will not. */
+function isTransient(err: unknown): boolean {
+  if (err instanceof OpenAlexHttpError) return err.status === 429 || err.status >= 500
+  return err instanceof Error && err.name === 'TimeoutError'
+}
+
+/** Wait, checking for cancellation every quarter second. */
+async function pause(ms: number, cancelled: () => boolean): Promise<void> {
+  const until = Date.now() + ms
+  while (Date.now() < until && !cancelled()) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(250, until - Date.now())))
+  }
+}
+
 export async function buildCollectionNetwork(
   scope: NetworkScope,
   items: readonly Zotero.Item[],
@@ -247,20 +264,28 @@ export async function buildCollectionNetwork(
       debugLog('Citation debug - Network progress callback failed:', err)
     }
   }
+  const cancelled = (): boolean => signal?.aborted === true || options.isCancelled?.() === true
   const checkAbort = (): void => {
-    if (signal?.aborted) throw abortError()
+    if (cancelled()) throw abortError()
   }
   let requestsMade = 0
   let failedRequest = false
   const fetchPage = async (url: string): Promise<unknown> => {
-    checkAbort()
-    requestsMade++
-    try {
-      return await fetchOpenAlexPage(url)
-    } catch (err) {
-      // Whatever a request cancelled mid-flight throws, the caller asked to stop.
-      if (signal?.aborted) throw abortError()
-      throw err
+    for (let attempt = 0; ; attempt++) {
+      checkAbort()
+      requestsMade++
+      try {
+        return await fetchOpenAlexPage(url)
+      } catch (err) {
+        // Whatever a request cancelled mid-flight throws, the caller asked to stop.
+        if (cancelled()) throw abortError()
+        // One 429 or 5xx forty requests in would otherwise throw away the
+        // whole analysis. A 429 has already slowed the shared OpenAlex pacing,
+        // which the next attempt waits on; a 5xx or timeout gets a short pause.
+        if (attempt >= PAGE_RETRIES || !isTransient(err)) throw err
+        debugLog(`Citation debug - Network request failed (${String(err)}), retry ${attempt + 1} of ${PAGE_RETRIES}`)
+        await pause(1000 * 2 ** attempt, cancelled)
+      }
     }
   }
 
@@ -450,6 +475,9 @@ export async function buildCollectionNetwork(
   progress('clusters', 0, 1)
   const coupling = couplingEdges(seeds)
   const seedList = seeds.map((seed) => seed.openAlexId)
+  // Clustering is the one long synchronous step; give a closed tab its chance
+  // to stop before it rather than after.
+  checkAbort()
   let assignment: Map<OpenAlexId, number | null>
   try {
     assignment = clusterByCoupling(seedList, coupling)

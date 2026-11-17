@@ -133,6 +133,7 @@ export type FluentMessageId =
   | 'network-coverage-citing-truncated'
   | 'network-coverage-unresolved'
   | 'network-export'
+  | 'network-failed'
   | 'network-gaps-title'
   | 'network-import-done'
   | 'network-legend-citing'

@@ -155,5 +155,10 @@ export interface BuildOptions {
   force?: boolean
   includeCiting: boolean
   signal?: AbortSignal
+  /**
+   * Polled between requests, beside `signal`: where the runtime offers no
+   * AbortController, this is the only way a closed tab stops the build.
+   */
+  isCancelled?: () => boolean
   onProgress?: (progress: BuildProgress) => void
 }

@@ -155,6 +155,7 @@ pane-references-elided = The publisher has asked Semantic Scholar not to serve t
 pane-reference-cited-by = Citations of this cited work
 
 # Collection and library network (network-*, P4/P9). Add strings below this line only.
+network-failed = The analysis stopped because OpenAlex did not answer, even after a few tries. Try again in a minute. A free OpenAlex API key (Settings → Orbit) raises its limits.
 # Name of a topic cluster none of whose papers has an OpenAlex topic. $number counts from 1.
 network-cluster-fallback = Cluster { $number }
 # The steps of an analysis, under the progress bar.

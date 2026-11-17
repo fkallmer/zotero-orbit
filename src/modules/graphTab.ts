@@ -445,8 +445,10 @@ export function openGraphTab(seed: GraphSeed): void {
         })
       } catch (err) {
         if ((err as { name?: unknown } | null)?.name === 'AbortError' || !isCurrent()) return
+        // The raw error names the request URL, contact address included; it
+        // belongs in the debug log, not on the page.
         Zotero.debug(`Orbit: network analysis failed: ${String(err)}`)
-        renderPlaceholder(win.document, container, seed, String(err))
+        renderPlaceholder(win.document, container, seed, getString('network-failed'))
       }
       return
     }
@@ -602,6 +604,7 @@ async function loadNetwork(
       force,
       includeCiting,
       signal: run.signal,
+      isCancelled: () => !run.isCurrent() || !container.isConnected,
       onProgress: (progress) => {
         // The tab is gone without the notifier having said so: stop spending.
         if (!container.isConnected) run.abort()
@@ -628,6 +631,13 @@ async function loadNetwork(
   Zotero.debug(
     `Orbit: network rendered with ${net.seeds.length} seeds, ${net.works.length} works, ${net.gaps.length} gaps`,
   )
+}
+
+/** The selected collection as a network seed, or null when none is selected. */
+export function collectionSeed(): GraphSeed | null {
+  const collections = Zotero.getActiveZoteroPane()?.getSelectedCollections() ?? []
+  if (collections.length === 0) return null
+  return { kind: 'collection', collectionID: collections[0].id, name: collections[0].name }
 }
 
 /** The seed for the current selection, or null when there is nothing to graph. */
@@ -692,7 +702,11 @@ export function registerGraphMenus(): void {
         l10nID: getLocaleID('menuitem-graph-selection'),
         icon: GRAPH_MENU_ICON,
         onCommand: () => {
-          const seed = seedFromSelection()
+          // The collection that was right-clicked, never the item rows that
+          // happen to be selected inside it: right-clicking an already
+          // selected collection leaves those rows selected, and the item menu
+          // already covers graphing them.
+          const seed = collectionSeed()
           if (seed) openGraphTab(seed)
         },
       },
@@ -2105,6 +2119,11 @@ export function renderGraph(
     card.style.top = `${Math.min(Math.max(top, 4), Math.max(4, bounds.height - card.offsetHeight - 4))}px`
 
     escapeHandler = (keyEvent: KeyboardEvent): void => {
+      // The tab was closed with the card open: let go of the document.
+      if (!plot.isConnected) {
+        closeCard()
+        return
+      }
       if (keyEvent.key === 'Escape') closeCard()
     }
     doc.addEventListener('keydown', escapeHandler)
@@ -2552,8 +2571,17 @@ export function renderGraph(
   // and the old one must stop redrawing a plot that is no longer there.
   const previous = resizeHandlers.get(container)
   if (previous) win.removeEventListener('resize', previous)
-  resizeHandlers.set(container, draw)
-  win.addEventListener('resize', draw)
+  // And a closed tab must not keep redrawing a detached plot: the listener
+  // takes itself off the first time it fires without a tab to draw into.
+  const onResize = (): void => {
+    if (!container.isConnected) {
+      win.removeEventListener('resize', onResize)
+      return
+    }
+    draw()
+  }
+  resizeHandlers.set(container, onResize)
+  win.addEventListener('resize', onResize)
 }
 
 /**
