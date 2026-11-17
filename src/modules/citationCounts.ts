@@ -748,6 +748,38 @@ function unregisterWindowThemeListener(win: Window): void {
   }
 }
 
+/** Marks each count in the Citations column, for the selected-row rule below. */
+const COUNT_CLASS = 'orbit-count'
+const COUNT_STYLE_ID = 'orbit-count-style'
+
+/**
+ * Make the counts readable in a selected row.
+ *
+ * Each count carries its source's colour inline. In a focused list Zotero
+ * paints the selected row in the accent colour and its text in the accent
+ * text colour, and the inline blue of a Crossref count then sits on a blue
+ * row, close to invisible. Zotero solves the same problem for coloured tags
+ * with this selector; the counts fall back to the row's text colour there and
+ * keep their colours everywhere else, including a selected row in an
+ * unfocused list, whose background is pale.
+ */
+export function installCountStyle(win: Window): void {
+  const doc = win.document
+  if (doc.getElementById(COUNT_STYLE_ID)) return
+  const style = doc.createElementNS('http://www.w3.org/1999/xhtml', 'style')
+  style.id = COUNT_STYLE_ID
+  style.textContent =
+    `#zotero-items-tree .virtualized-table:focus-within .row.selected .${COUNT_CLASS},` +
+    `#zotero-items-tree .drag-image-container .row.selected .${COUNT_CLASS} {` +
+    `  color: inherit !important;` +
+    `}`
+  doc.documentElement?.appendChild(style)
+}
+
+export function removeCountStyle(win: Window): void {
+  win.document.getElementById(COUNT_STYLE_ID)?.remove()
+}
+
 class Helpers {
   /**
    * Get all possible identifiers from item (for fallback when primary fails)
@@ -1764,6 +1796,7 @@ class UIRegistrar {
 
           const countSpan = doc.createElement('span')
           countSpan.innerText = count
+          countSpan.className = COUNT_CLASS
           if (useColors) {
             countSpan.style.color = getDatabaseColors()[dataToUse.databases[idx]] || '#000'
             countSpan.style.fontWeight = '500'

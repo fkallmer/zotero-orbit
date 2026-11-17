@@ -4,6 +4,8 @@ import {
   BasicRegistrar,
   cancelManualUpdate,
   cancelMonthlyCleanup,
+  installCountStyle,
+  removeCountStyle,
   scheduleMonthlyCleanup,
   setPostCountFollowUp,
   UIRegistrar,
@@ -144,6 +146,7 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   // Re-creating it here simply replaced the shared instance on every window.
   win.MozXULElement.insertFTLIfNeeded(`${addon.data.config.addonRef}-addon.ftl`)
   installTabIconStyle(win)
+  installCountStyle(win)
 
   const popupWin = new ztoolkit.ProgressWindow(addon.data.config.addonName, {
     closeOnClick: true,
@@ -191,6 +194,7 @@ function onMainWindowUnload(win: Window): void {
   // runs once, at shutdown.
   UIRegistrar.unregisterWindowThemeListener(win)
   removeTabIconStyle(win)
+  removeCountStyle(win)
   closeSemanticScholarWarning()
   closeDegradedNotice()
   addon.data.dialog?.window?.close()
