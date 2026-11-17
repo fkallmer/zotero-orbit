@@ -34,12 +34,11 @@ test('a seed limit in range is kept, from a number or from typed text', () => {
   assert.equal(normalizeSeedLimit('42.6'), 43)
 })
 
-test('a seed limit out of range is clamped to the nearest end', () => {
-  assert.equal(normalizeSeedLimit(9), 10)
-  assert.equal(normalizeSeedLimit(0), 10)
-  assert.equal(normalizeSeedLimit(-50), 10)
-  assert.equal(normalizeSeedLimit('99999'), 5000)
-  assert.equal(normalizeSeedLimit(5001), 5000)
+test('a seed limit out of range falls back to the default', () => {
+  for (const raw of [9, 0, -50, '99999', 5001, 9.4, 5000.6]) {
+    assert.equal(normalizeSeedLimit(raw), 300, `expected ${String(raw)} to fall back`)
+  }
+  assert.equal(normalizeSeedLimit(9.5), 10)
 })
 
 test('a seed limit that is not a number falls back to the default', () => {

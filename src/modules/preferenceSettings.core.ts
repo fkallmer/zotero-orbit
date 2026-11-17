@@ -26,13 +26,12 @@ export const NETWORK_SEED_POLICIES: readonly SeedPolicy[] = ['cap', 'warn', 'all
 /**
  * The stored or typed seed limit, as a whole number in range.
  *
- * Anything that is not a finite number -- empty, text, NaN -- falls back to the
- * default. A finite number is rounded and clamped, since someone typing 6000
- * means "as many as allowed", not "the default".
+ * A fraction is rounded. Anything else that is not a whole number from 10 to
+ * 5000 -- empty, text, NaN, out of range -- falls back to the default.
  *
  * @example
  * normalizeSeedLimit('120') // 120
- * normalizeSeedLimit(9999) // 5000
+ * normalizeSeedLimit(9999) // 300
  * normalizeSeedLimit('lots') // 300
  */
 export function normalizeSeedLimit(raw: unknown): number {
@@ -41,7 +40,8 @@ export function normalizeSeedLimit(raw: unknown): number {
   else if (typeof raw === 'string' && raw.trim() !== '') value = Number(raw.trim())
   else return NETWORK_SEED_LIMIT_DEFAULT
   if (!Number.isFinite(value)) return NETWORK_SEED_LIMIT_DEFAULT
-  return Math.min(NETWORK_SEED_LIMIT_MAX, Math.max(NETWORK_SEED_LIMIT_MIN, Math.round(value)))
+  const rounded = Math.round(value)
+  return rounded >= NETWORK_SEED_LIMIT_MIN && rounded <= NETWORK_SEED_LIMIT_MAX ? rounded : NETWORK_SEED_LIMIT_DEFAULT
 }
 
 /** The stored seed policy, or the default for anything that is not one of the three. */

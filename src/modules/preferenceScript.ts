@@ -350,6 +350,18 @@ function bindOpenAlexKeyField(window: Window): void {
       commit()
     }
   })
+
+  // Closing the window with the cursor still in the field may skip focusout.
+  window.addEventListener(
+    'unload',
+    () => {
+      const { key } = openAlexKeyStatus(input.value)
+      if (key === openAlexKeyStatus(getPref('openAlexApiKey')).key) return
+      setPref('openAlexApiKey', key)
+      setOpenAlexApiKey(key)
+    },
+    { once: true },
+  )
 }
 
 /**
