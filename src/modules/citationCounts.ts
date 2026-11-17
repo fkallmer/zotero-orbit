@@ -52,9 +52,9 @@ import {
 } from './openAlexClient.core'
 import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
 
+import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
 import type { ScholarlyRecord } from './openAlexClient.core'
-import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 
 // Semantic Scholar uses its own scheduler and has no entry in this millisecond table.
 const DEFAULT_RATE_LIMITS: Record<string, number> = {

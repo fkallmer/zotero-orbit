@@ -33,6 +33,7 @@ import { getDoiIndex, normalizeDoi } from './libraryIndex'
 import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
+import type { FluentMessageId } from '../../typings/i10n'
 import type { ItemIdentifier } from './citationTypes.ts'
 import type {
   AxisMetric,
@@ -46,7 +47,6 @@ import type {
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { GraphLink } from './openAlexEnrichment'
 import type { S2Details } from './semanticScholarClient.core'
-import type { FluentMessageId } from '../../typings/i10n'
 
 /** The item pane is a XUL document; so is this. See citationPane. */
 const XHTML_NS = 'http://www.w3.org/1999/xhtml'

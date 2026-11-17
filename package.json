@@ -46,6 +46,7 @@
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^26.6.6",
+    "@typescript-eslint/utils": "^8.72.1",
     "@zotero-plugin/eslint-config": "^0.6.10",
     "eslint": "^10.14.0",
     "eslint-import-resolver-typescript": "^4.4.5",
