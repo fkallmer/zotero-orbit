@@ -1857,5 +1857,12 @@
         "anchor": "middle"
       }
     ]
+  },
+  "large": {
+    "layout": "902ee77f7ee29ae46e3f93a29064e133e560f90fc82e35dc09bcaf82bd499319",
+    "svg": "a8a3ee2b2b4a16d9aae4e02b81a4c62b34c3bd363ea8fae234ae3e7288b916f7",
+    "labelled": 25,
+    "zoomed": "57465ea7d8d1bb3fa51dab630e986cb6c9639c985b7c61bfebfc7e615108be33",
+    "pointed": "476346a920bfa604d125a01e7dcda11d03e9cb0446d1f68aca33d0707a9d1421"
   }
 }

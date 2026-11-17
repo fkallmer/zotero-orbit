@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
@@ -127,6 +128,31 @@ function cases(): StarCase[] {
   ]
 }
 
+/**
+ * Six hundred works, a third of them seeds: the size network mode has to carry.
+ *
+ * Shared by the frozen large case and the timing test, so the timing is of the
+ * same realistic mix -- seeds search four rings of spots and are the expensive
+ * part, so a field of references alone would flatter the number.
+ */
+function largeField(count = 600): GraphNode[] {
+  const random = prng(11)
+  const roles = ['seed', 'reference', 'citing'] as const
+  return Array.from({ length: count }, (_, i) =>
+    node({
+      key: `w${i}`,
+      role: roles[i % 3],
+      year: 1990 + Math.floor(random() * 35),
+      citedByCount: Math.floor(random() ** 3 * 20000),
+      author: `Author${i}`,
+      referenceCount: Math.floor(random() * 150),
+      itemID: i % 5 === 0 ? i : null,
+    }),
+  )
+}
+
+const hash = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+
 function snapshot(): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const c of cases()) {
@@ -143,6 +169,25 @@ function snapshot(): Record<string, unknown> {
       svg: renderGraphSvg(layout, theme, { x: 'Year', y: 'Citations' }, `snap-${c.name}`),
       zoomed: placeLabels(layout.nodes, c.view, c.emphasis, (n) => [`${n.citedByCount ?? '?'} citations`]),
     }
+  }
+
+  // Large enough that a bucketed overlap check would show any disagreement
+  // with the all-pairs one it replaced; hashed to keep the fixture readable.
+  const large = buildGraphLayout(largeField(), {
+    width: 900,
+    height: 560,
+    padding: { top: 10, right: 10, bottom: 20, left: 30 },
+  })
+  assert.ok(large)
+  const describe = (n: GraphNode): string[] => [`${n.citedByCount ?? '?'} citations`]
+  out.large = {
+    layout: hash([large.nodes, large.xTicks, large.yTicks]),
+    svg: hash(renderGraphSvg(large, theme)),
+    labelled: large.nodes.filter((n) => n.label !== null).length,
+    zoomed: hash(placeLabels(large.nodes, { kx: 3, ky: 2, tx: -900, ty: -300, width: 900, height: 560 })),
+    pointed: hash(
+      placeLabels(large.nodes, { kx: 1.5, ky: 1.5, tx: -200, ty: -100, width: 900, height: 560 }, 'w301', describe),
+    ),
   }
   return out
 }
