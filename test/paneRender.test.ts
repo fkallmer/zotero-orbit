@@ -149,4 +149,28 @@ describe('the item pane section', () => {
     renderInto(...args)
     assert.equal(body.childNodes.length, once)
   })
+
+  it('marks a reference the library holds under its arXiv id, though it has no DOI', () => {
+    // The case DOI-only matching missed: Semantic Scholar returns a preprint
+    // with an arXiv id and no DOI, and the preprint is on the shelf.
+    const body = render('', {
+      references: [
+        { title: 'Attention Is All You Need', doi: null, arxiv: '1706.03762', year: 2017, citedByCount: 9 },
+        { title: 'Not on the shelf', doi: '10.1/elsewhere', arxiv: null, year: 2001, citedByCount: 900 },
+      ],
+      inLibrary: new Map([['arxiv:1706.03762', 42]]),
+    })
+    const anchors = [...body.querySelectorAll('a')]
+    const held = anchors.find((a) => (a.textContent ?? '').startsWith('Attention Is All You Need'))
+    const external = anchors.find((a) => (a.textContent ?? '').startsWith('Not on the shelf'))
+    // The held one selects the item in the library; without a match it would
+    // have been plain text, having no DOI to link out to.
+    assert.ok(held, 'the held preprint should be a link')
+    assert.ok(!(held.getAttribute('href') ?? '').includes('doi.org'), 'and lead into the library, not out')
+    assert.ok((external?.getAttribute('href') ?? '').includes('doi.org/10.1/elsewhere'), 'the other leads out')
+    // Held first, despite being cited a hundred times less.
+    const lines = (body.textContent ?? '').indexOf('Attention')
+    assert.ok(lines >= 0 && lines < (body.textContent ?? '').indexOf('Not on the shelf'))
+    assert.equal((body.textContent ?? '').split('\u2713').length - 1, 1, 'exactly one tick')
+  })
 })

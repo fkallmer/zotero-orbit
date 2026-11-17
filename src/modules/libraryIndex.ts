@@ -1,31 +1,37 @@
 /**
- * A DOI index over the open libraries, so a reference list can say which of
- * the cited works the user already has.
+ * An identifier index over the open libraries, so a reference list can say
+ * which of the cited works the user already has.
  *
- * Zotero has no DOI index of its own -- `Zotero.Items.getAll` and a map is the
- * available route -- so the result is memoised per library and dropped when
- * items change. A few hundred items cost a few milliseconds; the alternative,
- * one search per reference, costs a query per row on every repaint.
+ * Zotero has no such index of its own -- `Zotero.Items.getAll` and a map is
+ * the available route -- so the result is memoised per library and dropped
+ * when items change. A few hundred items cost a few milliseconds; the
+ * alternative, one search per reference, costs a query per row on every
+ * repaint. Which identifiers count, and where they are read from, is decided
+ * in libraryMatch.core.
  */
 
 import { debugLog } from '../utils/log'
 
-/** libraryID -> normalized DOI -> item id */
+import { itemKeys } from './libraryMatch.core'
+
+export { findInLibrary, normalizeDoi } from './libraryMatch.core'
+
+/** libraryID -> namespaced identifier (`doi:`, `arxiv:`, `pmid:`) -> item id */
 const byLibrary = new Map<number, Map<string, number>>()
 let notifierID: string | false = false
 /** Bumped on every clear, so a scan can tell it was overtaken by an edit. */
 let generation = 0
 
-/**
- * DOIs are case-insensitive and travel with assorted prefixes. Both sides of
- * a comparison go through this, so `https://doi.org/10.1/X` and `10.1/x` meet.
- */
-export function normalizeDoi(raw: string): string {
-  return raw
-    .trim()
-    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
-    .replace(/^doi:\s*/i, '')
-    .toLowerCase()
+/** A field's value, or empty when the item's type does not have that field. */
+function field(item: Zotero.Item, name: string): string {
+  try {
+    return item.getField(name) || ''
+  } catch {
+    // Item types without the field throw rather than returning empty. Read
+    // each field on its own, so a type without a DOI field still has its
+    // arXiv id and PMID indexed.
+    return ''
+  }
 }
 
 async function build(libraryID: number): Promise<Map<string, number>> {
@@ -33,24 +39,24 @@ async function build(libraryID: number): Promise<Map<string, number>> {
   const items = await Zotero.Items.getAll(libraryID, true)
   for (const item of items) {
     if (!item.isRegularItem()) continue
-    let doi = ''
-    try {
-      doi = item.getField('DOI') || ''
-    } catch {
-      // Item types without a DOI field throw rather than returning empty.
-      continue
+    const keys = itemKeys({
+      doi: field(item, 'DOI'),
+      extra: field(item, 'extra'),
+      archiveID: field(item, 'archiveID'),
+      url: field(item, 'url'),
+    })
+    for (const key of keys) {
+      // First writer wins: with duplicates, the earlier item is as good a
+      // target as any, and overwriting would make the result depend on
+      // iteration order.
+      if (!index.has(key)) index.set(key, item.id)
     }
-    if (!doi) continue
-    const key = normalizeDoi(doi)
-    // First writer wins: with duplicates, the earlier item is as good a target
-    // as any, and overwriting would make the result depend on iteration order.
-    if (!index.has(key)) index.set(key, item.id)
   }
-  debugLog(`Citation debug - DOI index for library ${libraryID}: ${index.size} entries`)
+  debugLog(`Citation debug - Library index for library ${libraryID}: ${index.size} keys`)
   return index
 }
 
-export async function getDoiIndex(libraryID: number): Promise<Map<string, number>> {
+export async function getLibraryIndex(libraryID: number): Promise<Map<string, number>> {
   const cached = byLibrary.get(libraryID)
   if (cached) return cached
   const startedAt = generation
@@ -64,7 +70,7 @@ export async function getDoiIndex(libraryID: number): Promise<Map<string, number
 }
 
 /** Invalidate everything. Cheaper than working out which library changed. */
-export function clearDoiIndex(): void {
+export function clearLibraryIndex(): void {
   generation++
   byLibrary.clear()
 }
@@ -75,7 +81,7 @@ export function registerLibraryIndexNotifier(): void {
     {
       notify: (event: string) => {
         // Any add, remove or edit can change which DOIs exist.
-        if (event === 'add' || event === 'delete' || event === 'trash' || event === 'modify') clearDoiIndex()
+        if (event === 'add' || event === 'delete' || event === 'trash' || event === 'modify') clearLibraryIndex()
       },
     },
     ['item'],
@@ -86,5 +92,5 @@ export function unregisterLibraryIndexNotifier(): void {
   if (notifierID === false) return
   Zotero.Notifier.unregisterObserver(notifierID)
   notifierID = false
-  clearDoiIndex()
+  clearLibraryIndex()
 }

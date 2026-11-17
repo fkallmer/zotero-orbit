@@ -5,9 +5,9 @@
 [![Zotero 10](https://img.shields.io/badge/Zotero-10-CC2936?logo=zotero&logoColor=CC2936)](https://www.zotero.org/)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-brightgreen.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Google Scholar client: MPL-2.0](https://img.shields.io/badge/Scholar%20client-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-![Test Coverage - Lines](https://img.shields.io/badge/lines-73.61%25-yellow.svg)
-![Test Coverage - Branches](https://img.shields.io/badge/branches-87.62%25-brightgreen.svg)
-![Test Coverage - Functions](https://img.shields.io/badge/functions-66.07%25-yellow.svg)
+![Test Coverage - Lines](https://img.shields.io/badge/lines-74.84%25-yellow.svg)
+![Test Coverage - Branches](https://img.shields.io/badge/branches-87.93%25-brightgreen.svg)
+![Test Coverage - Functions](https://img.shields.io/badge/functions-67.32%25-yellow.svg)
 
 ![The graph tab, with one work pointed at](docs/assets/readme/graph.png)
 
@@ -46,7 +46,11 @@ one.
 
 Underneath, the works this paper cites, resolved through Semantic Scholar,
 which finds consistently more of them than OpenAlex does. Each is marked if it
-is already in your library, and clicking it goes there.
+is already in your library, and clicking it goes there. A work counts as held
+when it shares a DOI, arXiv ID or PubMed ID with one of your items — read from
+the DOI field, Archive ID, an arxiv.org URL, or `DOI:`, `arXiv:` and `PMID:`
+lines in Extra. Titles are never compared: two papers called "Deep Learning"
+are not the same paper.
 
 ### A graph tab
 

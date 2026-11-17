@@ -136,6 +136,17 @@ function fingerprint(key: string): string {
 export interface S2Reference {
   title: string | null
   doi: string | null
+  /**
+   * arXiv id, without the `arXiv:` prefix. Matches preprints on the shelf.
+   *
+   * Optional, as is `pmid`: details cached before these were kept lack both,
+   * and they read as "no such id" until the next lookup refreshes the entry.
+   * Bumping the cache version instead would empty every cache on upgrade and
+   * leave reference lists on OpenAlex until a retally.
+   */
+  arxiv?: string | null
+  /** PubMed id. Matches what the library holds from PubMed without a DOI. */
+  pmid?: string | null
   paperId: string | null
   year: number | null
   /** How often the cited work is itself cited. Sorts the list by weight. */
@@ -199,6 +210,8 @@ export function parseS2Details(bodyText: string): S2Details | null {
     references.push({
       title,
       doi,
+      arxiv: asText(ids.ArXiv),
+      pmid: asText(ids.PubMed),
       paperId: asText(ref.paperId),
       year: asInt(ref.year),
       citedByCount: asInt(ref.citationCount),

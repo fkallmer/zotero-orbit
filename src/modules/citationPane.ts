@@ -20,7 +20,7 @@ import { toS2PaperRefs } from '../utils/s2Identifiers'
 import { buildChartModel, renderChartSvg } from './citationChart.core.ts'
 import { Core, getDatabaseColors, getOperationName, Helpers, updateItem } from './citationCounts'
 import { buildScholarUrl } from './googleScholarClient.core.ts'
-import { getDoiIndex, normalizeDoi } from './libraryIndex'
+import { findInLibrary, getLibraryIndex } from './libraryIndex'
 import { fetchJournalMetrics, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
@@ -47,7 +47,7 @@ export interface PaneData {
   s2: S2Details | null
   /** From Semantic Scholar when it has them, from OpenAlex when it does not. */
   references: PaneReference[]
-  /** Normalized DOI -> item id, for the references the user already holds. */
+  /** Identifier key -> item id, for the references the user already holds. See libraryMatch.core. */
   inLibrary: Map<string, number>
 }
 
@@ -414,6 +414,8 @@ function renderAuthors(doc: Document, body: HTMLElement, record: ScholarlyRecord
 interface PaneReference {
   title: string | null
   doi: string | null
+  arxiv?: string | null
+  pmid?: string | null
   year: number | null
   citedByCount: number | null
 }
@@ -451,9 +453,7 @@ function renderReferences(doc: Document, body: HTMLElement, data: PaneData): voi
     return
   }
 
-  const held = new Set<PaneReference>(
-    refs.filter((ref) => ref.doi !== null && data.inLibrary.has(normalizeDoi(ref.doi))),
-  )
+  const held = new Set<PaneReference>(refs.filter((ref) => findInLibrary(data.inLibrary, ref) !== null))
   body.append(
     row(doc, getString('pane-label-references'), String(known ?? refs.length), getString('pane-hint-references')),
   )
@@ -478,7 +478,7 @@ function renderReferences(doc: Document, body: HTMLElement, data: PaneData): voi
     if (held.has(ref)) mark.setAttribute('title', getString('pane-reference-in-library'))
 
     const label = `${ref.title ?? ref.doi ?? ''}${ref.year ? ` (${ref.year})` : ''}`
-    const itemID = ref.doi ? data.inLibrary.get(normalizeDoi(ref.doi)) : undefined
+    const itemID = findInLibrary(data.inLibrary, ref) ?? undefined
     let name: HTMLElement
     if (itemID !== undefined) {
       // Selecting rather than opening: the point is to land on it in the
@@ -583,6 +583,8 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
   let references: PaneReference[] = (s2?.references ?? []).map((ref) => ({
     title: ref.title,
     doi: ref.doi,
+    arxiv: ref.arxiv,
+    pmid: ref.pmid,
     year: ref.year,
     citedByCount: ref.citedByCount,
   }))
@@ -595,7 +597,7 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
     }))
   }
 
-  const inLibrary = references.length > 0 ? await getDoiIndex(item.libraryID) : new Map<string, number>()
+  const inLibrary = references.length > 0 ? await getLibraryIndex(item.libraryID) : new Map<string, number>()
   return { record, journal, s2, references, inLibrary }
 }
 

@@ -1,5 +1,7 @@
 /**
- * The DOI index that marks references already in the library.
+ * The identifier index that marks references already in the library. Which
+ * identifiers count is libraryMatch.core's business and tested there; this is
+ * about reading them off items, caching, and letting go when items change.
  *
  * It decides whether a row in the item pane and a node in the graph say "you
  * have this", so a wrong key here draws a ring around the wrong paper. The
@@ -54,17 +56,34 @@ globals.Zotero = {
   Prefs: { get: () => undefined },
 }
 
-const { normalizeDoi, getDoiIndex, clearDoiIndex, registerLibraryIndexNotifier, unregisterLibraryIndexNotifier } =
-  await import('../src/modules/libraryIndex.ts')
+const {
+  normalizeDoi,
+  getLibraryIndex,
+  clearLibraryIndex,
+  registerLibraryIndexNotifier,
+  unregisterLibraryIndexNotifier,
+} = await import('../src/modules/libraryIndex.ts')
 
-function item(id: number, doi: string, options: { regular?: boolean; throws?: boolean } = {}): FakeItem {
+/** The fields the index reads. Any other name is a test failure. */
+const INDEXED_FIELDS = new Set(['DOI', 'extra', 'archiveID', 'url'])
+
+/**
+ * A regular item. A string is its DOI; a record sets fields by name. Fields
+ * listed in `throws` behave as they do on item types that lack them.
+ */
+function item(
+  id: number,
+  fields: string | Record<string, string>,
+  options: { regular?: boolean; throws?: string[] } = {},
+): FakeItem {
+  const values = typeof fields === 'string' ? { DOI: fields } : fields
   return {
     id,
     isRegularItem: () => options.regular ?? true,
     getField: (name: string) => {
-      assert.equal(name, 'DOI')
-      if (options.throws) throw new Error(`'DOI' is not a valid field for this item type`)
-      return doi
+      assert.ok(INDEXED_FIELDS.has(name), `unexpected field ${name}`)
+      if (options.throws?.includes(name)) throw new Error(`'${name}' is not a valid field for this item type`)
+      return values[name] ?? ''
     },
   }
 }
@@ -76,7 +95,7 @@ function lastObserver(): Observer {
 }
 
 beforeEach(() => {
-  clearDoiIndex()
+  clearLibraryIndex()
   libraries = {}
   holdScan = null
   calls.getAll.length = 0
@@ -100,15 +119,15 @@ describe('normalizeDoi', () => {
   })
 })
 
-describe('getDoiIndex', () => {
+describe('getLibraryIndex', () => {
   it('maps each normalized DOI to its item, asking for top-level items only', async () => {
     libraries[1] = [item(10, 'https://doi.org/10.1/A'), item(11, '10.1/b')]
-    const index = await getDoiIndex(1)
+    const index = await getLibraryIndex(1)
     assert.deepEqual(
       [...index],
       [
-        ['10.1/a', 10],
-        ['10.1/b', 11],
+        ['doi:10.1/a', 10],
+        ['doi:10.1/b', 11],
       ],
     )
     assert.deepEqual(calls.getAll, [[1, true]])
@@ -118,31 +137,47 @@ describe('getDoiIndex', () => {
     libraries[1] = [
       item(20, '10.1/note', { regular: false }),
       item(21, ''),
-      item(22, '', { throws: true }),
+      item(22, '', { throws: ['DOI'] }),
       item(23, '10.1/kept'),
     ]
-    assert.deepEqual([...(await getDoiIndex(1))], [['10.1/kept', 23]])
+    assert.deepEqual([...(await getLibraryIndex(1))], [['doi:10.1/kept', 23]])
+  })
+
+  it('indexes every identifier of an item, including one whose type has no DOI field', async () => {
+    libraries[1] = [
+      // A preprint saved from arXiv in a Zotero without a DOI field for it.
+      item(24, { archiveID: 'arXiv:1706.03762', url: 'https://arxiv.org/abs/1706.03762v5' }, { throws: ['DOI'] }),
+      item(25, { DOI: '10.1162/neco.1997.9.8.1735', extra: 'PMID: 9377276' }),
+    ]
+    assert.deepEqual(
+      [...(await getLibraryIndex(1))],
+      [
+        ['arxiv:1706.03762', 24],
+        ['doi:10.1162/neco.1997.9.8.1735', 25],
+        ['pmid:9377276', 25],
+      ],
+    )
   })
 
   it('keeps the first item when two share a DOI', async () => {
     libraries[1] = [item(30, '10.1/dup'), item(31, 'doi:10.1/DUP')]
-    assert.equal((await getDoiIndex(1)).get('10.1/dup'), 30)
+    assert.equal((await getLibraryIndex(1)).get('doi:10.1/dup'), 30)
   })
 
   it('builds once per library until cleared', async () => {
     libraries[1] = [item(40, '10.1/a')]
     libraries[2] = [item(50, '10.1/a')]
-    const first = await getDoiIndex(1)
-    assert.equal(await getDoiIndex(1), first)
-    assert.equal((await getDoiIndex(2)).get('10.1/a'), 50)
+    const first = await getLibraryIndex(1)
+    assert.equal(await getLibraryIndex(1), first)
+    assert.equal((await getLibraryIndex(2)).get('doi:10.1/a'), 50)
     assert.deepEqual(calls.getAll, [
       [1, true],
       [2, true],
     ])
 
-    clearDoiIndex()
+    clearLibraryIndex()
     libraries[1] = [item(41, '10.1/a')]
-    assert.equal((await getDoiIndex(1)).get('10.1/a'), 41)
+    assert.equal((await getLibraryIndex(1)).get('doi:10.1/a'), 41)
     assert.equal(calls.getAll.length, 3)
   })
 
@@ -152,18 +187,18 @@ describe('getDoiIndex', () => {
       release = resolve
     })
     libraries[1] = [item(80, '10.1/old')]
-    const pending = getDoiIndex(1)
+    const pending = getLibraryIndex(1)
 
     // The item is edited while the scan is still running.
     libraries[1] = [item(80, '10.1/new')]
-    clearDoiIndex()
+    clearLibraryIndex()
     holdScan = null
     release()
 
     // The caller that asked before the edit gets what it asked for...
-    assert.deepEqual([...(await pending)], [['10.1/old', 80]])
+    assert.deepEqual([...(await pending)], [['doi:10.1/old', 80]])
     // ...but the next caller sees the edit, not a cached copy of the old scan.
-    assert.deepEqual([...(await getDoiIndex(1))], [['10.1/new', 80]])
+    assert.deepEqual([...(await getLibraryIndex(1))], [['doi:10.1/new', 80]])
     assert.equal(calls.getAll.length, 2)
   })
 })
@@ -178,18 +213,18 @@ describe('the notifier', () => {
 
     for (const event of ['add', 'delete', 'trash', 'modify']) {
       libraries[1] = [item(60, '10.1/a')]
-      await getDoiIndex(1)
+      await getLibraryIndex(1)
       const before = calls.getAll.length
       observer.notify(event, 'item', [60], {})
-      await getDoiIndex(1)
+      await getLibraryIndex(1)
       assert.equal(calls.getAll.length, before + 1, `${event} should invalidate`)
     }
 
     for (const event of ['select', 'refresh', 'index']) {
-      await getDoiIndex(1)
+      await getLibraryIndex(1)
       const before = calls.getAll.length
       observer.notify(event, 'item', [60], {})
-      await getDoiIndex(1)
+      await getLibraryIndex(1)
       assert.equal(calls.getAll.length, before, `${event} should not invalidate`)
     }
 
@@ -200,11 +235,11 @@ describe('the notifier', () => {
     registerLibraryIndexNotifier()
     const id = `observer-${calls.registered.length}`
     libraries[1] = [item(70, '10.1/a')]
-    await getDoiIndex(1)
+    await getLibraryIndex(1)
 
     unregisterLibraryIndexNotifier()
     assert.equal(calls.unregistered.at(-1), id)
-    await getDoiIndex(1)
+    await getLibraryIndex(1)
     assert.equal(calls.getAll.length, 2, 'unregistering should drop the cached index')
 
     const unregisteredBefore = calls.unregistered.length

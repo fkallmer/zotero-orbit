@@ -325,6 +325,12 @@ export interface JournalMetrics {
 export interface ResolvedReference {
   title: string | null
   doi: string | null
+  /**
+   * Set when Semantic Scholar supplied the reference. OpenAlex has no arXiv
+   * field; its arXiv preprints carry the `10.48550` DOI, which matching reads.
+   */
+  arxiv?: string | null
+  pmid?: string | null
   year: number | null
   citedByCount: number | null
   /** First author's surname, for a label that fits beside a mark. */

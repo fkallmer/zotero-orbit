@@ -38,6 +38,21 @@ const ARXIV_IN_TEXT = new RegExp(String.raw`(?:arXiv:\s*)?(${ARXIV_BODY})`, 'i')
 /** Matches an identifier in an arxiv.org URL (`/abs/`, `/pdf/`). */
 const ARXIV_IN_URL = new RegExp(String.raw`arxiv\.org\/(?:abs|pdf)\/(${ARXIV_BODY})`, 'i')
 
+/** The whole string is one identifier, nothing before or after it. */
+const ARXIV_EXACT = new RegExp(`^${ARXIV_BODY}$`, 'i')
+
+/**
+ * The input if it is exactly an arXiv identifier, else `null`.
+ *
+ * `extractArxivId` finds one anywhere in a text, which is right for picking a
+ * lookup to try and wrong for deciding that two works are the same: any
+ * `2021.12345` in a call number would qualify. This is for the second use.
+ */
+export function asArxivId(text: string): string | null {
+  const trimmed = text.trim()
+  return ARXIV_EXACT.test(trimmed) ? trimmed : null
+}
+
 /** DOI resolver hosts whose path is the DOI itself. */
 const DOI_RESOLVER_HOSTS = new Set(['doi.org', 'dx.doi.org', 'www.doi.org'])
 

@@ -29,7 +29,7 @@ import {
   placeLabels,
   renderGraphSvg,
 } from './graphModel.core.ts'
-import { getDoiIndex, normalizeDoi } from './libraryIndex'
+import { findInLibrary, getLibraryIndex } from './libraryIndex'
 import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
@@ -429,6 +429,8 @@ async function collectNodes(
   let references: ResolvedReference[] = (s2?.references ?? []).map((ref) => ({
     title: ref.title,
     doi: ref.doi,
+    arxiv: ref.arxiv,
+    pmid: ref.pmid,
     year: ref.year,
     citedByCount: ref.citedByCount,
     author: ref.author,
@@ -442,7 +444,7 @@ async function collectNodes(
 
   // One pass over the library rather than a search per work; the index is
   // memoised and dropped when items change. See libraryIndex.
-  const inLibrary = await getDoiIndex(libraryID)
+  const inLibrary = await getLibraryIndex(libraryID)
   onStep('library')
 
   const seen = new Set<string>()
@@ -455,6 +457,7 @@ async function collectNodes(
     role: GraphNode['role'],
     author: string | null = null,
     referenceCount: number | null = null,
+    otherIds: { arxiv?: string | null; pmid?: string | null } = {},
   ): void => {
     const key = (doi ?? title ?? '').toLowerCase()
     // A work can be both cited and citing across a wider graph; first role wins
@@ -464,7 +467,7 @@ async function collectNodes(
     // Which of these the reader already has is a fact about them rather than
     // about the citation, so it is looked up here and encoded as ink rather
     // than as a fourth colour.
-    const itemID = doi ? (inLibrary.get(normalizeDoi(doi)) ?? null) : null
+    const itemID = findInLibrary(inLibrary, { doi, ...otherIds })
     nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID })
   }
 
@@ -478,7 +481,10 @@ async function collectNodes(
     record.referencedWorksCount,
   )
   for (const ref of references) {
-    push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author ?? null, ref.referenceCount ?? null)
+    push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author ?? null, ref.referenceCount ?? null, {
+      arxiv: ref.arxiv,
+      pmid: ref.pmid,
+    })
   }
   for (const cite of citing) {
     push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount)
