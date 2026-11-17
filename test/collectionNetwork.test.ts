@@ -359,7 +359,7 @@ describe('networkCacheKey', () => {
 })
 
 describe('a synthetic 300-seed network', () => {
-  it('assembles in under 500 ms and stays JSON-safe', () => {
+  it('assembles in well under the time a user waits on requests, and stays JSON-safe', () => {
     const random = prng(7)
     // Three topical neighbourhoods, fifty references a seed, a fifth of them
     // from a pool all three share -- so the coupling network is connected.
@@ -397,7 +397,12 @@ describe('a synthetic 300-seed network', () => {
     const citations = citationEdges(seeds, works)
     const elapsed = performance.now() - started
 
-    assert.ok(elapsed < 500, `took ${elapsed.toFixed(0)} ms`)
+    // About 130 ms on a laptop; CI runners are slower and shared, and took 525
+    // ms once. The analysis itself waits seconds on its 40-odd requests, so the
+    // bound only has to catch a real regression (an accidental all-pairs pass
+    // is orders of magnitude slower), not measure the machine.
+    console.log(`synthetic 300-seed network assembled in ${elapsed.toFixed(0)} ms`)
+    assert.ok(elapsed < 3000, `took ${elapsed.toFixed(0)} ms`)
     assert.ok(shared.size > 1000)
     assert.ok(coupling.length > 0)
     // Exactly the three planted neighbourhoods, unmixed, despite the bridges.
