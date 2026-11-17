@@ -926,6 +926,9 @@ function gapTier(node: GraphNode): 'numbered' | 'coloured' | 'faint' | null {
   return 'faint'
 }
 
+/** The whole disc answers the pointer, not just the ring. */
+const HIT = 'pointer-events="all"'
+
 /** The open part of a hollow mark's circle, its attributes up to `data-key`. */
 function hollowCircle(node: PlacedNode, fill: string): string {
   const r = node.radius.toFixed(1)
@@ -933,13 +936,13 @@ function hollowCircle(node: PlacedNode, fill: string): string {
   // along its edge.
   switch (gapTier(node)) {
     case 'numbered':
-      return `<circle r="${r}" fill="${fill}" fill-opacity="0.14" stroke="${fill}" stroke-width="3.2" pointer-events="all" `
+      return `<circle r="${r}" fill="${fill}" fill-opacity="0.14" stroke="${fill}" stroke-width="3.2" ${HIT} `
     case 'coloured':
-      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="2.4" pointer-events="all" `
+      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="2.4" ${HIT} `
     case 'faint':
-      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="1.4" stroke-opacity="0.45" pointer-events="all" `
+      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="1.4" stroke-opacity="0.45" ${HIT} `
     default:
-      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="2" pointer-events="all" `
+      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="2" ${HIT} `
   }
 }
 
