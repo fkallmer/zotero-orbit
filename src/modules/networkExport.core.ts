@@ -327,9 +327,18 @@ const CSV_COLUMNS = [
   'citingSeeds',
 ] as const
 
+/**
+ * Text a spreadsheet would read as a formula: `=`, `+`, `-`, `@`, or a tab or
+ * carriage return in front of one. Titles come from OpenAlex, not from the
+ * user, so a file opened in Excel or LibreOffice must not run what a title
+ * says (OWASP: CSV injection). Numbers are written by us and are left alone.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/
+
 function csvField(value: string | number | null): string {
   if (value === null) return ''
-  const text = String(value)
+  // A leading apostrophe makes the cell text; spreadsheets hide it.
+  const text = typeof value === 'string' && FORMULA_START.test(value) ? `'${value}` : String(value)
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 

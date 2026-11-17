@@ -334,6 +334,20 @@ describe('gapsToCsv', () => {
     const rows = parseCsv(gapsToCsv(net).slice(1))
     assert.deepEqual(rows[1].slice(5), ['', '', 'https://openalex.org/W10', '', 'W404'])
   })
+
+  it('writes a title a spreadsheet would run as a formula as text', () => {
+    // Titles come from OpenAlex; opening the file must not execute them.
+    for (const title of ['=HYPERLINK("http://x","y")', '+1+1', '-2', '@SUM(A1)', '\t=1']) {
+      const net = fixture()
+      net.gaps = [{ ...gap, title }]
+      const rows = parseCsv(gapsToCsv(net).slice(1))
+      assert.equal(rows[1][4], `'${title}`, title)
+    }
+    // An ordinary title and the numbers are untouched.
+    const rows = parseCsv(gapsToCsv(fixture()).slice(1))
+    assert.ok(!rows[1][4].startsWith("'"))
+    assert.ok(!rows[1][2].startsWith("'"))
+  })
 })
 
 describe('gapsToRis', () => {
