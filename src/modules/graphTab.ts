@@ -376,6 +376,8 @@ export function openGraphTab(seed: GraphSeed): void {
     return
   }
 
+  /** Assigned once the load exists; what closing a network tab stops. */
+  let onTabClose = (): void => {}
   const { container } = tabs.add({
     id,
     type: 'orbit-graph',
@@ -389,6 +391,9 @@ export function openGraphTab(seed: GraphSeed): void {
     // the way in -- see installTabIconStyle.
     data: { icon: TAB_ICON_TYPE },
     select: true,
+    // A network analysis runs for minutes and spends the reader's budget;
+    // closing the tab is the obvious way to stop it, so it must.
+    ...(isNetworkSeed(seed) ? { onClose: () => onTabClose() } : {}),
   })
 
   // Something on screen before any fetching starts, so an empty tab always
@@ -413,35 +418,27 @@ export function openGraphTab(seed: GraphSeed): void {
   let generation = 0
   /** The answer to "past the limit?", kept for this tab's reloads. */
   let seedChoice: SeedChoice | null = null
-
-  // Zotero_Tabs.close announces the tab on the notifier; nothing else tells
-  // a tab's content that it is gone.
-  const observerID = Zotero.Notifier.registerObserver(
-    {
-      notify: (event: string, _type: string, ids: (string | number)[]) => {
-        if (event !== 'close' || !ids.includes(id)) return
-        controller?.abort()
-        generation++
-        Zotero.Notifier.unregisterObserver(observerID)
-      },
-    },
-    ['tab'],
-    'orbit-graph',
-  )
+  onTabClose = () => {
+    generation++
+    controller?.abort()
+    controller = null
+  }
 
   const load = async (force: boolean): Promise<void> => {
-    controller?.abort()
-    const mine = new AbortController()
-    controller = mine
-    const current = ++generation
-    const isCurrent = (): boolean => current === generation && !mine.signal.aborted
-
     if (isNetworkSeed(seed)) {
+      controller?.abort()
+      const mine = abortController()
+      controller = mine
+      const current = ++generation
+      const isCurrent = (): boolean => current === generation && !(mine?.signal.aborted ?? false)
       try {
         await loadNetwork(win, container, seed, force, {
-          signal: mine.signal,
+          signal: mine?.signal,
           isCurrent,
-          abort: () => mine.abort(),
+          abort: () => {
+            generation++
+            mine?.abort()
+          },
           reload: (again) => void load(again),
           choice: () => seedChoice,
           remember: (choice) => (seedChoice = choice),
@@ -496,9 +493,25 @@ function isNetworkSeed(seed: GraphSeed): seed is NetworkSeed {
   return routeFor(seed.kind) === 'network'
 }
 
+/**
+ * A controller, or null where the runtime has none that works.
+ *
+ * In degraded mode the bootstrap bridge installs a throwing stub for
+ * `AbortController` (see utils/abort). An analysis without one cannot be cut
+ * short mid-request, but the tab's generation still keeps it from painting.
+ */
+function abortController(): AbortController | null {
+  try {
+    return new AbortController()
+  } catch {
+    return null
+  }
+}
+
 /** What one network load needs from the tab that started it. */
 interface NetworkRun {
-  signal: AbortSignal
+  /** Absent when the runtime's abort primitives are stubs; the generation still guards painting. */
+  signal: AbortSignal | undefined
   /** False once a reload or the tab closing has superseded this load. */
   isCurrent: () => boolean
   abort: () => void
@@ -706,7 +719,15 @@ export function registerGraphMenus(): void {
 
 /** Minimal shape of the parts of Zotero_Tabs this module uses. */
 interface Zotero_Tabs {
-  add: (options: { id: string; type: string; title: string; data: Record<string, unknown>; select?: boolean }) => {
+  add: (options: {
+    id: string
+    type: string
+    title: string
+    data: Record<string, unknown>
+    select?: boolean
+    /** Called by Zotero_Tabs.close, before the content is removed. */
+    onClose?: () => void
+  }) => {
     id: string
     container: Element
   }
