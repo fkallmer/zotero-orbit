@@ -625,6 +625,9 @@ async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
       doi: ref.doi,
       year: ref.year,
       citedByCount: ref.citedByCount,
+      // OpenAlex gives every author, so these can match by title too. Cached
+      // lists from before it did have none and stay identifier-only.
+      authors: ref.authors ?? null,
     }))
   }
 
