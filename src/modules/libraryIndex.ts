@@ -55,6 +55,9 @@ function yearOf(date: string): number | null {
 function authorsOf(item: Zotero.Item): MatchAuthor[] {
   const authors: MatchAuthor[] = []
   for (const creator of item.getCreators()) {
+    // A review carries the reviewed book's author, and is often titled after
+    // the book: counting that author would mark the review as the book.
+    if (Zotero.CreatorTypes.getName(creator.creatorTypeID) === 'reviewedAuthor') continue
     // fieldMode 1 is a single-field name, an institution most often: no initial.
     const author = creatorAuthor(creator.lastName ?? '', creator.fieldMode === 1 ? '' : (creator.firstName ?? ''))
     if (author) authors.push(author)

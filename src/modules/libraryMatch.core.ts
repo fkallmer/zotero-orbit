@@ -22,6 +22,10 @@
  *
  * Keys are namespaced (`doi:`, `arxiv:`, `pmid:`) so the three share one map
  * and cannot collide.
+ *
+ * Where no identifier is shared, `matchInLibrary` falls back to a title match
+ * guarded against exactly those false positives, and says it is only probable.
+ * See "The title route" below.
  */
 
 import { asArxivId, extractArxivIdFromUrl, stripArxivVersion } from '../utils/identifiers.ts'

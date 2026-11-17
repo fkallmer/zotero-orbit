@@ -71,6 +71,10 @@ globals.Zotero = {
       return year ? { year, part: date } : { part: date }
     },
   },
+  CreatorTypes: {
+    // Two of Zotero's ids, enough to tell an author from a reviewed author.
+    getName: (id: number) => ({ 1: 'author', 26: 'reviewedAuthor' })[id] ?? false,
+  },
   // debugLog reads this; off keeps ztoolkit out of the picture.
   Prefs: { get: () => undefined },
 }
@@ -307,6 +311,28 @@ describe('getLibraryMatcher', () => {
       matcher.titles.get('long short term memory in recurrent networks')?.map((c) => c.itemID),
       [97, 98],
     )
+    assert.equal(matchInLibrary(matcher, { title: TITLE, year: 1997, authors: ['Sepp Hochreiter'] }), null)
+  })
+
+  it('does not count the reviewed author of a review as its author', async () => {
+    // A review titled after the book it reviews, from the same year: the
+    // book's author is on it, but only as the one reviewed.
+    libraries[1] = [
+      item(
+        102,
+        { title: TITLE, date: '1998' },
+        {
+          creators: [
+            person('Ann', 'Roe'),
+            { creatorTypeID: 26, fieldMode: 0, firstName: 'Sepp', lastName: 'Hochreiter' },
+          ],
+        },
+      ),
+    ]
+    const matcher = await getLibraryMatcher(1)
+    assert.deepEqual(matcher.titles.get('long short term memory in recurrent networks')?.[0]?.authors, [
+      { surname: 'roe', initial: 'a' },
+    ])
     assert.equal(matchInLibrary(matcher, { title: TITLE, year: 1997, authors: ['Sepp Hochreiter'] }), null)
   })
 
