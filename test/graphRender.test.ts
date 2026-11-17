@@ -17,6 +17,10 @@ import { describe, it } from 'node:test'
 
 import { parseHTML } from 'linkedom'
 
+import { rankGaps } from '../src/modules/collectionNetwork.core.ts'
+import { setOpenAlexApiKey } from '../src/modules/openAlexClient.core.ts'
+
+import type { CollectionNetwork, NetworkWork, SeedWork } from '../src/modules/collectionTypes.ts'
 import type { GraphNode } from '../src/modules/graphModel.core.ts'
 
 interface Rendered {
@@ -80,7 +84,8 @@ const documentBody = document.body as HTMLElement
   globals.ztoolkit = new Proxy({}, { get: () => noop })
 }
 // Imported after the globals exist: the module graph touches Zotero on load.
-const { renderGraph, renderProgress, LOAD_STEPS } = await import('../src/modules/graphTab.ts')
+const { renderGraph, renderNetworkGraph, renderNetworkProgress, renderProgress, renderSeedChoice, LOAD_STEPS } =
+  await import('../src/modules/graphTab.ts')
 
 let containers = 0
 
@@ -666,5 +671,275 @@ describe('the tab as the reader sees it', () => {
     const { container } = render(unplaceable)
     assert.equal(container.querySelectorAll('[data-mark]').length, 0)
     assert.ok((container.textContent ?? '').length > 0, 'an empty plot with no explanation')
+  })
+})
+
+describe('a collection network on the tab', () => {
+  const seedWork = (id: string, itemID: number, year: number): SeedWork => ({
+    itemID,
+    openAlexId: id,
+    doi: `10.1/${id.toLowerCase()}`,
+    title: `Seed ${id}`,
+    year,
+    citedByCount: 20,
+    referenceCount: 30,
+    authors: ['Ada Lovelace'],
+    referencedWorks: [],
+    primaryTopic: null,
+  })
+  const work = (id: string, extra: Partial<NetworkWork> = {}): NetworkWork => ({
+    openAlexId: id,
+    doi: `10.2/${id.toLowerCase()}`,
+    title: `Work ${id}`,
+    year: 2010,
+    citedByCount: 100,
+    referenceCount: 20,
+    authors: ['Turing, Alan'],
+    direction: 'reference',
+    seeds: ['S1', 'S2'],
+    match: null,
+    ...extra,
+  })
+
+  function network(
+    extra: Partial<CollectionNetwork> = {},
+    coverage: Partial<CollectionNetwork['coverage']> = {},
+  ): CollectionNetwork {
+    const works = [
+      work('GAP'),
+      work('HELD', { year: 2012, match: { itemID: 9, confidence: 'exact', via: 'doi' } }),
+      work('MAYBE', { year: 2014, match: { itemID: 10, confidence: 'probable', via: 'title' } }),
+      work('CITER', { year: 2023, direction: 'citing', seeds: ['S1', 'S3'] }),
+    ]
+    const { gaps, probable } = rankGaps(works)
+    return {
+      version: 1,
+      scope: { kind: 'collection', collectionID: 7, libraryID: 1, name: 'Mine' },
+      builtAt: 0,
+      seeds: [seedWork('S1', 101, 2018), seedWork('S2', 102, 2019), seedWork('S3', 103, 2020)],
+      works,
+      coupling: [],
+      citations: [
+        { from: 'S1', to: 'GAP' },
+        { from: 'S2', to: 'HELD' },
+        { from: 'CITER', to: 'S3' },
+      ],
+      clusters: [{ id: 0, label: 'Topic A', topicShare: 1, members: ['S1', 'S2'] }],
+      clusterOf: { S1: 0, S2: 0, S3: null },
+      gaps,
+      probable,
+      coverage: {
+        itemsInScope: 3,
+        analysed: 3,
+        capped: false,
+        resolved: 3,
+        unresolved: [],
+        citingIncluded: true,
+        citingTruncated: false,
+        requestsMade: 4,
+        ...coverage,
+      },
+      ...extra,
+    }
+  }
+
+  const draw = (net = network(), handlers: { onReload?: () => void; onIncludeCiting?: () => void } = {}) => {
+    const container = document.createElement('div')
+    container.id = `net-${++containers}`
+    documentBody.append(container)
+    renderNetworkGraph(
+      window as any,
+      container as any,
+      { kind: 'collection', collectionID: 7, name: 'Mine' } as any,
+      net,
+      handlers,
+    )
+    return container as any
+  }
+  const markKeys = (container: any): string[] =>
+    [...container.querySelectorAll('[data-mark]')].map((mark: any) => mark.getAttribute('data-key')).sort()
+
+  it('names every cluster in the legend, and the seeds in none', () => {
+    const container = draw()
+    const zero = container.querySelector('[data-cluster="0"]')
+    assert.ok(zero, 'no legend entry for the cluster')
+    assert.ok(zero.textContent.includes('Topic A (2)'), zero.textContent)
+    assert.ok(container.querySelector('[data-cluster="none"]'), 'no entry for the unclustered seed')
+  })
+
+  it('takes a cluster’s marks out when its entry is clicked, and puts them back', () => {
+    const container = draw()
+    assert.ok(markKeys(container).includes('S1'))
+    fire(container.querySelector('[data-cluster="0"]'), 'click')
+    const without = markKeys(container)
+    assert.ok(!without.includes('S1') && !without.includes('S2'), without.join(','))
+    assert.ok(without.includes('S3'))
+    fire(container.querySelector('[data-cluster="0"]'), 'click')
+    assert.ok(markKeys(container).includes('S1'))
+  })
+
+  it('draws no star: every line is a citation between two works on the plot', () => {
+    const container = draw()
+    const lines = [...container.querySelectorAll('[data-edge]')]
+    assert.ok(lines.length > 0, 'no citations drawn')
+    for (const line of lines) assert.ok((line as any).hasAttribute('data-link'), 'a star edge was drawn')
+    // And no halo: no seed is the one the tab is about.
+    assert.equal(container.querySelectorAll('[data-mark][data-key="S1"] circle').length, 2, 'mark and collar only')
+  })
+
+  it('leaves the citations faintly in view with nothing pointed at', () => {
+    const container = draw()
+    const resting = [...container.querySelectorAll('[data-link]')].map((line: any) => line.getAttribute('opacity'))
+    assert.ok(resting.length > 0)
+    for (const opacity of resting) assert.equal(opacity, '0.12')
+  })
+
+  it('draws a probable match with a dashed collar and a gap hollow', () => {
+    const container = draw()
+    assert.ok(
+      container.querySelector('[data-mark][data-key="MAYBE"] circle[stroke-dasharray]'),
+      'no dashed collar on the probable match',
+    )
+    assert.equal(container.querySelector('[data-mark][data-key="HELD"] circle[stroke-dasharray]'), null)
+    assert.equal(container.querySelector('circle[data-key="GAP"]')?.getAttribute('fill'), 'none', 'gap not hollow')
+  })
+
+  it('takes the gaps out with their switch', () => {
+    const container = draw()
+    fire(container.querySelector('[data-filter="gaps"]'), 'click')
+    assert.ok(!markKeys(container).includes('GAP'))
+    assert.ok(markKeys(container).includes('HELD'))
+  })
+
+  it('puts the gaps list beside the plot', () => {
+    const container = draw()
+    const aside = container.querySelector('[data-role="gaps"]')
+    assert.ok(aside, 'no side panel')
+    assert.ok(aside.querySelector('.orbit-gaps'), 'no gaps list in it')
+    assert.ok(aside.querySelector('.orbit-gap[data-openalex="GAP"]'))
+  })
+
+  it('brings a gap forward when it is chosen in the list', () => {
+    const container = draw()
+    fire(container.querySelector('.orbit-gap[data-openalex="GAP"] .orbit-gap-title'), 'click')
+    const strip = container.querySelector('[data-role="strip"]')
+    assert.ok((strip?.textContent ?? '').includes('Work GAP'), strip?.textContent)
+  })
+
+  it('ignores a gap from the list that has no mark', () => {
+    const container = draw()
+    fire(container.querySelector('[data-filter="gaps"]'), 'click')
+    const strip = container.querySelector('[data-role="strip"]')
+    const before = strip?.textContent
+    fire(container.querySelector('.orbit-gap[data-openalex="GAP"] .orbit-gap-title'), 'click')
+    assert.equal(strip?.textContent, before)
+  })
+
+  it('offers the citing works only with an API key, and says why not', () => {
+    setOpenAlexApiKey(null)
+    const container = draw(network({}, { citingIncluded: false }))
+    const citing = container.querySelector('[data-filter="citing"]')
+    assert.ok(citing, 'no citing switch')
+    assert.equal(citing.disabled, true)
+    assert.ok(container.querySelector('[data-role="citing-note"]'), 'no note saying a key is needed')
+  })
+
+  it('builds again with the citing works when a key is set and they are switched on', () => {
+    setOpenAlexApiKey('test-key')
+    try {
+      let asked = 0
+      const container = draw(network({}, { citingIncluded: false }), { onIncludeCiting: () => asked++ })
+      const citing = container.querySelector('[data-filter="citing"]')
+      assert.equal(citing.disabled, false)
+      assert.equal(container.querySelector('[data-role="citing-note"]'), null)
+      fire(citing, 'click')
+      assert.equal(asked, 1)
+    } finally {
+      setOpenAlexApiKey(null)
+    }
+  })
+
+  it('takes the citing works out with their switch once they are in', () => {
+    const container = draw()
+    assert.ok(markKeys(container).includes('CITER'))
+    fire(container.querySelector('[data-filter="citing"]'), 'click')
+    assert.ok(!markKeys(container).includes('CITER'))
+  })
+
+  it('lists the exports behind one button', () => {
+    const container = draw()
+    const button = container.querySelector('[data-control="export"]')
+    assert.ok(button, 'no export button')
+    fire(button, 'click')
+    const ids = [...container.querySelectorAll('[data-export]')].map((entry: any) => entry.getAttribute('data-export'))
+    for (const id of ['vosviewer', 'graphml', 'gaps-csv', 'gaps-ris']) assert.ok(ids.includes(id), ids.join(','))
+  })
+
+  it('offers the works citing a mark in OpenAlex on its card', () => {
+    const container = draw()
+    fire(container.querySelector('[data-mark][data-key="GAP"]'), 'click', { clientX: 30, clientY: 30 })
+    const labels = [...container.querySelectorAll('button')].map((b: any) => b.textContent).join(' | ')
+    assert.ok(labels.includes('network-card-cited-by'), labels)
+  })
+
+  it('says how much of the collection it analysed, and what it could not cover', () => {
+    const container = draw(
+      network({}, { capped: true, analysed: 3, itemsInScope: 900, unresolved: [{ itemID: 5, reason: 'not-found' }] }),
+    )
+    assert.ok(container.querySelector('[data-role="capped"]'), 'no banner for a capped analysis')
+    assert.ok(container.querySelector('[data-role="coverage"]'), 'no coverage note')
+    assert.equal(draw().querySelector('[data-role="capped"]'), null)
+    assert.equal(draw().querySelector('[data-role="coverage"]'), null)
+  })
+
+  it('draws a library as a graph, not as the empty placeholder', () => {
+    const net = network({ scope: { kind: 'library', libraryID: 1, name: 'My Library' } })
+    const container = document.createElement('div')
+    container.id = `net-${++containers}`
+    documentBody.append(container)
+    renderNetworkGraph(
+      window as any,
+      container as any,
+      { kind: 'library', libraryID: 1, name: 'My Library' } as any,
+      net,
+    )
+    assert.ok(container.querySelectorAll('[data-mark]').length > 0)
+    assert.ok(!(container.textContent ?? '').includes('graph-empty'))
+    assert.ok(!(container.textContent ?? '').includes('graph-placeholder-title'))
+  })
+
+  it('asks before a large analysis, with three answers', () => {
+    const container = document.createElement('div')
+    documentBody.append(container)
+    const answers: string[] = []
+    const estimate = { listRequests: 40, singleRequests: 0, usd: 0.004, dailyBudgetUsd: 0.1, shareOfDailyBudget: 0.04 }
+    renderSeedChoice(
+      document as any,
+      container as any,
+      { kind: 'library', libraryID: 1, name: 'Lib' } as any,
+      { total: 900, limit: 300, all: estimate, capped: estimate },
+      (choice: string) => answers.push(choice),
+    )
+    const choices = [...container.querySelectorAll('[data-choice]')].map((b: any) => b.getAttribute('data-choice'))
+    assert.deepEqual(choices, ['all', 'cap', 'cancel'])
+    fire(container.querySelector('[data-choice="cap"]'), 'click')
+    assert.deepEqual(answers, ['cap'])
+    assert.ok((container.textContent ?? '').includes('network-confirm-estimate-all'))
+  })
+
+  it('moves the bar through the analysis, within a step as well as between them', () => {
+    const container = document.createElement('div')
+    documentBody.append(container)
+    const width = (step: any, done: number, total: number) => {
+      renderNetworkProgress(document as any, container as any, { kind: 'library', name: 'x' } as any, {
+        step,
+        done,
+        total,
+      })
+      return (container.querySelector('[data-progress] > div') as any)?.style.width
+    }
+    assert.equal(width('seeds', 0, 0), '0%')
+    assert.equal(width('lookup', 1, 2), '25%')
+    assert.equal(width('clusters', 1, 1), '100%')
   })
 })
