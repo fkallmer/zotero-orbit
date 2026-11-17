@@ -60,7 +60,7 @@ gaps-citations = { $count ->
   }
 gaps-citations-unknown = citations unknown
 gaps-score = score { $score }
-gaps-score-hint = How many of your items it is connected to, divided by the natural logarithm of its citation count plus two. High when several of your items lean on a work that is not cited everywhere anyway; a classic that everyone cites scores lower than a niche work your items share.
+gaps-score-hint = How many of your items it is connected to, divided by the base-10 logarithm of ten plus its citation count. The divisor is 1 for an uncited work (or an unknown count), 2 at ninety citations and 3 at a thousand, so fame lowers the score without cancelling it: a niche work several of your items share ranks above a classic everyone cites, but a work many of your items lean on stays high however well known it is.
 gaps-cited-by = { $count ->
     [one] cited by 1 of your items
    *[other] cited by { $count } of your items

@@ -6,8 +6,7 @@
  *
  * 1. `seeds`: every item's identifiers -- its DOI, the DOI arXiv mints for
  *    its arXiv id, its PMID from Extra.
- * 2. `lookup`: each item as an OpenAlex work, from the `work:` cache where
- *    the item pane already fetched it, otherwise in batches of a hundred by
+ * 2. `lookup`: each item as an OpenAlex work, in batches of a hundred by
  *    DOI, then by PMID.
  * 3. `references`: the works at least two seeds cite, in batches of a hundred.
  * 4. `citing`: with an API key and on request, the works citing at least two
@@ -42,7 +41,7 @@ import {
 } from './collectionNetwork.core'
 import { getLibraryMatcher, matchInLibrary } from './libraryIndex'
 import { itemKeys } from './libraryMatch.core'
-import { hasOpenAlexApiKey, openAlexRecordCacheKey, toLookupDoi } from './openAlexClient.core'
+import { hasOpenAlexApiKey, toLookupDoi } from './openAlexClient.core'
 import { fetchOpenAlexPage } from './openAlexEnrichment'
 import {
   buildCitingAnyUrl,
@@ -66,7 +65,6 @@ import type {
   SeedPolicy,
   SeedWork,
 } from './collectionTypes'
-import type { ScholarlyRecord } from './openAlexClient.core'
 import type { OpenAlexWork } from './openAlexNetwork.core'
 
 // --- Scope and seed choice -----------------------------------------------------
@@ -185,29 +183,6 @@ function seedFromWork(itemID: number, work: OpenAlexWork, lookupDoi: string | nu
   }
 }
 
-/**
- * A seed from the item pane's cached record, or `null` when the record lacks
- * what the network needs. The pane's select has no primary topic, so such a
- * seed cannot help name its cluster.
- */
-function seedFromRecord(itemID: number, record: ScholarlyRecord | null, lookupDoi: string): SeedWork | null {
-  if (!record || typeof record.openAlexId !== 'string' || !Array.isArray(record.referencedWorks)) return null
-  const openAlexId = bare(record.openAlexId)
-  if (openAlexId === '') return null
-  return {
-    itemID,
-    openAlexId,
-    doi: lookupDoi,
-    title: record.title ?? lookupDoi,
-    year: record.publicationYear ?? null,
-    citedByCount: record.citedByCount ?? null,
-    referenceCount: record.referencedWorksCount ?? null,
-    authors: Array.isArray(record.authors) ? record.authors.map((author) => author.name).filter(Boolean) : [],
-    referencedWorks: record.referencedWorks.filter((ref) => typeof ref === 'string').map(bare),
-    primaryTopic: null,
-  }
-}
-
 function toNetworkWork(work: OpenAlexWork, direction: NetworkWork['direction'], seeds: OpenAlexId[]): NetworkWork {
   return {
     openAlexId: work.openAlexId,
@@ -297,22 +272,11 @@ export async function buildCollectionNetwork(
   })
   progress('seeds', items.length, items.length)
 
-  // 2. Seeds: cache, then DOI batches (own DOI first, arXiv DOI on a second
-  // round), then PMID batches.
+  // 2. Seeds: DOI batches (own DOI first, arXiv DOI on a second round), then
+  // PMID batches. Always fetched, never taken from the item pane's `work:`
+  // records: those lack `primary_topic`, and the clusters are named by it.
   const seedByItem = new Map<number, SeedWork>()
-  let cachedSeeds = 0
-  for (const item of items) {
-    for (const doi of idsByItem.get(item.id)!.dois) {
-      const seed = seedFromRecord(item.id, readCache<ScholarlyRecord>(openAlexRecordCacheKey(doi)), doi)
-      if (seed) {
-        seedByItem.set(item.id, seed)
-        cachedSeeds++
-        break
-      }
-    }
-  }
-
-  const lookupTotal = items.length - cachedSeeds
+  const lookupTotal = items.length
   let lookedUp = 0
   progress('lookup', 0, lookupTotal)
   for (let round = 0; ; round++) {
@@ -378,10 +342,7 @@ export async function buildCollectionNetwork(
     seedIds.add(seed.openAlexId)
     seeds.push(seed)
   }
-  debugLog(
-    `Citation debug - Network: ${seeds.length} seeds (${cachedSeeds} from cache),`,
-    `${unresolved.length} unresolved, ${requestsMade} requests`,
-  )
+  debugLog(`Citation debug - Network: ${seeds.length} seeds, ${unresolved.length} unresolved, ${requestsMade} requests`)
 
   const citing = options.includeCiting && hasOpenAlexApiKey()
   const coverageBase = {

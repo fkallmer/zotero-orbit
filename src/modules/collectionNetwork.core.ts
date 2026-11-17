@@ -203,18 +203,20 @@ export function citationEdges(
 
 /**
  * How much the seeds lean on a work, for how well known it is:
- * `seedCount / ln(citedBy + 2)`.
+ * `seedCount / log10(10 + citedBy)`.
  *
- * The +2 keeps the divisor positive at zero citations. An unknown count
- * scores like zero.
+ * The divisor is 1 at zero citations, 2 at ninety, 3 at a thousand and about
+ * 4.6 at forty thousand: fame is discounted without ever cancelling the local
+ * count. An unknown count divides by 1, the same as zero. The divisor follows
+ * zotero-citation-graph's gap list (idea only, no code).
  */
 export function gapScore(seedCount: number, citedByCount: number | null): number {
-  return seedCount / Math.log(Math.max(0, citedByCount ?? 0) + 2)
+  return seedCount / Math.log10(10 + Math.max(0, citedByCount ?? 0))
 }
 
 /**
- * Higher score first. Scores equal up to rounding tie: 2/ln 3 and 4/ln 9 are
- * the same number, and floating point should not decide between them.
+ * Higher score first. Scores equal up to rounding tie: two scores that are the
+ * same number on paper should not be ordered by floating-point noise.
  */
 function scoreOrder(x: number, y: number): number {
   const diff = y - x
@@ -255,7 +257,7 @@ export function rankGaps(works: readonly NetworkWork[]): { gaps: Gap[]; probable
 /**
  * What an analysis will cost, before it runs.
  *
- *     seed lookups   ceil((seeds - cachedSeeds) / 100)
+ *     seed lookups   ceil(seeds / 100)
  *     shared refs    ceil(seeds * SHARED_REFS_PER_SEED / 100)
  *     citing         groups = ceil(seeds / 100); per group
  *                    min(CITING_PAGE_CAP, max(1, ceil(citingCount / groups / 100)))
@@ -270,14 +272,13 @@ export function rankGaps(works: readonly NetworkWork[]): { gaps: Gap[]; probable
  */
 export function estimateRequests(input: {
   seeds: number
-  cachedSeeds: number
   withCiting: boolean
   citingCount?: number
   hasKey: boolean
 }): RequestEstimate {
   const seeds = Math.max(0, Math.floor(input.seeds))
-  const toFetch = Math.max(0, seeds - Math.max(0, Math.floor(input.cachedSeeds)))
-  const lookups = Math.ceil(toFetch / BATCH_SIZE)
+  // Every seed is looked up, none taken from a cache: see collectionNetwork.ts.
+  const lookups = Math.ceil(seeds / BATCH_SIZE)
   const shared = Math.ceil((seeds * SHARED_REFS_PER_SEED) / BATCH_SIZE)
 
   let citing = 0

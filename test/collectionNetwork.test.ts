@@ -169,13 +169,19 @@ describe('citationEdges', () => {
 })
 
 describe('gapScore', () => {
-  it('is seedCount / ln(citedBy + 2), unknown and negative counts as zero', () => {
-    assert.equal(gapScore(3, null), 3 / Math.log(2))
-    assert.equal(gapScore(3, 0), 3 / Math.log(2))
-    assert.equal(gapScore(3, -5), 3 / Math.log(2))
-    assert.equal(gapScore(3, 1), 3 / Math.log(3))
-    assert.ok(Math.abs(gapScore(5, 41000) - 5 / Math.log(41002)) < 1e-12)
+  it('is seedCount / log10(10 + citedBy), unknown and negative counts dividing by 1', () => {
+    assert.equal(gapScore(3, null), 3)
+    assert.equal(gapScore(3, 0), 3)
+    assert.equal(gapScore(3, -5), 3)
+    assert.equal(gapScore(3, 1), 3 / Math.log10(11))
+    assert.equal(gapScore(4, 90), 2)
+    assert.equal(gapScore(6, 990), 2)
+    assert.ok(Math.abs(gapScore(5, 41000) - 5 / Math.log10(41010)) < 1e-12)
+    // Four of your papers on an unknown work beat five on a landmark...
     assert.ok(gapScore(4, 0) > gapScore(5, 41000))
+    // ...but fame is discounted, not cancelled: five on a work cited 100 times
+    // beat two on one cited never.
+    assert.ok(gapScore(5, 100) > gapScore(2, 0))
   })
 })
 
@@ -186,10 +192,10 @@ describe('rankGaps', () => {
   it('ranks within direction, with ties by seed count, year and id', () => {
     const works = [
       work('Wfamous', { seeds: ['S1', 'S2', 'S3'], citedByCount: 50000 }),
-      work('Wniche', { seeds: ['S1', 'S2'], citedByCount: 0 }),
-      // The same score, 2/ln 3 = 4/ln 9: the larger seed count first.
-      work('Wtie2', { seeds: ['S1', 'S2'], citedByCount: 1 }),
-      work('Wtie4', { seeds: ['S1', 'S2', 'S3', 'S4'], citedByCount: 7 }),
+      work('Wniche', { seeds: ['S1', 'S2', 'S3'], citedByCount: 0 }),
+      // The same score, 2/log10(10) = 4/log10(100): the larger seed count first.
+      work('Wtie2', { seeds: ['S1', 'S2'], citedByCount: 0 }),
+      work('Wtie4', { seeds: ['S1', 'S2', 'S3', 'S4'], citedByCount: 90 }),
       // Exactly equal: year, newest first, then id.
       work('Wold', { seeds: ['S1', 'S2'], citedByCount: 100, year: 2001 }),
       work('Wnew', { seeds: ['S1', 'S2'], citedByCount: 100, year: 2020 }),
@@ -256,8 +262,8 @@ describe('chooseSeeds', () => {
 })
 
 describe('estimateRequests', () => {
-  it('300 seeds, none cached, no citing: 3 lookups + shared-reference batches', () => {
-    const estimate = estimateRequests({ seeds: 300, cachedSeeds: 0, withCiting: false, hasKey: false })
+  it('300 seeds, no citing: 3 lookups + shared-reference batches', () => {
+    const estimate = estimateRequests({ seeds: 300, withCiting: false, hasKey: false })
     const sharedBatches = Math.ceil((300 * SHARED_REFS_PER_SEED) / 100)
     assert.equal(SHARED_REFS_PER_SEED, 12)
     assert.equal(estimate.listRequests, 3 + sharedBatches)
@@ -268,26 +274,26 @@ describe('estimateRequests', () => {
     assert.ok(Math.abs(estimate.shareOfDailyBudget - 0.039) < 1e-12)
   })
 
-  it('cached seeds cost no lookup', () => {
-    const estimate = estimateRequests({ seeds: 300, cachedSeeds: 250, withCiting: false, hasKey: true })
-    assert.equal(estimate.listRequests, 1 + 36)
+  it('looks up every seed, a partial batch included', () => {
+    const estimate = estimateRequests({ seeds: 250, withCiting: false, hasKey: true })
+    assert.equal(estimate.listRequests, 3 + 30)
     assert.equal(estimate.dailyBudgetUsd, 1)
   })
 
   it('citing pages per group of 100, capped', () => {
-    const known = estimateRequests({ seeds: 300, cachedSeeds: 300, withCiting: true, citingCount: 6000, hasKey: true })
-    // 3 groups, 2000 citers each, 20 pages each.
-    assert.equal(known.listRequests, 36 + 3 * 20)
-    const unknown = estimateRequests({ seeds: 300, cachedSeeds: 300, withCiting: true, hasKey: true })
-    assert.equal(unknown.listRequests, 36 + 3 * CITING_PAGE_CAP)
-    const huge = estimateRequests({ seeds: 100, cachedSeeds: 100, withCiting: true, citingCount: 1e6, hasKey: true })
-    assert.equal(huge.listRequests, 12 + CITING_PAGE_CAP)
-    const noKey = estimateRequests({ seeds: 100, cachedSeeds: 100, withCiting: true, citingCount: 1e6, hasKey: false })
-    assert.equal(noKey.listRequests, 12 + 1)
+    const known = estimateRequests({ seeds: 300, withCiting: true, citingCount: 6000, hasKey: true })
+    // 3 lookups, 36 shared batches; 3 groups, 2000 citers each, 20 pages each.
+    assert.equal(known.listRequests, 3 + 36 + 3 * 20)
+    const unknown = estimateRequests({ seeds: 300, withCiting: true, hasKey: true })
+    assert.equal(unknown.listRequests, 3 + 36 + 3 * CITING_PAGE_CAP)
+    const huge = estimateRequests({ seeds: 100, withCiting: true, citingCount: 1e6, hasKey: true })
+    assert.equal(huge.listRequests, 1 + 12 + CITING_PAGE_CAP)
+    const noKey = estimateRequests({ seeds: 100, withCiting: true, citingCount: 1e6, hasKey: false })
+    assert.equal(noKey.listRequests, 1 + 12 + 1)
   })
 
   it('nothing to do costs nothing', () => {
-    const estimate = estimateRequests({ seeds: 0, cachedSeeds: 0, withCiting: true, hasKey: true })
+    const estimate = estimateRequests({ seeds: 0, withCiting: true, hasKey: true })
     assert.deepEqual([estimate.listRequests, estimate.usd], [0, 0])
   })
 })
