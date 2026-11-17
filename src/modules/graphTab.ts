@@ -1704,7 +1704,7 @@ export function renderGraph(
   const root = el(doc, 'div')
   root.style.cssText = networkMode
     ? 'display:flex;flex-direction:column;height:100%;flex:1;min-width:0;overflow:hidden;padding:14px 18px;box-sizing:border-box'
-    : 'display:flex;flex-direction:column;height:100%;width:100%;min-width:0;padding:14px 18px;box-sizing:border-box'
+    : 'display:flex;flex-direction:column;height:100%;width:100%;min-width:0;contain:inline-size;padding:14px 18px;box-sizing:border-box'
 
   const title = el(doc, 'div', seed.name)
   title.style.cssText = 'font-weight:600;font-size:14px;padding-bottom:2px'
@@ -1713,7 +1713,10 @@ export function renderGraph(
   strip.setAttribute('data-role', 'strip')
   strip.style.cssText =
     'font-size:12px;opacity:.7;padding-bottom:6px;display:flex;align-items:center;gap:7px;' +
-    'white-space:nowrap;overflow:hidden;min-height:17px'
+    // width:0 with min-width:100%: the row fills the frame but reports no
+    // width of its own, so a long title under the pointer cannot widen the
+    // tab around it.
+    'white-space:nowrap;overflow:hidden;min-height:17px;height:17px;width:0;min-width:100%'
   root.append(title)
   if (net?.coverage.capped) {
     // Said where the reader looks first: a graph of 300 of 1,200 items is a
@@ -1929,11 +1932,13 @@ export function renderGraph(
     aside.append(heading)
 
     const outer = el(doc, 'div')
-    // min-width:0 and overflow:hidden: the detail strip above the plot does not
-    // wrap, so without them the frame grew to the width of whatever title was
-    // pointed at -- pushing the gaps list off a narrow window, and in and out
-    // of view on every hover. The window decides the width, not the content.
-    outer.style.cssText = 'display:flex;flex-direction:row;height:100%;width:100%;min-width:0;overflow:hidden'
+    // contain:inline-size: the detail strip above the plot does not wrap, and
+    // its width -- whatever title is pointed at -- otherwise travelled up as a
+    // minimum through Zotero's own tab boxes, which then grew past the window.
+    // That pushed the gaps list off a narrow window, and in and out of view on
+    // every hover. Contained, the frame takes its width from the tab alone.
+    outer.style.cssText =
+      'display:flex;flex-direction:row;height:100%;width:100%;min-width:0;overflow:hidden;contain:inline-size'
     outer.append(root, aside)
     container.replaceChildren(outer)
   } else container.replaceChildren(root)
@@ -2551,6 +2556,12 @@ export function renderGraph(
     // the collection is.
     seedPoint = centroid(layout.nodes.filter((node) => node.role === 'seed'))
 
+    // Drawn at the size it was laid out for. At 100% the SVG rescaled itself
+    // whenever the plot's box moved, so any shift around it -- a strip, a
+    // panel -- made every mark jump. A real change of size comes through the
+    // resize handler, which lays out again.
+    ;(imported as Element).setAttribute('width', String(width))
+    ;(imported as Element).setAttribute('height', String(height))
     plot.replaceChildren(imported)
     // The resting links are set by the repaint, not by the markup.
     if (networkMode) view?.repaint()
