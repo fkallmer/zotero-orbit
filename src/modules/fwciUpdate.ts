@@ -25,6 +25,7 @@ import {
   buildFwciByDoiUrl,
   normalizeFwciBatch,
   OPENALEX_DATABASE,
+  openAlexAuthHeaders,
   REFERENCE_CHUNK,
   toLookupDoi,
 } from './openAlexClient.core'
@@ -57,7 +58,9 @@ async function fetchBatch(dois: readonly string[]): Promise<ReturnType<typeof no
 
   let response: Response
   try {
-    response = await lookupFetch(buildFwciByDoiUrl(dois), { headers: requestHeaders() })
+    response = await lookupFetch(buildFwciByDoiUrl(dois), {
+      headers: { ...requestHeaders(), ...openAlexAuthHeaders() },
+    })
   } catch (err) {
     debugLog('Citation debug - FWCI batch request failed:', err)
     return null

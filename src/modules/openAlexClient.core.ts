@@ -365,6 +365,13 @@ export interface ResolvedReference {
   author: string | null
   /** How many works it cites -- breadth, as against the impact on the y-axis. */
   referenceCount: number | null
+  /**
+   * Bare OpenAlex id (`W…`), when OpenAlex supplied the reference. Optional so
+   * a cache entry written before it existed still reads.
+   */
+  openAlexId?: string | null
+  /** Every author's display name, in order. Optional for the same reason. */
+  authors?: string[] | null
 }
 
 /**
@@ -392,6 +399,8 @@ export function normalizeReferences(json: unknown): ResolvedReference[] {
     const doi = asNonEmptyString(work.doi)
     if (!title && !doi) continue
     const first = Array.isArray(work.authorships) ? asRecord(work.authorships[0]) : null
+    const authors = normalizeAuthors(work.authorships).map((author) => author.name)
+    const id = asNonEmptyString(work.id)
     out.push({
       title,
       doi: doi ? doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '') : null,
@@ -399,6 +408,8 @@ export function normalizeReferences(json: unknown): ResolvedReference[] {
       citedByCount: asFiniteNumber(work.cited_by_count),
       author: surnameOf(asNonEmptyString(asRecord(first?.author)?.display_name)),
       referenceCount: asFiniteNumber(work.referenced_works_count),
+      openAlexId: id ? id.replace(/^https?:\/\/openalex\.org\//i, '') : null,
+      authors,
     })
   }
   return out

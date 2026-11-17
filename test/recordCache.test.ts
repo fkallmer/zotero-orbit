@@ -158,16 +158,16 @@ describe('writing to disk', () => {
 
 describe('the size ceiling', () => {
   // Last, because it fills the cache and pushes out what earlier tests wrote.
-  it('drops expired entries first, then the oldest, once past 2000', () => {
+  it('drops expired entries first, then the oldest, once past 6000', () => {
     // Everything earlier tests left behind is now expired, and the first
     // eviction clears it before any live entry has to go.
     mock.timers.tick(2 * TTL + 1)
-    for (let i = 0; i < 2001; i++) {
+    for (let i = 0; i < 6001; i++) {
       writeCache(`cap:${i}`, i)
       mock.timers.tick(1)
     }
     assert.equal(readCache('cap:0'), null)
     assert.equal(readCache('cap:1'), 1)
-    assert.equal(readCache('cap:2000'), 2000)
+    assert.equal(readCache('cap:6000'), 6000)
   })
 })

@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "count": 2,
+    "db_response_time_ms": 13,
+    "page": 1,
+    "per_page": 100,
+    "groups_count": null,
+    "cost_usd": 0.0001
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W2064675550",
+      "doi": "https://doi.org/10.1162/neco.1997.9.8.1735",
+      "ids": {
+        "openalex": "https://openalex.org/W2064675550",
+        "doi": "https://doi.org/10.1162/neco.1997.9.8.1735",
+        "mag": "2064675550",
+        "pmid": "https://pubmed.ncbi.nlm.nih.gov/9377276"
+      },
+      "display_name": "Long Short-Term Memory",
+      "publication_year": 1997,
+      "cited_by_count": 131382,
+      "referenced_works": ["https://openalex.org/W202296964", "https://openalex.org/W1674799117", "https://openalex.org/W1881179843", "https://openalex.org/W1963605035", "https://openalex.org/W1971129545"],
+      "referenced_works_count": 34,
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A5053148274",
+            "display_name": "Sepp Hochreiter",
+            "orcid": "https://orcid.org/0000-0001-7449-2528"
+          },
+          "is_corresponding": false
+        },
+        {
+          "author_position": "last",
+          "author": {
+            "id": "https://openalex.org/A5071172037",
+            "display_name": "Jürgen Schmidhuber",
+            "orcid": "https://orcid.org/0000-0002-1468-6758"
+          },
+          "is_corresponding": false
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10320",
+        "display_name": "Neural Networks and Applications",
+        "score": 0.9541000127792358,
+        "subfield": {
+          "id": "https://openalex.org/subfields/1702",
+          "display_name": "Artificial Intelligence"
+        },
+        "field": {
+          "id": "https://openalex.org/fields/17",
+          "display_name": "Computer Science"
+        },
+        "domain": {
+          "id": "https://openalex.org/domains/3",
+          "display_name": "Physical Sciences"
+        }
+      }
+    },
+    {
+      "id": "https://openalex.org/W2919115771",
+      "doi": "https://doi.org/10.1038/nature14539",
+      "ids": {
+        "openalex": "https://openalex.org/W2919115771",
+        "doi": "https://doi.org/10.1038/nature14539",
+        "mag": "2919115771",
+        "pmid": "https://pubmed.ncbi.nlm.nih.gov/26017442"
+      },
+      "display_name": "Deep learning",
+      "publication_year": 2015,
+      "cited_by_count": 108704,
+      "referenced_works": ["https://openalex.org/W146900863", "https://openalex.org/W170811313", "https://openalex.org/W189596042", "https://openalex.org/W196214544", "https://openalex.org/W281811447"],
+      "referenced_works_count": 89,
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A5001226970",
+            "display_name": "Yann LeCun",
+            "orcid": "https://orcid.org/0000-0002-1992-2684"
+          },
+          "is_corresponding": true
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A5086198262",
+            "display_name": "Yoshua Bengio",
+            "orcid": "https://orcid.org/0000-0002-9322-3515"
+          },
+          "is_corresponding": false
+        },
+        {
+          "author_position": "last",
+          "author": {
+            "id": "https://openalex.org/A5108093963",
+            "display_name": "Geoffrey E. Hinton",
+            "orcid": null
+          },
+          "is_corresponding": false
+        }
+      ],
+      "primary_topic": {
+        "id": "https://openalex.org/T10320",
+        "display_name": "Neural Networks and Applications",
+        "score": 0.7842000126838684,
+        "subfield": {
+          "id": "https://openalex.org/subfields/1702",
+          "display_name": "Artificial Intelligence"
+        },
+        "field": {
+          "id": "https://openalex.org/fields/17",
+          "display_name": "Computer Science"
+        },
+        "domain": {
+          "id": "https://openalex.org/domains/3",
+          "display_name": "Physical Sciences"
+        }
+      }
+    }
+  ],
+  "group_by": []
+}

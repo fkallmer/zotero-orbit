@@ -45,6 +45,7 @@ import {
   buildWorkUrl,
   normalizeWork,
   OPENALEX_DATABASE,
+  openAlexAuthHeaders,
   openAlexContact,
   openAlexRecordCacheKey,
   toLookupDoi,
@@ -1204,7 +1205,7 @@ class DBInterface {
 
       let response: Response
       try {
-        response = await lookupFetch(url, { headers: requestHeaders() })
+        response = await lookupFetch(url, { headers: { ...requestHeaders(), ...openAlexAuthHeaders() } })
       } catch (err) {
         debugLog(`Citation debug - OpenAlex request failed for ${lookupDoi}:`, err)
         sawTransient = true

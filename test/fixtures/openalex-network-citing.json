@@ -1,0 +1,110 @@
+{
+  "meta": {
+    "count": 104699,
+    "db_response_time_ms": 14,
+    "page": null,
+    "per_page": 3,
+    "next_cursor": "IlsxMDAuMCwgMTg5NjgsICdodHRwczovL29wZW5hbGV4Lm9yZy9XMjU5MjkyOTY3MiddIg==",
+    "groups_count": null,
+    "cost_usd": 0.0001
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W2899283552",
+      "doi": "https://doi.org/10.1016/j.jcp.2018.10.045",
+      "ids": {
+        "openalex": "https://openalex.org/W2899283552",
+        "doi": "https://doi.org/10.1016/j.jcp.2018.10.045",
+        "mag": "2899283552"
+      },
+      "display_name": "Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations",
+      "publication_year": 2018,
+      "cited_by_count": 27831,
+      "referenced_works_count": 57,
+      "referenced_works": ["https://openalex.org/W321261355", "https://openalex.org/W658040100", "https://openalex.org/W1019830208", "https://openalex.org/W1522301498", "https://openalex.org/W1528439235"],
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A5012536010",
+            "display_name": "Maziar Raissi",
+            "orcid": "https://orcid.org/0000-0002-8467-4568"
+          },
+          "is_corresponding": false
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A5002562845",
+            "display_name": "Paris G. Perdikaris",
+            "orcid": "https://orcid.org/0000-0002-2816-3229"
+          },
+          "is_corresponding": true
+        },
+        {
+          "author_position": "last",
+          "author": {
+            "id": "https://openalex.org/A5009658255",
+            "display_name": "George Em Karniadakis",
+            "orcid": "https://orcid.org/0000-0002-9713-7120"
+          },
+          "is_corresponding": false
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2257979135",
+      "doi": "https://doi.org/10.1038/nature16961",
+      "ids": {
+        "openalex": "https://openalex.org/W2257979135",
+        "doi": "https://doi.org/10.1038/nature16961",
+        "mag": "2257979135",
+        "pmid": "https://pubmed.ncbi.nlm.nih.gov/26819042"
+      },
+      "display_name": "Mastering the game of Go with deep neural networks and tree search",
+      "publication_year": 2016,
+      "cited_by_count": 22212,
+      "referenced_works_count": 65,
+      "referenced_works": ["https://openalex.org/W50617830", "https://openalex.org/W170811313", "https://openalex.org/W182596629", "https://openalex.org/W202421935", "https://openalex.org/W580037270"],
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A5091771290",
+            "display_name": "David Silver",
+            "orcid": "https://orcid.org/0000-0002-5197-2892"
+          },
+          "is_corresponding": true
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A5006011042",
+            "display_name": "Aja Huang",
+            "orcid": "https://orcid.org/0000-0002-2476-9194"
+          },
+          "is_corresponding": false
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A5054711904",
+            "display_name": "Chris J. Maddison",
+            "orcid": "https://orcid.org/0009-0007-9796-7232"
+          },
+          "is_corresponding": false
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A5009305837",
+            "display_name": "Arthur Guez",
+            "orcid": null
+          },
+          "is_corresponding": false
+        }
+      ]
+    }
+  ],
+  "group_by": []
+}

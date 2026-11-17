@@ -9,7 +9,13 @@ import {
   hasOpenAlexApiKey,
   openAlexAuthHeaders,
   setOpenAlexApiKey,
+  setOpenAlexContact,
+  buildCitingWorksUrl,
   buildFwciByDoiUrl,
+  buildWorksByDoiUrl,
+  buildWorksByIdUrl,
+  normalizeReferences,
+  REFERENCE_SELECT,
   buildSourceUrl,
   buildWorkUrl,
   FWCI_SELECT,
@@ -21,6 +27,15 @@ import {
   toChronologicalSeries,
   toLookupDoi,
 } from '../src/modules/openAlexClient.core.ts'
+import {
+  buildCitingAnyUrl,
+  buildWorksListUrl,
+  CITING_SELECT,
+  SEED_SELECT,
+  SHARED_SELECT,
+} from '../src/modules/openAlexNetwork.core.ts'
+
+import type { ResolvedReference } from '../src/modules/openAlexClient.core.ts'
 
 /** Recorded from the live API, not hand-written, so field drift shows up here. */
 const workFixture: unknown = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/openalex-work.json'), 'utf8'))
@@ -311,5 +326,93 @@ describe('the OpenAlex API key', () => {
     setOpenAlexApiKey('abc€def')
     assert.equal(hasOpenAlexApiKey(), false)
     assert.deepEqual(openAlexAuthHeaders(), {})
+  })
+})
+
+describe('the key never travels in a URL', () => {
+  it('is absent from every URL builder, with a key and a contact set', () => {
+    // Request URLs reach the debug log, and users paste that log.
+    const key = 'ORBITTESTKEY1234567890'
+    setOpenAlexApiKey(key)
+    setOpenAlexContact('someone@example.org')
+    try {
+      const urls = [
+        buildWorkUrl('10.1038/nature14539', 'id'),
+        buildSourceUrl('S1'),
+        buildWorksByIdUrl(['W1', 'W2']),
+        buildCitingWorksUrl('W1', 50),
+        buildWorksByDoiUrl(['10.1/a']),
+        buildFwciByDoiUrl(['10.1/a']),
+        buildWorksListUrl('doi', ['10.1/a'], SEED_SELECT),
+        buildWorksListUrl('ids.pmid', ['1'], SHARED_SELECT),
+        buildWorksListUrl('openalex_id', ['W1'], SHARED_SELECT),
+        buildCitingAnyUrl(['W1'], '*', CITING_SELECT),
+        buildCitingAnyUrl(['W1'], 'abc==', CITING_SELECT),
+      ]
+      for (const url of urls) {
+        assert.doesNotMatch(url, /api_key/i, url)
+        assert.ok(!url.includes(key), url)
+      }
+    } finally {
+      setOpenAlexApiKey('')
+      setOpenAlexContact('')
+    }
+  })
+})
+
+describe('normalizeReferences', () => {
+  it('asks for the id and the authorships it now reads', () => {
+    assert.ok(REFERENCE_SELECT.split(',').includes('id'))
+    assert.ok(REFERENCE_SELECT.split(',').includes('authorships'))
+  })
+
+  it('carries the bare OpenAlex id and every author', () => {
+    const [ref] = normalizeReferences({
+      results: [
+        {
+          id: 'https://openalex.org/W2919115771',
+          doi: 'https://doi.org/10.1038/nature14539',
+          display_name: 'Deep learning',
+          publication_year: 2015,
+          cited_by_count: 1,
+          referenced_works_count: 89,
+          authorships: [
+            { author: { display_name: 'Yann LeCun' } },
+            { author: { display_name: 'Yoshua Bengio' } },
+            { author: { display_name: 'Geoffrey E. Hinton' } },
+          ],
+        },
+      ],
+    })
+    assert.equal(ref.openAlexId, 'W2919115771')
+    assert.deepEqual(ref.authors, ['Yann LeCun', 'Yoshua Bengio', 'Geoffrey E. Hinton'])
+    // The short label is unchanged.
+    assert.equal(ref.author, 'LeCun')
+  })
+
+  it('leaves them empty when the response has neither', () => {
+    const [ref] = normalizeReferences({ results: [{ display_name: 'Untitled elsewhere' }] })
+    assert.equal(ref.openAlexId, null)
+    assert.deepEqual(ref.authors, [])
+  })
+
+  it('still accepts a reference cached before the fields existed', () => {
+    // The shape `refs:` and `cites:` cache entries had before; it must still
+    // type-check and read as "not known" rather than as a crash.
+    const old = JSON.parse(
+      '{"title":"T","doi":"10.1/x","year":2000,"citedByCount":3,"author":"Doe","referenceCount":4}',
+    ) as ResolvedReference
+    const literal: ResolvedReference = {
+      title: 'T',
+      doi: null,
+      year: null,
+      citedByCount: null,
+      author: null,
+      referenceCount: null,
+    }
+    for (const ref of [old, literal]) {
+      assert.equal(ref.openAlexId ?? null, null)
+      assert.deepEqual(ref.authors ?? [], [])
+    }
   })
 })
