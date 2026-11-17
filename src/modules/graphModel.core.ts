@@ -76,7 +76,19 @@ export interface GraphNode {
    * than a disc, so absence reads as a shape and survives greyscale.
    */
   hollow?: boolean
+  /**
+   * The gap's rank in the "cited by your items" list, 1-based. A hollow mark
+   * with a rank is drawn by how high it stands, in its own hue throughout: the
+   * first ten heavy, tinted and numbered as in the list, the next twenty a
+   * little heavier than a plain ring, the rest faint -- so the works most
+   * worth fetching stand out from the many that merely appear. Absent, a
+   * hollow mark is drawn as before.
+   */
+  gapRank?: number | null
 }
+
+/** Gaps drawn heavy with their number, and gaps drawn heavier than the rest. */
+export const GAP_TIERS = { numbered: 10, coloured: 30 } as const
 
 export interface PlacedNode extends GraphNode {
   x: number
@@ -906,6 +918,42 @@ export function hueFor(node: GraphNode, theme: GraphTheme): string {
  * countable, and the seed a wider halo -- shape rather than hue, so the focal
  * point survives greyscale and colour blindness.
  */
+/** Which of the three gap tiers a ranked hollow mark falls in, or null. */
+function gapTier(node: GraphNode): 'numbered' | 'coloured' | 'faint' | null {
+  if (!node.hollow || node.gapRank === undefined || node.gapRank === null) return null
+  if (node.gapRank <= GAP_TIERS.numbered) return 'numbered'
+  if (node.gapRank <= GAP_TIERS.coloured) return 'coloured'
+  return 'faint'
+}
+
+/** The open part of a hollow mark's circle, its attributes up to `data-key`. */
+function hollowCircle(node: PlacedNode, fill: string): string {
+  const r = node.radius.toFixed(1)
+  // The interior still answers the pointer, or a ring would be clickable only
+  // along its edge.
+  switch (gapTier(node)) {
+    case 'numbered':
+      return `<circle r="${r}" fill="${fill}" fill-opacity="0.14" stroke="${fill}" stroke-width="3.2" pointer-events="all" `
+    case 'coloured':
+      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="2.4" pointer-events="all" `
+    case 'faint':
+      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="1.4" stroke-opacity="0.45" pointer-events="all" `
+    default:
+      return `<circle r="${r}" fill="none" stroke="${fill}" stroke-width="2" pointer-events="all" `
+  }
+}
+
+/** The rank inside one of the top gaps, matching its row in the gaps list. */
+function gapNumber(node: PlacedNode, fill: string): string {
+  if (gapTier(node) !== 'numbered') return ''
+  // Small marks get small digits; never larger than the ring can hold.
+  const size = Math.max(9, Math.min(13, node.radius * 0.95)).toFixed(1)
+  return (
+    `<text text-anchor="middle" dominant-baseline="central" font-size="${size}" font-weight="700" ` +
+    `fill="${fill}" pointer-events="none">${node.gapRank}</text>`
+  )
+}
+
 /**
  * @param uid Namespaces the ids in `defs`. Two graphs in one document -- two
  *   open tabs -- otherwise both define `plot-area`, and `url(#plot-area)`
@@ -1097,15 +1145,16 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         // A hollow mark is its own hue in outline. The interior still answers
         // the pointer, or a ring would be clickable only along its edge.
         (node.hollow
-          ? `<circle r="${node.radius.toFixed(1)}" fill="none" stroke="${fill}" stroke-width="2" ` +
-            `pointer-events="all" `
+          ? hollowCircle(node, fill)
           : `<circle r="${node.radius.toFixed(1)}" fill="${fill}" stroke="${theme.surface}" stroke-width="2" `) +
         `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
         `data-item="${node.itemID ?? ''}" ` +
         // No <title>: the native tooltip would put the same title in a box at
         // the pointer while the label already carries it at the mark, and two
         // answers to one question is one too many.
-        `style="cursor:pointer"/></g>`
+        `style="cursor:pointer"/>` +
+        gapNumber(node, fill) +
+        `</g>`
       )
     })
     .join('')

@@ -801,7 +801,10 @@ describe('a collection network on the tab', () => {
       'no dashed collar on the probable match',
     )
     assert.equal(container.querySelector('[data-mark][data-key="HELD"] circle[stroke-dasharray]'), null)
-    assert.equal(container.querySelector('circle[data-key="GAP"]')?.getAttribute('fill'), 'none', 'gap not hollow')
+    // The top gap: a heavy tinted ring, numbered as in the list.
+    const gap = container.querySelector('circle[data-key="GAP"]')
+    assert.equal(gap?.getAttribute('fill-opacity'), '0.14', 'top gap not drawn as a tinted ring')
+    assert.equal(container.querySelector('[data-mark][data-key="GAP"] text')?.textContent, '1')
   })
 
   it('takes the gaps out with their switch', () => {

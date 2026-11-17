@@ -8,6 +8,7 @@ import {
   buildGraphLayout,
   CLUSTER_PALETTE,
   FITTED,
+  GAP_TIERS,
   hueFor,
   placeLabels,
   renderGraphSvg,
@@ -393,5 +394,49 @@ describe('performance', () => {
     console.log(`600 works, layout + placeLabels: median ${median.toFixed(2)} ms, max ${times[8].toFixed(2)} ms`)
     // The target is 25 ms; the bound is loose because test files run in parallel.
     assert.ok(median < 100, `median ${median.toFixed(1)} ms`)
+  })
+})
+
+describe('ranked gaps', () => {
+  const gapAt = (rank: number | null): string => {
+    const layout = buildGraphLayout(
+      [
+        node({ key: 'S', role: 'seed', year: 2010, citedByCount: 100, itemID: 1 }),
+        node({ key: 'G', year: 2005, citedByCount: 50, hollow: true, gapRank: rank }),
+      ],
+      {
+        width: 600,
+        height: 400,
+        padding: { top: 10, right: 10, bottom: 20, left: 30 },
+        mode: 'network',
+        labelRoles: ['seed'],
+      },
+    )
+    assert.ok(layout)
+    const svg = renderGraphSvg(layout, theme)
+    const mark = /<g data-mark="1" data-key="G"[^>]*>(.*?)<\/g>/.exec(svg)
+    assert.ok(mark)
+    return mark[1]
+  }
+
+  it('numbers the first ten, heavy and tinted, in their own hue', () => {
+    const mark = gapAt(3)
+    assert.match(mark, /fill="#2a78d6" fill-opacity="0.14" stroke="#2a78d6" stroke-width="3.2"/)
+    assert.match(mark, />3<\/text>/)
+  })
+
+  it('draws the next twenty heavier, without a number', () => {
+    const mark = gapAt(GAP_TIERS.coloured)
+    assert.match(mark, /fill="none" stroke="#2a78d6" stroke-width="2.4"/)
+    assert.doesNotMatch(mark, /<text/)
+  })
+
+  it('draws the rest faint', () => {
+    const mark = gapAt(GAP_TIERS.coloured + 1)
+    assert.match(mark, /stroke-width="1.4" stroke-opacity="0.45"/)
+  })
+
+  it('leaves an unranked gap as before', () => {
+    assert.match(gapAt(null), /fill="none" stroke="[^"]+" stroke-width="2" pointer-events="all"/)
   })
 })

@@ -174,6 +174,11 @@ export function networkToGraph(
       itemID: work.match?.itemID ?? null,
       match: work.match?.confidence ?? null,
       ...(work.match === null ? { hollow: true } : {}),
+      // Only the "cited by your items" ranks: citing works have a list of
+      // their own, and two marks numbered 1 would point at two rows.
+      ...(work.match === null && work.direction === 'reference' && scoreOf.has(work.openAlexId)
+        ? { gapRank: scoreOf.get(work.openAlexId)?.rank ?? null }
+        : {}),
     })
   }
 
