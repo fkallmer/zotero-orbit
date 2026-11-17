@@ -13,6 +13,8 @@ import { debugLog } from '../utils/log'
 /** libraryID -> normalized DOI -> item id */
 const byLibrary = new Map<number, Map<string, number>>()
 let notifierID: string | false = false
+/** Bumped on every clear, so a scan can tell it was overtaken by an edit. */
+let generation = 0
 
 /**
  * DOIs are case-insensitive and travel with assorted prefixes. Both sides of
@@ -51,13 +53,19 @@ async function build(libraryID: number): Promise<Map<string, number>> {
 export async function getDoiIndex(libraryID: number): Promise<Map<string, number>> {
   const cached = byLibrary.get(libraryID)
   if (cached) return cached
+  const startedAt = generation
   const index = await build(libraryID)
-  byLibrary.set(libraryID, index)
+  // An item changed while the scan ran, so the scan may predate it. Hand the
+  // result to this caller, which asked before the change, but do not keep it:
+  // the next call scans again. Rescanning here instead would loop for as long
+  // as an import keeps adding items.
+  if (generation === startedAt) byLibrary.set(libraryID, index)
   return index
 }
 
 /** Invalidate everything. Cheaper than working out which library changed. */
 export function clearDoiIndex(): void {
+  generation++
   byLibrary.clear()
 }
 

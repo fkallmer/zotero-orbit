@@ -27,13 +27,18 @@ const calls = {
   unregistered: [] as string[],
 }
 let libraries: Record<number, FakeItem[]> = {}
+/** When set, the next scan waits for this before returning its snapshot. */
+let holdScan: Promise<void> | null = null
 
 const globals = globalThis as unknown as Record<string, unknown>
 globals.Zotero = {
   Items: {
     getAll: async (libraryID: number, onlyTopLevel: boolean) => {
       calls.getAll.push([libraryID, onlyTopLevel])
-      return libraries[libraryID] ?? []
+      // The snapshot is taken now; whatever changes while held is not in it.
+      const snapshot = libraries[libraryID] ?? []
+      if (holdScan) await holdScan
+      return snapshot
     },
   },
   Notifier: {
@@ -73,6 +78,7 @@ function lastObserver(): Observer {
 beforeEach(() => {
   clearDoiIndex()
   libraries = {}
+  holdScan = null
   calls.getAll.length = 0
 })
 
@@ -138,6 +144,27 @@ describe('getDoiIndex', () => {
     libraries[1] = [item(41, '10.1/a')]
     assert.equal((await getDoiIndex(1)).get('10.1/a'), 41)
     assert.equal(calls.getAll.length, 3)
+  })
+
+  it('does not keep a scan that an edit overtook', async () => {
+    let release = (): void => {}
+    holdScan = new Promise((resolve) => {
+      release = resolve
+    })
+    libraries[1] = [item(80, '10.1/old')]
+    const pending = getDoiIndex(1)
+
+    // The item is edited while the scan is still running.
+    libraries[1] = [item(80, '10.1/new')]
+    clearDoiIndex()
+    holdScan = null
+    release()
+
+    // The caller that asked before the edit gets what it asked for...
+    assert.deepEqual([...(await pending)], [['10.1/old', 80]])
+    // ...but the next caller sees the edit, not a cached copy of the old scan.
+    assert.deepEqual([...(await getDoiIndex(1))], [['10.1/new', 80]])
+    assert.equal(calls.getAll.length, 2)
   })
 })
 
