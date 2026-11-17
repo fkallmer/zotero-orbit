@@ -5,9 +5,9 @@
 [![Zotero 10](https://img.shields.io/badge/Zotero-10-CC2936?logo=zotero&logoColor=CC2936)](https://www.zotero.org/)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-brightgreen.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Google Scholar client: MPL-2.0](https://img.shields.io/badge/Scholar%20client-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-![Test Coverage - Lines](https://img.shields.io/badge/lines-70.56%25-yellow.svg)
-![Test Coverage - Branches](https://img.shields.io/badge/branches-85.87%25-brightgreen.svg)
-![Test Coverage - Functions](https://img.shields.io/badge/functions-60.87%25-yellow.svg)
+![Test Coverage - Lines](https://img.shields.io/badge/lines-73.61%25-yellow.svg)
+![Test Coverage - Branches](https://img.shields.io/badge/branches-87.62%25-brightgreen.svg)
+![Test Coverage - Functions](https://img.shields.io/badge/functions-66.07%25-yellow.svg)
 
 ![The graph tab, with one work pointed at](docs/assets/readme/graph.png)
 
