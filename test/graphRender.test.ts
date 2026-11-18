@@ -818,6 +818,27 @@ describe('a collection network on the tab', () => {
     assert.equal(container.querySelector('[data-mark][data-key="GAP"] text')?.textContent, '1')
   })
 
+  it('draws a crowded collection translucent, and the mark pointed at solid', () => {
+    const seeds = Array.from({ length: 300 }, (_, i) => ({
+      ...seedWork(`S${i}`, 1000 + i, 2000 + (i % 25)),
+      citedByCount: 100 + ((i * 37) % 900),
+      referenceCount: 200,
+    }))
+    const container = draw(network({ seeds, clusterOf: {}, clusters: [] }))
+    const disc = (key: string): any => container.querySelector(`circle[data-key="${key}"]`)
+    const resting = disc('S1')?.getAttribute('fill-opacity')
+    assert.ok(resting && Number(resting) < 1, `S1 rests at ${resting}`)
+    fire(container.querySelector('[data-mark][data-key="S1"]'), 'mouseover')
+    assert.equal(disc('S1')?.getAttribute('fill-opacity'), '1')
+    assert.equal(disc('S2')?.getAttribute('fill-opacity'), resting, 'a mark not pointed at went solid')
+    fire(container.querySelector('[data-mark][data-key="S2"]'), 'mouseover')
+    assert.equal(disc('S1')?.getAttribute('fill-opacity'), resting, 'the last mark stayed solid')
+    assert.equal(disc('S2')?.getAttribute('fill-opacity'), '1')
+    // A gap's tint is its own, not a crowded disc's, and pointing leaves it be.
+    fire(container.querySelector('[data-mark][data-key="GAP"]'), 'mouseover')
+    assert.equal(disc('GAP')?.getAttribute('fill-opacity'), '0.14')
+  })
+
   it('takes the gaps out with their switch', () => {
     const container = draw()
     fire(container.querySelector('[data-filter="gaps"]'), 'click')
