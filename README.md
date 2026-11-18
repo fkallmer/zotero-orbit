@@ -123,7 +123,7 @@ network:
 
 - **Clusters.** Items that cite the same works are grouped (bibliographic
   coupling, Leiden algorithm) and each group is named after the OpenAlex
-  topic, subfield or field most of its items share. All clusters show at first; click one in the legend to show
+  topic or subfield most of its items share. All clusters show at first; click one in the legend to show
   only that one, and click more to add them back one by one.
 - **Shared references.** Works cited by at least two of your items appear
   beside them, and the citations between everything on screen are drawn.
@@ -270,7 +270,7 @@ papers usually carry one; web pages, theses and datasets often do not.
 
 ### Why are some clusters called "Cluster 3"?
 
-A cluster is named after the narrowest OpenAlex topic, subfield or field at
+A cluster is named after the narrower of the OpenAlex topic or subfield at
 least half of its items share — "CRISPR and Genetic Engineering" when the
 group is that focused, "Molecular Biology" when it is broader. Without such a
 majority it takes whatever most of them carry. No two clusters share a name.

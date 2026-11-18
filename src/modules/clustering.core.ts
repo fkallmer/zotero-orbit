@@ -151,10 +151,14 @@ function shorten(name: string, max: number): string {
   return `${head || room.trimEnd()}\u2026`
 }
 
-type Level = 'topic' | 'subfield' | 'field'
+type Level = 'topic' | 'subfield'
 
-/** Most specific first: of two equally good names, the narrower says more. */
-const LEVELS: readonly Level[] = ['topic', 'subfield', 'field']
+/**
+ * Most specific first: of two equally good names, the narrower says more.
+ * The field is left out on purpose: "Medicine" or "Computer Science" is true
+ * of a cluster and tells the reader nothing about it.
+ */
+const LEVELS: readonly Level[] = ['topic', 'subfield']
 
 interface Candidate {
   /** As OpenAlex gives it; `label` is it shortened. */
@@ -173,10 +177,10 @@ function nameAt(topic: PrimaryTopic | null, level: Level): string | undefined {
 /**
  * The names a cluster could carry, best first.
  *
- * First every name a majority shares, topic before subfield before field.
+ * First every name a majority shares, topic before subfield.
  * Then the rest by how many members carry them, so a scattered cluster, or one
- * that lost its best name, takes the name true of most of it -- often a field
- * -- rather than a topic one member in ten happens to carry. Equal counts go
+ * that lost its best name, takes the name true of most of it -- often a
+ * subfield -- rather than a topic one member in ten happens to carry. Equal counts go
  * to the narrower level, then the name. With topics alone (an old cache) this
  * is today's order: the most common topic, then the next.
  */
@@ -208,7 +212,7 @@ function candidatesOf(members: readonly OpenAlexId[], topicOf: (id: OpenAlexId) 
  * Clusters with names.
  *
  * Each cluster is named by the most specific level of the OpenAlex hierarchy
- * -- topic, subfield, field -- that a majority of its members share; when none
+ * -- topic, then subfield, never the broad field -- that a majority of its members share; when none
  * does, by the name most members carry. `topicShare` is the share of all members,
  * those without a topic included, that carry what the label names. A cluster
  * none of whose members has a topic is named by `fallback`.

@@ -223,18 +223,19 @@ describe('cluster names from the topic hierarchy', () => {
     assert.equal(cluster.topicShare, 4 / 5)
   })
 
-  it('goes up to the field when neither topic nor subfield has a majority', () => {
+  it('never goes up to the field, however many members share it', () => {
     const { assignment, topicOf } = build([
       [
         hier('Plant ecology', 'Ecology', 'Environmental Science'),
+        hier('Forest dynamics', 'Ecology', 'Environmental Science'),
         hier('Aerosols', 'Atmospheric Science', 'Environmental Science'),
         hier('Soil carbon', 'Soil Science', 'Environmental Science'),
         hier('Bayesian methods', 'Statistics', 'Mathematics'),
       ],
     ])
     const [cluster] = labelClusters(assignment, topicOf, fallback)
-    assert.equal(cluster.label, 'Environmental Science')
-    assert.equal(cluster.topicShare, 3 / 4)
+    assert.equal(cluster.label, 'Ecology')
+    assert.equal(cluster.topicShare, 2 / 5)
   })
 
   it('keeps a majority topic over its broader subfield', () => {
@@ -245,7 +246,7 @@ describe('cluster names from the topic hierarchy', () => {
   })
 
   it('names a scattered cluster by the name most members carry, narrowest on a tie', () => {
-    // No level has a majority; the field covers the most papers.
+    // No level has a majority; the fields cover the most papers but are never used.
     const { assignment, topicOf } = build([
       [
         hier('Plant ecology', 'Ecology', 'Environmental Science'),
@@ -256,9 +257,9 @@ describe('cluster names from the topic hierarchy', () => {
       ],
     ])
     const [cluster] = labelClusters(assignment, topicOf, fallback)
-    // Two fields at two each: the alphabetically first.
-    assert.equal(cluster.label, 'Environmental Science')
-    assert.equal(cluster.topicShare, 2 / 5)
+    // Everything at one each: the topic, the narrower level, then the alphabetically first.
+    assert.equal(cluster.label, 'Aerosols')
+    assert.equal(cluster.topicShare, 1 / 5)
   })
 
   it('names a scattered cluster by its most common topic when nothing broader covers more', () => {
