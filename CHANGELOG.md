@@ -32,6 +32,9 @@ hold, it can say what is missing and file it for you.
 - **Import by DOI.** One click (with confirmation) files a missing work into
   the analysed collection through Zotero's own DOI lookup. Works already in the
   library are added to the collection instead of imported twice.
+- **Add to library from a paper graph.** A work's card in a single-paper graph
+  offers the same DOI import, and asks which collection (or none) it goes into,
+  starting with the one open in Zotero.
 - **Export and hand-off.** VOSviewer JSON, GraphML (keeps citation direction,
   for Gephi), the gaps as CSV and RIS, and links that open the collection in
   Local Citation Network and Inciteful.

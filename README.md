@@ -104,7 +104,9 @@ Right-click an item → **Citation graph**.
   and its neighbours — the citations _among_ the surrounding works, where a line
   of descent becomes visible.
 - **Clicking a mark** opens a card with the full record, links to Semantic
-  Scholar and the publisher, and a button to open a graph from that work.
+  Scholar and the publisher, a button to open a graph from that work, and —
+  for a work you do not hold — **Add to library**, which asks which collection
+  it goes into.
 - Scroll to zoom, drag to pan, Shift or Alt to stretch one axis alone.
 
 ### Collection analysis
