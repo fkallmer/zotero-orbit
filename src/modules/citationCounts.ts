@@ -41,6 +41,7 @@ import {
   titleSimilarity,
 } from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
+import { parseOpenAlexBudget, recordOpenAlexBudget } from './openAlexBudget.core'
 import {
   buildWorkUrl,
   normalizeWork,
@@ -244,6 +245,10 @@ class RateLimitManager {
    * permission to go faster than the configured limit.
    */
   static noteBudget(database: string, response: Response): void {
+    // The dollar figures too, for the graph to show what is left of the day.
+    if (database === OPENALEX_DATABASE) {
+      recordOpenAlexBudget(parseOpenAlexBudget((name) => response.headers.get(name), Date.now()))
+    }
     const remainingHeader = response.headers.get('x-ratelimit-remaining')
     const resetHeader = response.headers.get('x-ratelimit-reset')
     if (remainingHeader === null || resetHeader === null) return

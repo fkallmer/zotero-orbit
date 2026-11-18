@@ -123,6 +123,8 @@ export type FluentMessageId =
   | 'menuitem-update-citation-tallies'
   | 'menuitem-update-fwci'
   | 'network-ask-again'
+  | 'network-budget'
+  | 'network-budget-reset'
   | 'network-cancelled'
   | 'network-capped'
   | 'network-card-cited-by'

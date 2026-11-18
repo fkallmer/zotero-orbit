@@ -53,6 +53,7 @@ import {
 import { clearLibraryIndex, getLibraryMatcher, matchInLibrary } from './libraryIndex'
 import { exportActions } from './networkExport'
 import { connectedPapersUrl, openAlexCitesUrl } from './networkExport.core'
+import { describeOpenAlexBudget, latestOpenAlexBudget } from './openAlexBudget.core'
 import { hasOpenAlexApiKey } from './openAlexClient.core'
 import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
@@ -335,7 +336,10 @@ export function renderSeedChoice(
     'div',
     getString('network-confirm-estimate-cap', { args: { limit: info.limit, ...formatEstimate(info.capped) } }),
   )
-  for (const line of [all, capped]) line.style.cssText = 'font-size:12px;opacity:.85'
+  const lines = [all, capped]
+  const budget = budgetLine(doc)
+  if (budget) lines.push(budget)
+  for (const line of lines) line.style.cssText = 'font-size:12px;opacity:.85'
 
   const buttons = el(doc, 'div')
   buttons.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px'
@@ -353,7 +357,7 @@ export function renderSeedChoice(
     button('cap', getString('network-confirm-cap', { args: { limit: info.limit } })),
     button('cancel', getString('network-confirm-cancel')),
   )
-  frame.append(all, capped, buttons)
+  frame.append(...lines, buttons)
   // The frame is faded as a placeholder; a question should not be.
   ;(frame as HTMLElement).style.opacity = '1'
 }
@@ -1579,8 +1583,35 @@ function libraryOfSeed(seed: GraphSeed): number {
  * What the analysis could not cover, in one quiet line: items OpenAlex did
  * not know, and a citing side cut short. Null when there is nothing to say.
  */
+/**
+ * "OpenAlex today: $0.91 of $1.00 left, resets in 14 h" -- what the latest
+ * response said, or nothing before the first one of the day.
+ */
+function budgetText(): string | null {
+  const now = Date.now()
+  const budget = latestOpenAlexBudget(now)
+  if (!budget) return null
+  const figures = describeOpenAlexBudget(budget, now)
+  return figures.hours === null
+    ? getString('network-budget', { args: { remaining: figures.remaining, limit: figures.limit } })
+    : getString('network-budget-reset', {
+        args: { remaining: figures.remaining, limit: figures.limit, hours: figures.hours },
+      })
+}
+
+function budgetLine(doc: Document): HTMLElement | null {
+  const text = budgetText()
+  if (!text) return null
+  const line = el(doc, 'div', text)
+  line.setAttribute('data-role', 'budget')
+  return line
+}
+
 function coverageNote(doc: Document, net: CollectionNetwork): HTMLElement | null {
   const parts: string[] = []
+  // Read after the build, so it counts what this analysis spent.
+  const budget = budgetText()
+  if (budget) parts.push(budget)
   if (net.coverage.unresolved.length > 0) {
     parts.push(getString('network-coverage-unresolved', { args: { count: net.coverage.unresolved.length } }))
   }

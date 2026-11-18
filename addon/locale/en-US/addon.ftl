@@ -167,6 +167,11 @@ pane-reference-cited-by = Citations of this cited work
 
 # Collection and library network (network-*, P4/P9). Add strings below this line only.
 network-failed = The analysis stopped because OpenAlex did not answer, even after a few tries. Try again in a minute. A free OpenAlex API key (Settings → Orbit) raises its limits.
+network-budget = OpenAlex today: US$ { $remaining } of { $limit } left
+network-budget-reset = OpenAlex today: US$ { $remaining } of { $limit } left, resets in { $hours ->
+    [one] 1 hour
+   *[other] { $hours } hours
+  }
 # Name of a topic cluster none of whose papers has an OpenAlex topic. $number counts from 1.
 network-cluster-fallback = Cluster { $number }
 # The steps of an analysis, under the progress bar.
