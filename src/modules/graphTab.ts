@@ -2263,6 +2263,10 @@ export function renderGraph(
     /** When labels were last laid out during a gesture, and the trailing pass after it. */
     let labelsAt = 0
     let trailing: ReturnType<typeof setTimeout> | null = null
+    /** Where each label sits relative to its mark, from the last full layout. */
+    const labelOffsets: ({ key: string; dx: number; dy: number } | null)[] = []
+    const markAt = new Map(markData.map((mark) => [mark.key, mark.at]))
+    const screen = (at: [number, number]): [number, number] => [at[0] * kx + tx, at[1] * ky + ty]
 
     /**
      * The chain through the mark under the pointer, worked out once per hover
@@ -2347,9 +2351,15 @@ export function renderGraph(
       labelSlots.forEach((slot, index) => {
         const placement = placements[index]
         if (!placement) {
+          labelOffsets[index] = null
           put(slot, 'opacity', '0')
           return
         }
+        const anchor = markAt.get(placement.key)
+        if (anchor) {
+          const [mx, my] = screen(anchor)
+          labelOffsets[index] = { key: placement.key, dx: placement.x - mx, dy: placement.y - my }
+        } else labelOffsets[index] = null
         const x = placement.x.toFixed(1)
         // One line is the overwhelming case and costs a single assignment;
         // only the pointed-at mark is ever wrapped, and only that one pays for
@@ -2378,6 +2388,26 @@ export function renderGraph(
         // for them -- but their captions are what makes it unreadable.
         const related = placement.key === emphasised() || (currentChain()?.keys.has(placement.key) ?? false)
         put(slot, 'opacity', emphasised() === null ? '0.9' : related ? emphasis(placement.key, 0.9, 0.55, 1) : '0')
+      })
+    }
+
+    /**
+     * Between two full layouts during a gesture, each label travels with its
+     * mark at the offset it was placed at, so the names stay on their marks
+     * instead of waiting for the next layout to catch up.
+     */
+    const carryLabels = (): void => {
+      labelSlots.forEach((slot, index) => {
+        const offset = labelOffsets[index]
+        if (!offset) return
+        const anchor = markAt.get(offset.key)
+        if (!anchor) return
+        const [mx, my] = screen(anchor)
+        const x = (mx + offset.dx).toFixed(1)
+        put(slot, 'x', x)
+        put(slot, 'y', (my + offset.dy).toFixed(1))
+        // A wrapped title positions each line by its own x.
+        for (const tspan of Array.from(slot.children)) tspan.setAttribute('x', x)
       })
     }
 
@@ -2449,7 +2479,7 @@ export function renderGraph(
       if (!wasMoved || now - labelsAt >= 100) {
         labelsAt = now
         applyLabels(view)
-      }
+      } else carryLabels()
       if (wasMoved) {
         if (trailing !== null) clearTimeout(trailing)
         trailing = setTimeout(() => {
