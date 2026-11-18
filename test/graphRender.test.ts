@@ -807,10 +807,9 @@ describe('a collection network on the tab', () => {
     fire(container.querySelector('[data-cluster="none"]'), 'click')
     assert.deepEqual(rows(), ['CITER', 'GAP'])
 
-    // Topic A picked: its gap carries the cluster's colour behind it.
+    // Topic A picked, filtered: every row is Topic A's, so none is washed.
     fire(container.querySelector('[data-cluster="0"]'), 'click')
-    const gap = container.querySelector('.orbit-gap[data-openalex="GAP"]')
-    assert.ok(gap.getAttribute('data-highlight'), 'the picked cluster is not highlighted')
+    assert.equal(container.querySelector('.orbit-gap[data-highlight]'), null, 'a wash on a filtered list')
 
     // Unticking "only the picked clusters": every work again, Topic A's still highlighted.
     const box = container.querySelector('.orbit-gaps-scope-box')
@@ -819,7 +818,7 @@ describe('a collection network on the tab', () => {
     fire(box, 'change')
     assert.deepEqual(rows(), ['CITER', 'GAP'])
     assert.ok(container.querySelector('.orbit-gap[data-openalex="GAP"]').getAttribute('data-highlight'))
-    // CITER is cited by S1 (Topic A) and S3: highlighted too, by its Topic A item.
+    // CITER is cited by S1 (Topic A) and the unclustered S3: Topic A is its only cluster.
     assert.ok(container.querySelector('.orbit-gap[data-openalex="CITER"]').getAttribute('data-highlight'))
 
     // Nothing picked: no switch.

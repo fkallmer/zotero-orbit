@@ -25,7 +25,8 @@ All notable changes to Orbit. The format follows
   on, ranked again among them. Every row carries dots in the colours of the
   clusters that cite it, and with clusters picked, a light wash of the
   picked cluster's colour behind it. Unticking "Only works of the picked
-  clusters" keeps every work in the list and only highlights theirs. The
+  clusters" keeps every work in the list and washes only those mostly cited
+  by the picked clusters. The
   chosen view and order survive picking clusters.
 - **The OpenAlex budget shows during an analysis**, under the progress bar, so
   a long run can be watched spending it.

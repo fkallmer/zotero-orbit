@@ -2211,12 +2211,12 @@ export function renderGraph(
         onShowItem: showItem,
         clustersOf: (seeds) => clustersCiting(net as CollectionNetwork, seeds, theme),
         highlightOf: (seeds) => {
-          if (view0.selectedClusters.size === 0) return null
-          // The picked cluster most of its citing items are in.
-          const picked = clustersCiting(net as CollectionNetwork, seeds, theme).find((cluster) =>
-            view0.selectedClusters.has(cluster.id),
-          )
-          return picked?.colour ?? null
+          // Filtered, every row is the picked clusters' anyway: no wash.
+          if (view0.selectedClusters.size === 0 || gapsFiltered) return null
+          // Only a work that belongs to a picked cluster: most of the items
+          // citing it are in one. One item of twenty-four is not belonging.
+          const [main] = clustersCiting(net as CollectionNetwork, seeds, theme)
+          return main && view0.selectedClusters.has(main.id) ? main.colour : null
         },
       }),
     )
