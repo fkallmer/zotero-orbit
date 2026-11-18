@@ -74,10 +74,10 @@ has no number for the work, not a count of zero.
 
 ### Item pane section
 
-![The item pane section, over a paper three sources disagree about](docs/assets/readme/item-pane.png)
+<img src="docs/assets/readme/item-pane.png" width="300" align="right" alt="The item pane section, over a paper three sources disagree about" />
 
 The same counts, spelled out and linked to their sources — the disagreement
-above is real, and it is the ordinary case rather than a bad day. Then the
+in the picture is real, and it is the ordinary case rather than a bad day. Then the
 OpenAlex record: citations per year with a running total, the field-weighted
 impact and its percentile, open-access status with a link to the full text,
 journal metrics, authors with their ORCIDs, institutions with their RORs,
@@ -87,6 +87,8 @@ Underneath, the works this paper cites, from Semantic Scholar (which finds
 consistently more of them than OpenAlex). A ✓ marks one you already hold, and
 clicking it goes there; a ○ marks one you _probably_ hold (see
 [how matching works](#how-does-orbit-know-what-i-already-have)).
+
+<br clear="right" />
 
 ### Paper graph
 
