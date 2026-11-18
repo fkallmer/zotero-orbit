@@ -123,8 +123,9 @@ network:
 
 - **Clusters.** Items that cite the same works are grouped (bibliographic
   coupling, Leiden algorithm) and each group is named after the OpenAlex
-  topic or subfield most of its items share. All clusters show at first; click one in the legend to show
-  only that one, and click more to add them back one by one.
+  topic or subfield most of its items share. All clusters show at first;
+  click one in the legend to show only that one, and click more to add them
+  back one by one.
 - **Shared references.** Works cited by at least two of your items appear
   beside them, and the citations between everything on screen are drawn.
 - **Who cites your collection.** With an [OpenAlex API key](#settings), Orbit
