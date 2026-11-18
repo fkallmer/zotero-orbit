@@ -2294,6 +2294,19 @@ export function renderGraph(
     /** Where each label sits relative to its mark, from the last full layout. */
     const labelOffsets: ({ key: string; dx: number; dy: number } | null)[] = []
     const markAt = new Map(markData.map((mark) => [mark.key, mark.at]))
+    /** The translucent discs of a crowded network, by key, with the fill each rests at. */
+    const translucent = new Map<string, { disc: Element; resting: string }>()
+    if ((layout.markScale ?? 1) < 1) {
+      const hollow = new Set(layout.nodes.filter((node) => node.hollow).map((node) => node.key))
+      for (const mark of markData) {
+        if (hollow.has(mark.key)) continue
+        const disc = mark.element.querySelector('[data-doi]')
+        const resting = disc?.getAttribute('fill-opacity')
+        if (disc && resting) translucent.set(mark.key, { disc, resting })
+      }
+    }
+    /** The disc currently drawn solid, if any. */
+    let solid: string | null = null
     const screen = (at: [number, number]): [number, number] => [at[0] * kx + tx, at[1] * ky + ty]
 
     /**
@@ -2449,6 +2462,17 @@ export function renderGraph(
      */
     const applyEmphasis = (): void => {
       for (const mark of markData) put(mark.element, 'opacity', emphasis(mark.key, 1, 0.22, 1))
+      // A crowded network's discs rest translucent so overlaps show; the one
+      // being pointed at is drawn solid. One disc written per change of mark,
+      // not one per mark.
+      const at = emphasised()
+      if (at !== solid) {
+        const was = solid === null ? undefined : translucent.get(solid)
+        if (was) put(was.disc, 'fill-opacity', was.resting)
+        const now = at === null ? undefined : translucent.get(at)
+        if (now) put(now.disc, 'fill-opacity', '1')
+        solid = at
+      }
       /** Lit edges thicken and take the larger head; the rest recede. */
       const setEdge = (
         line: (typeof lineData)[number],

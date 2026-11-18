@@ -325,12 +325,20 @@ function radiusFor(referenceCount: number | null, role: GraphRole, mode: GraphMo
 /**
  * How much of the plot a network's marks may cover before they shrink.
  *
- * The sum of their areas over the plot's, overlaps counted twice. A twenty-
- * paper collection with its hundred-odd gaps sits near a quarter and keeps its
- * sizes; three hundred papers with theirs cover the plot more than once over,
- * and that is the solid blob in the middle.
+ * The sum of their areas over the plot's, overlaps counted twice, a ring at
+ * {@link HOLLOW_WEIGHT} of its disc. A twenty-paper collection with its
+ * hundred-odd gaps sits near a tenth on a full-width tab and keeps its sizes
+ * until the plot is less than half that; three hundred papers cover it nearly
+ * once over, and that is the solid blob in the middle.
  */
-export const NETWORK_COVERAGE = 0.35
+export const NETWORK_COVERAGE = 0.25
+
+/**
+ * How much of its disc a gap's ring counts for: an outline hides little of
+ * what lies under it, so a hundred of them should not shrink the collection
+ * the way a hundred discs would.
+ */
+export const HOLLOW_WEIGHT = 0.25
 
 /** The least a crowded network's marks shrink to, as a share of their size. */
 export const NETWORK_MIN_SCALE = 0.5
@@ -346,9 +354,11 @@ export const NETWORK_MIN_SCALE = 0.5
  * {@link NETWORK_MIN_SCALE} so a huge collection does not collapse to dots;
  * zooming in is how one reads a field that dense.
  */
-export function networkMarkScale(radii: readonly number[], plotArea: number): number {
+export function networkMarkScale(marks: readonly { radius: number; hollow?: boolean }[], plotArea: number): number {
   if (!(plotArea > 0)) return 1
-  const covered = radii.reduce((sum, r) => sum + Math.PI * r * r, 0) / plotArea
+  const area = (mark: { radius: number; hollow?: boolean }): number =>
+    Math.PI * mark.radius * mark.radius * (mark.hollow ? HOLLOW_WEIGHT : 1)
+  const covered = marks.reduce((sum, mark) => sum + area(mark), 0) / plotArea
   if (covered <= NETWORK_COVERAGE) return 1
   return Math.max(NETWORK_MIN_SCALE, Math.sqrt(NETWORK_COVERAGE / covered))
 }
@@ -861,13 +871,7 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
 
   // A crowded network shrinks before anything is placed round its marks, so
   // the labels and the arrow gaps are measured against the size drawn.
-  const markScale =
-    mode === 'network'
-      ? networkMarkScale(
-          placed.map((node) => node.radius),
-          plotWidth * plotHeight,
-        )
-      : 1
+  const markScale = mode === 'network' ? networkMarkScale(placed, plotWidth * plotHeight) : 1
   if (markScale < 1) for (const node of placed) node.radius = scaledRadius(node.radius, markScale, node)
 
   assignLabels(placed, width, height, { labelRoles, mode })

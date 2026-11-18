@@ -479,26 +479,47 @@ describe('crowded networks', () => {
   }
   const wide: LayoutOptions = { ...network, width: 1020, height: 600 }
 
+  const discs = (count: number, radius = 20): { radius: number }[] => Array.from({ length: count }, () => ({ radius }))
+
   it('leaves a plot its marks cover sparsely alone', () => {
-    assert.equal(networkMarkScale([10, 10, 10], 100_000), 1)
+    assert.equal(networkMarkScale(discs(3, 10), 100_000), 1)
     assert.equal(networkMarkScale([], 100_000), 1)
-    assert.equal(networkMarkScale([10], 0), 1)
+    assert.equal(networkMarkScale(discs(1, 10), 0), 1)
   })
 
   it('shrinks a crowded plot until its marks cover the allowance, never below the floor', () => {
-    const radii = Array.from({ length: 50 }, () => 20)
+    const marks = discs(40)
     const area = 100_000
-    const scale = networkMarkScale(radii, area)
+    const scale = networkMarkScale(marks, area)
     assert.ok(scale < 1 && scale > NETWORK_MIN_SCALE)
-    const covered = radii.reduce((sum, r) => sum + Math.PI * (r * scale) ** 2, 0) / area
+    const covered = marks.reduce((sum, mark) => sum + Math.PI * (mark.radius * scale) ** 2, 0) / area
     assert.ok(Math.abs(covered - NETWORK_COVERAGE) < 1e-9)
-    assert.equal(
-      networkMarkScale(
-        Array.from({ length: 5000 }, () => 20),
-        area,
-      ),
-      NETWORK_MIN_SCALE,
+    assert.equal(networkMarkScale(discs(5000), area), NETWORK_MIN_SCALE)
+  })
+
+  it('counts a ring for less than a disc, since it hides less', () => {
+    const rings = discs(40).map((mark) => ({ ...mark, hollow: true }))
+    assert.ok(networkMarkScale(rings, 100_000) > networkMarkScale(discs(40), 100_000))
+  })
+
+  it('keeps a small collection with many gaps unchanged on a modest plot', () => {
+    // Orbit-Test's shape: sixteen papers and a hundred and twenty gaps, here
+    // on a plot about a third smaller than a full-width tab gives it.
+    const random = prng(7)
+    const gaps = Array.from({ length: 120 }, (_, i) =>
+      node({
+        key: `g${i}`,
+        year: 1990 + Math.floor(random() * 35),
+        citedByCount: Math.round(10 ** (1 + random() * 4)),
+        referenceCount: Math.round(10 ** (random() * 2.5)),
+        hollow: true,
+        gapRank: i + 1,
+      }),
     )
+    const layout = buildGraphLayout([...seeds(16), ...gaps], { ...network, width: 760, height: 470 })
+    assert.ok(layout)
+    assert.equal(layout.markScale, 1)
+    assert.doesNotMatch(markOf(renderGraphSvg(layout, clustered), 's0'), /fill-opacity/)
   })
 
   it('keeps a small collection at the sizes it always had', () => {
