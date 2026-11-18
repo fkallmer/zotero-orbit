@@ -9,7 +9,7 @@ import {
   CLUSTER_PALETTE,
   FITTED,
   GAP_TIERS,
-  NETWORK_MAX_RADIUS,
+  networkRadius,
   hueFor,
   placeLabels,
   renderGraphSvg,
@@ -267,8 +267,8 @@ describe('network mode', () => {
     assert.ok(layout)
     const seeds = layout.nodes.filter((n) => n.role === 'seed')
     assert.equal(seeds.length, 3)
-    // referenceCount null gives the base radius; the star's floor is 16.
-    for (const seed of seeds) assert.equal(seed.radius, 6)
+    // referenceCount null gives the network's base radius; the star's floor is 16.
+    for (const seed of seeds) assert.equal(seed.radius, networkRadius(null))
     assert.ok(!renderGraphSvg(layout, clustered).includes('opacity="0.35"'), 'a seed halo was drawn')
   })
 
@@ -382,12 +382,14 @@ describe('labelRoles', () => {
       assert.ok(Math.abs(clear.y - seed.y) < Math.abs(crowded.y - seed.y), 'the obstacle did not move the name')
   })
 
-  it('caps the size of a mark in a network, not in the single-paper graph', () => {
+  it('sizes marks in a network on a logarithmic scale, the single-paper graph unchanged', () => {
+    const sizes = [0, 10, 50, 100, 1000, 4000].map((count) => Math.round(networkRadius(count)))
+    assert.deepEqual(sizes, [5, 15, 22, 24, 34, 40])
+    // Every step still makes a mark larger.
+    for (let i = 1; i < sizes.length; i++) assert.ok(sizes[i] > sizes[i - 1])
     const review = node({ key: 'r', role: 'seed', referenceCount: 4000 })
-    const inNetwork = buildGraphLayout([review], network)
-    const inStar = buildGraphLayout([review], { ...network, mode: 'star' })
-    assert.equal(inNetwork?.nodes[0]?.radius, NETWORK_MAX_RADIUS)
-    assert.ok((inStar?.nodes[0]?.radius ?? 0) > 100)
+    assert.equal(buildGraphLayout([review], network)?.nodes[0]?.radius, networkRadius(4000))
+    assert.ok((buildGraphLayout([review], { ...network, mode: 'star' })?.nodes[0]?.radius ?? 0) > 100)
   })
 })
 

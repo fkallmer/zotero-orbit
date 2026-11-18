@@ -293,19 +293,26 @@ export function citationScale(count: number, kind: ScaleKind = 'log'): number {
  * that is about it.
  */
 /**
- * The largest mark in a network. Size still says "this one cites a lot", but
- * a review with four thousand references would otherwise be a disc 120 px
- * across, laid over everything near it -- one such in three hundred items
- * hides a cluster. The single-paper graph keeps its unbounded size: it has
- * few marks, and its frozen snapshot says it must not change.
+ * A mark's size in a network, on a logarithmic scale.
+ *
+ * Size says how many works a mark cites. On the single-paper graph's square
+ * root, a review with four thousand references was a disc 126 px across and
+ * hid a cluster; a hard ceiling fixed that but made every article past 135
+ * references the same size, and most articles are past it. A logarithm keeps
+ * the steps between 10, 50 and 100 references visible and lets the rare
+ * review grow only slowly: 15, 21, 24 px at those counts, 34 at a thousand,
+ * 40 at four thousand. The single-paper graph keeps its sizes: it has few
+ * marks, and its frozen snapshot says it must not change.
  */
-export const NETWORK_MAX_RADIUS = 28
+export function networkRadius(referenceCount: number | null): number {
+  return 5 + 4.2 * Math.log1p(Math.max(0, referenceCount ?? 0))
+}
 
 function radiusFor(referenceCount: number | null, role: GraphRole, mode: GraphMode): number {
   const radius = 6 + Math.sqrt(referenceCount ?? 0) * 1.9
   // In a network the seeds are the collection, hundreds of them, and a floor
   // meant to make one mark findable would only make the field a carpet.
-  if (mode === 'network') return Math.min(radius, NETWORK_MAX_RADIUS)
+  if (mode === 'network') return networkRadius(referenceCount)
   return role === 'seed' ? Math.max(radius, 16) : radius
 }
 
