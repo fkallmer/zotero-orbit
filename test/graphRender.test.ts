@@ -799,11 +799,18 @@ describe('a collection network on the tab', () => {
     assert.equal(dots.length, 1)
     assert.equal(dots[0].getAttribute('title'), 'Topic A (2)')
 
+    assert.equal(container.querySelector('.orbit-gap[data-highlight]'), null, 'a highlight with nothing picked')
+
     // Only the unclustered item: what it cites or is cited by, nothing of Topic A's.
     fire(container.querySelector('[data-cluster="none"]'), 'click')
     assert.deepEqual(rows(), ['CITER'])
     fire(container.querySelector('[data-cluster="none"]'), 'click')
     assert.deepEqual(rows(), ['CITER', 'GAP'])
+
+    // Topic A picked: its gap carries the cluster's colour behind it.
+    fire(container.querySelector('[data-cluster="0"]'), 'click')
+    const gap = container.querySelector('.orbit-gap[data-openalex="GAP"]')
+    assert.ok(gap.getAttribute('data-highlight'), 'the picked cluster is not highlighted')
   })
 
   it('draws no star: every line is a citation between two works on the plot', () => {

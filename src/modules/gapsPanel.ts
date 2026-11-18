@@ -32,6 +32,12 @@ export interface GapsPanelHandlers {
    * it belongs to the way its mark does. Optional: without it, no dots.
    */
   clustersOf?: (seeds: readonly OpenAlexId[]) => { colour: string; label: string; count: number }[]
+  /**
+   * The colour of the picked cluster a work belongs to, or null when no
+   * cluster is picked or none of the picked ones cites it. Drawn as a light
+   * wash behind the card.
+   */
+  highlightOf?: (seeds: readonly OpenAlexId[]) => string | null
 }
 
 /** Dots in the clusters' colours, one per cluster citing the work. */
@@ -204,11 +210,33 @@ function viewSwitch(
 function card(doc: Document, tag: string, className: string): HTMLElement {
   const row = el(doc, tag, className)
   row.style.cssText =
-    `display:flex;gap:9px;align-items:flex-start;padding:8px 9px;border-radius:8px;background:${TINT.card};` +
+    `display:flex;gap:9px;align-items:flex-start;padding:8px 9px;border-radius:8px;background-color:${TINT.card};` +
     'transition:background-color .12s'
-  row.addEventListener('mouseenter', () => (row.style.background = TINT.cardHover))
-  row.addEventListener('mouseleave', () => (row.style.background = TINT.card))
+  // The colour only, so a cluster highlight laid over it as an image stays.
+  row.addEventListener('mouseenter', () => (row.style.backgroundColor = TINT.cardHover))
+  row.addEventListener('mouseleave', () => (row.style.backgroundColor = TINT.card))
   return row
+}
+
+/** `#rrggbb` at an opacity; anything else unchanged, at full strength. */
+function withAlpha(colour: string, alpha: number): string {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(colour)
+  if (!match) return colour
+  const [r, g, b] = match.slice(1).map((hex) => Number.parseInt(hex, 16))
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+/**
+ * A light wash of a picked cluster's colour behind the card, and a stripe of
+ * it down the left edge: the row belongs to the topic picked in the legend.
+ */
+function highlight(row: HTMLElement, seeds: readonly OpenAlexId[], handlers: GapsPanelHandlers): void {
+  const colour = handlers.highlightOf?.(seeds)
+  if (!colour) return
+  const wash = withAlpha(colour, 0.13)
+  row.style.backgroundImage = `linear-gradient(${wash},${wash})`
+  row.style.boxShadow = `inset 3px 0 0 ${colour}`
+  row.setAttribute('data-highlight', colour)
 }
 
 /** The rank in a round badge; filled for the first ten, as the graph numbers them. */
@@ -339,6 +367,7 @@ function renderReferenced(
     byline.prepend(...clusterDots(doc, work.seeds, handlers))
     body.append(title, byline, figures(doc, work), ...citedBy(doc, net, work.seeds, 'reference', handlers))
     row.append(badge(doc, work.rank, 'orbit-referenced-rank'), body)
+    highlight(row, work.seeds, handlers)
 
     const gap = gaps.get(work.openAlexId)
     if (work.held !== null && work.itemID !== null) {
@@ -463,6 +492,7 @@ function gapRow(doc: Document, net: CollectionNetwork, gap: Gap, handlers: GapsP
   body.append(title, byline, figures(doc, gap, gap.score), ...citedBy(doc, net, gap.seeds, gap.direction, handlers))
 
   row.append(badge(doc, gap.rank, 'orbit-gap-rank'), body)
+  highlight(row, gap.seeds, handlers)
   if (handlers.canImport && gap.doi) row.append(importControl(doc, gap, handlers))
   return row
 }

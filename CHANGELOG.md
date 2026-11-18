@@ -23,7 +23,8 @@ All notable changes to Orbit. The format follows
 - **The gaps list follows the cluster filter.** Picking clusters in the legend
   narrows the list, and the numbered marks, to the works those clusters lean
   on, ranked again among them. Every row carries dots in the colours of the
-  clusters that cite it.
+  clusters that cite it, and with clusters picked, a light wash of the
+  picked cluster's colour behind it.
 - **The OpenAlex budget shows during an analysis**, under the progress bar, so
   a long run can be watched spending it.
 

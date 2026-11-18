@@ -319,7 +319,7 @@ function clustersCiting(
   net: CollectionNetwork,
   seeds: readonly string[],
   theme: GraphTheme,
-): { colour: string; label: string; count: number }[] {
+): { id: number; colour: string; label: string; count: number }[] {
   const counts = new Map<number, number>()
   for (const id of seeds) {
     const cluster = clusterOfSeed(net, id)
@@ -329,6 +329,7 @@ function clustersCiting(
   return [...counts]
     .sort((a, b) => b[1] - a[1] || a[0] - b[0])
     .map(([id, count]) => ({
+      id,
       colour: theme.clusters?.[id] ?? theme.muted,
       label: labels.get(id) ?? '',
       count,
@@ -2184,6 +2185,14 @@ export function renderGraph(
         onFocus: focusMark,
         onShowItem: showItem,
         clustersOf: (seeds) => clustersCiting(net as CollectionNetwork, seeds, theme),
+        highlightOf: (seeds) => {
+          if (view0.selectedClusters.size === 0) return null
+          // The picked cluster most of its citing items are in.
+          const picked = clustersCiting(net as CollectionNetwork, seeds, theme).find((cluster) =>
+            view0.selectedClusters.has(cluster.id),
+          )
+          return picked?.colour ?? null
+        },
       }),
     )
   }
