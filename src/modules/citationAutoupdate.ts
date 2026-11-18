@@ -6,12 +6,13 @@ import { debugLog, debugLogLazy } from '../utils/log'
 import { getPref } from '../utils/prefs'
 import { parseCitationStampDate, parseDateAddedInstant } from '../utils/temporalParse'
 
-import { Helpers, updateItem } from './citationCounts'
+import { Helpers, updateItem, watchRateLimitNotice, withRateLimitNotice } from './citationCounts'
 import { effectiveDatabases } from './citationTypes'
 import { refreshFwciAfterCounts } from './fwciUpdate'
 import { GOOGLE_SCHOLAR_DATABASE } from './googleScholarClient.core'
 import { isSemanticScholarAvailable } from './semanticScholarClient'
 
+import type { ProgressLineWindow } from './citationCounts'
 import type { ProgressWindowHelper } from 'zotero-plugin-toolkit'
 
 // Preference values outside the menu options fall back to six months.
@@ -109,6 +110,16 @@ let autoUpdateTrigger: UpdateTrigger = 'startup'
 let autoUpdateProgressWindow: ProgressWindowHelper | null = null
 let autoUpdateRetryCount = 0
 let autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
+let stopRateLimitWatch: (() => void) | null = null
+
+/** The progress line for the current item, plus any rate-limit notice. */
+function autoUpdateItemText(): string {
+  return withRateLimitNotice(
+    getString('auto-update-updating-item', {
+      args: { current: autoUpdateIndex + 1, total: autoUpdateQueue.length },
+    }),
+  )
+}
 const MAX_RETRIES = 3
 const RETRY_DELAY = 5000 // 5 seconds
 
@@ -455,6 +466,9 @@ async function startAutomaticUpdate(silent: boolean = false, trigger: UpdateTrig
             progress: 0,
           })
           .show()
+        stopRateLimitWatch = watchRateLimitNotice(() => {
+          ;(autoUpdateProgressWindow as ProgressLineWindow | null)?.changeLine({ text: autoUpdateItemText() })
+        })
       }
 
       void processAutoUpdateQueue(silent)
@@ -509,9 +523,7 @@ async function processAutoUpdateQueue(silent: boolean = false) {
 
   if (!silent && autoUpdateProgressWindow) {
     autoUpdateProgressWindow?.changeLine({
-      text: getString('auto-update-updating-item', {
-        args: { current: autoUpdateIndex + 1, total: autoUpdateQueue.length },
-      }),
+      text: autoUpdateItemText(),
       progress: progress,
     })
   }
@@ -588,6 +600,8 @@ function scheduleRetry(silent: boolean = false) {
  */
 function finishAutomaticUpdate(errorMessage?: string, silent: boolean = false) {
   autoUpdateInProgress = false
+  stopRateLimitWatch?.()
+  stopRateLimitWatch = null
 
   if (autoUpdateProgressWindow) {
     autoUpdateProgressWindow.close()

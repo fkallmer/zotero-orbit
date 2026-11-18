@@ -121,6 +121,7 @@ function makeCore(opts: {
   random?: number
   shutdownSignal?: AbortSignal
   onFetch?: (callIndex: number) => void
+  onRateLimitWait?: (untilMonotonicMs: number | null) => void
   config?: Partial<S2CoreConfig>
 }) {
   const state = { clock: 0, calls: [] as { keyed: boolean; userAgent?: string; url: string }[], i: 0 }
@@ -190,6 +191,7 @@ function makeCore(opts: {
     parseRetryAfterMs,
     shutdownSignal: opts.shutdownSignal ?? new AbortController().signal,
     log: () => undefined,
+    onRateLimitWait: opts.onRateLimitWait,
     config: opts.config,
   }
   return { core: new SemanticScholarClientCore(deps), state, key }
@@ -618,4 +620,49 @@ test('Retry-After header is honored as a floor on 429', async () => {
   })
   assert.deepEqual(await core.lookupSemanticScholarCount(oneDoi), { count: 5, status: 'success' })
   assert.equal(state.clock, 10_000)
+})
+
+test('a 429 wait is reported with its wake time, and cleared by the next success', async () => {
+  const reports: (number | null)[] = []
+  const { core, state } = makeCore({
+    script: [{ status: 429 }, ok(3)],
+    random: 1,
+    onRateLimitWait: (until) => reports.push(until),
+  })
+  assert.deepEqual(await core.lookupSemanticScholarCount(oneDoi), { count: 3, status: 'success' })
+  // Anonymous spacing (3 s) outlasts the 1 s backoff, so that is the real wait.
+  assert.deepEqual(reports, [3000, null])
+  assert.equal(state.clock, 3000)
+})
+
+test('ordinary spacing without a 429 is never reported as rate limiting', async () => {
+  const reports: (number | null)[] = []
+  const { core } = makeCore({ script: [ok(1), ok(2)], onRateLimitWait: (until) => reports.push(until) })
+  await core.lookupSemanticScholarCount(oneDoi)
+  await core.lookupSemanticScholarCount(oneDoi)
+  assert.deepEqual(reports, [])
+})
+
+test('a throwing rate-limit sink does not break the lookup or change its timing', async () => {
+  const { core, state } = makeCore({
+    script: [{ status: 429 }, ok(3)],
+    random: 1,
+    onRateLimitWait: () => {
+      throw new Error('display failed')
+    },
+  })
+  assert.deepEqual(await core.lookupSemanticScholarCount(oneDoi), { count: 3, status: 'success' })
+  assert.equal(state.clock, 3000)
+})
+
+test('a long Retry-After that opens the circuit is reported until it closes', async () => {
+  const reports: (number | null)[] = []
+  const { core } = makeCore({
+    script: [{ status: 429, headers: { 'retry-after': '300' } }],
+    onRateLimitWait: (until) => reports.push(until),
+  })
+  assert.equal((await core.lookupSemanticScholarCount(oneDoi)).status, 'rate_limited')
+  // The next lookup fails fast against the open circuit, and says until when.
+  assert.equal((await core.lookupSemanticScholarCount(oneDoi)).status, 'transient_error')
+  assert.deepEqual(reports, [300_000])
 })

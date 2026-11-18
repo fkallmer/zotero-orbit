@@ -52,11 +52,18 @@ import {
   toLookupDoi,
   WORK_FULL_SELECT,
 } from './openAlexClient.core'
-import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
+import { noteWait, noticeKey, pickNotice, pruneWaits, SEMANTIC_SCHOLAR_SOURCE } from './rateLimitNotice.core'
+import {
+  getSemanticScholarClient,
+  isSemanticScholarAvailable,
+  isSemanticScholarKeySet,
+  setSemanticScholarRateLimitListener,
+} from './semanticScholarClient'
 
 import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
 import type { ScholarlyRecord } from './openAlexClient.core'
+import type { RateLimitNotice, WaitBoard } from './rateLimitNotice.core'
 
 // Semantic Scholar uses its own scheduler and has no entry in this millisecond table.
 const DEFAULT_RATE_LIMITS: Record<string, number> = {
@@ -185,6 +192,77 @@ function lookupFetch(url: string, init?: RequestInit): Promise<Response> {
 /** Process-wide item-notifier registration. */
 let notifierID: string | null = null
 
+function monotonicNow(): number {
+  return performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
+}
+
+// Rate-limit visibility. The schedulers report their waits here; the progress
+// windows read them back once a second. See `rateLimitNotice.core`.
+let rateLimitWaits: WaitBoard = {}
+
+function noteRateLimitWait(source: string, untilMonotonicMs: number | null): void {
+  const now = monotonicNow()
+  rateLimitWaits = noteWait(pruneWaits(rateLimitWaits, now), source, now, untilMonotonicMs)
+}
+
+// Semantic Scholar runs its own scheduler, so its waits arrive by listener.
+setSemanticScholarRateLimitListener((untilMonotonicMs) => noteRateLimitWait(SEMANTIC_SCHOLAR_SOURCE, untilMonotonicMs))
+
+function currentRateLimitNotice(): RateLimitNotice | null {
+  const now = monotonicNow()
+  rateLimitWaits = pruneWaits(rateLimitWaits, now)
+  if (Object.keys(rateLimitWaits).length === 0) return null
+  return pickNotice(rateLimitWaits, now, isSemanticScholarKeySet())
+}
+
+/**
+ * The progress line, with the rate-limit notice appended while a source is
+ * making the queue wait. Without one, the line said "Item 12 of 400" for half a
+ * minute at a time and the update looked hung.
+ */
+function withRateLimitNotice(progressText: string): string {
+  const notice = currentRateLimitNotice()
+  if (notice === null) return progressText
+  const wait = getString('rate-limit-wait-duration', { args: { amount: notice.amount, unit: notice.unit } })
+  const args = { progress: progressText, wait, source: getOperationName(notice.source) }
+  switch (notice.id) {
+    case 'rate-limit-waiting-semanticscholar-no-key':
+      return getString('rate-limit-waiting-semanticscholar-no-key', { args })
+    case 'rate-limit-waiting-semanticscholar':
+      return getString('rate-limit-waiting-semanticscholar', { args })
+    case 'rate-limit-waiting':
+      return getString('rate-limit-waiting', { args })
+  }
+}
+
+/** The part of a toolkit progress window the rate-limit notice redraws. */
+export interface ProgressLineWindow {
+  changeLine: (options: { text?: string; progress?: number }) => unknown
+  show: () => unknown
+}
+
+/**
+ * Call `redraw` whenever the rate-limit notice would read differently -- each
+ * second of a countdown, and once more when the wait ends -- so a queue that is
+ * blocked inside a lookup still shows why. With `everyTickWhileWaiting`, also
+ * on every tick while a notice is up, for a window that must be kept open by
+ * showing it again. Returns the disposer.
+ */
+function watchRateLimitNotice(redraw: () => void, everyTickWhileWaiting = false): () => void {
+  let lastKey = noticeKey(currentRateLimitNotice())
+  const timer = setInterval(() => {
+    const key = noticeKey(currentRateLimitNotice())
+    if (key === lastKey && !(everyTickWhileWaiting && key !== '')) return
+    lastKey = key
+    try {
+      redraw()
+    } catch (e) {
+      ztoolkit.log('Failed to update the rate-limit notice', e)
+    }
+  }, 1000)
+  return () => clearInterval(timer)
+}
+
 // Adaptive rate limiting state
 class RateLimitManager {
   private static multipliers: Record<string, number> = {}
@@ -224,11 +302,13 @@ class RateLimitManager {
     // Some providers document a minimum pause after a 429 that the multiplier
     // alone would not reach. Push the next departure out to satisfy it.
     const minPause = MIN_BACKOFF_AFTER_429_MS[database]
+    const now = monotonicNow()
     if (minPause !== undefined) {
-      const now = performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
       const current = this.nextAvailable[database] ?? now
       this.nextAvailable[database] = Math.max(current, now + minPause)
     }
+    // For display only: when the next request may leave, as far as we know now.
+    noteRateLimitWait(database, Math.max(this.nextAvailable[database] ?? now, now + this.getDelay(database)))
 
     ztoolkit.log(`Rate limit detected for ${database}: increasing multiplier to ${newMultiplier.toFixed(1)}x`)
   }
@@ -259,9 +339,10 @@ class RateLimitManager {
 
     if (remaining <= 0) {
       // Budget spent. Nothing to do but wait out the window.
-      const now = performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
+      const now = monotonicNow()
       const current = this.nextAvailable[database] ?? now
       this.nextAvailable[database] = Math.max(current, now + resetSeconds * 1000)
+      noteRateLimitWait(database, this.nextAvailable[database])
       ztoolkit.log(`Budget exhausted for ${database}: pausing ${resetSeconds}s until reset`)
       return
     }
@@ -303,6 +384,8 @@ class RateLimitManager {
   }
 
   static handleSuccess(database: string): void {
+    // A request got through, so whatever wait was announced is over.
+    if (rateLimitWaits[database] !== undefined) noteRateLimitWait(database, null)
     const currentMultiplier = this.multipliers[database] || 1
     if (currentMultiplier > 1) {
       // Gradually decrease multiplier on success
@@ -1476,6 +1559,21 @@ let currentIndex = -1
 let totalItems = 0
 let itemsToUpdate: Zotero.Item[] = []
 let updatedCount = 0
+let stopManualRateLimitWatch: (() => void) | null = null
+
+/** The manual progress line: the item counter, plus any rate-limit notice. */
+function manualProgressText(): string {
+  const base =
+    currentIndex < 0
+      ? getString('progress-getting-citation-tallies')
+      : getString('progress-item-counter', { args: { current: currentIndex + 1, total: totalItems } })
+  return withRateLimitNotice(base)
+}
+
+function stopManualRateLimitNotice(): void {
+  stopManualRateLimitWatch?.()
+  stopManualRateLimitWatch = null
+}
 
 /** Close the manual update progress window and drop queue state (shutdown path). */
 function cancelManualUpdate() {
@@ -1486,6 +1584,7 @@ function cancelManualUpdate() {
  * Reset the state of the citation count update process
  */
 function resetState() {
+  stopManualRateLimitNotice()
   if (progressWindow) {
     progressWindow.close()
     progressWindow = null
@@ -1542,6 +1641,13 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
       type: 'default',
       progress: 0,
     })
+    // Showing it again also restarts the window's close timer, so a long wait
+    // does not leave the user with no window and no explanation.
+    stopManualRateLimitWatch = watchRateLimitNotice(() => {
+      const win = progressWindow as ProgressLineWindow | null
+      win?.changeLine({ text: manualProgressText() })
+      win?.show()
+    }, true)
   }
 
   void runUpdateQueue(operations, silent)
@@ -1569,7 +1675,7 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
     if (!silent && progressWindow) {
       const percent = Math.round((currentIndex / totalItems) * 100)
       progressWindow.changeLine({
-        text: getString('progress-item-counter', { args: { current: currentIndex + 1, total: totalItems } }),
+        text: manualProgressText(),
         progress: percent,
       })
       progressWindow.show()
@@ -1584,6 +1690,7 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
     }
   }
 
+  stopManualRateLimitNotice()
   if (progressWindow) {
     progressWindow.close()
     progressWindow = null
@@ -1957,4 +2064,6 @@ export {
   cancelMonthlyCleanup,
   cancelManualUpdate,
   setPostCountFollowUp,
+  watchRateLimitNotice,
+  withRateLimitNotice,
 }
