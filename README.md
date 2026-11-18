@@ -66,6 +66,11 @@ Counts from Crossref, OpenAlex, Semantic Scholar, INSPIRE and Google Scholar,
 in the order you choose, each in its own colour, separated by `|`. Hovering a
 cell says which number came from where.
 
+While an update runs, rows still waiting their turn show `…`. A row with no
+count at all shows `–` once a lookup has come back empty; its tooltip names the
+sources that reported the work missing, or says it had no DOI or other
+identifier to look it up by.
+
 A second, sortable column shows OpenAlex's field-weighted citation impact — how
 a paper compares to others of its field, year and type, where 1.0 is average.
 Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675

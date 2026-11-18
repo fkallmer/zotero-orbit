@@ -4,7 +4,7 @@ All notable changes to Orbit. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) as far as a 0.x plugin can.
 
-## [Unreleased] — 0.3.1
+## [0.3.1] — 2026-11-18
 
 ### Changed
 
@@ -142,6 +142,6 @@ First release under the Orbit name, forked from
 - A citation graph tab for one paper: what it cites and what cites it, with
   selectable axes and the citations among its neighbours.
 
-[Unreleased]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.0...HEAD
+[0.3.1]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fkallmer/zotero-orbit/compare/v0.2.22...v0.3.0
 [0.2.22]: https://github.com/fkallmer/zotero-orbit/releases/tag/v0.2.22
