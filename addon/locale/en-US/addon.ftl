@@ -83,6 +83,7 @@ referenced-empty = No work is cited by two or more of your items.
 referenced-held-seed = ✓ One of your items
 referenced-held-exact = ✓ In your library
 referenced-held-probable = ○ Probably in your library
+gaps-scope-picked = Only works of the picked clusters
 gaps-sort-label = Sort by
 gaps-sort-score = Score
 gaps-sort-year = Year

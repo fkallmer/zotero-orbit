@@ -38,6 +38,7 @@ export type FluentMessageId =
   | 'gaps-probable-heading'
   | 'gaps-probable-hint'
   | 'gaps-references'
+  | 'gaps-scope-picked'
   | 'gaps-score'
   | 'gaps-score-hint'
   | 'gaps-show-item'

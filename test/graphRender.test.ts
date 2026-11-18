@@ -811,6 +811,20 @@ describe('a collection network on the tab', () => {
     fire(container.querySelector('[data-cluster="0"]'), 'click')
     const gap = container.querySelector('.orbit-gap[data-openalex="GAP"]')
     assert.ok(gap.getAttribute('data-highlight'), 'the picked cluster is not highlighted')
+
+    // Unticking "only the picked clusters": every work again, Topic A's still highlighted.
+    const box = container.querySelector('.orbit-gaps-scope-box')
+    assert.ok(box, 'no scope switch with a cluster picked')
+    box.checked = false
+    fire(box, 'change')
+    assert.deepEqual(rows(), ['CITER', 'GAP'])
+    assert.ok(container.querySelector('.orbit-gap[data-openalex="GAP"]').getAttribute('data-highlight'))
+    // CITER is cited by S1 (Topic A) and S3: highlighted too, by its Topic A item.
+    assert.ok(container.querySelector('.orbit-gap[data-openalex="CITER"]').getAttribute('data-highlight'))
+
+    // Nothing picked: no switch.
+    fire(container.querySelector('[data-cluster="0"]'), 'click')
+    assert.equal(container.querySelector('.orbit-gaps-scope-box'), null)
   })
 
   it('draws no star: every line is a citation between two works on the plot', () => {

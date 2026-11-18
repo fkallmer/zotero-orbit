@@ -38,6 +38,16 @@ export interface GapsPanelHandlers {
    * wash behind the card.
    */
   highlightOf?: (seeds: readonly OpenAlexId[]) => string | null
+  /**
+   * With clusters picked: whether the list holds only their works, or all
+   * works with theirs highlighted. Absent, no switch is shown.
+   */
+  scope?: { filtered: boolean; onChange: (filtered: boolean) => void }
+  /**
+   * The reader's choices, kept by the caller so a redraw (a cluster picked,
+   * the scope switched) does not throw them away. The panel writes into it.
+   */
+  state?: { view?: 'missing' | 'referenced'; sort?: GapSort }
 }
 
 /** Dots in the clusters' colours, one per cluster citing the work. */
@@ -133,9 +143,12 @@ export function renderGapsPanel(doc: Document, net: CollectionNetwork, handlers:
       (id) => {
         missingView.style.display = id === 'missing' ? 'flex' : 'none'
         referencedView.style.display = id === 'referenced' ? 'flex' : 'none'
+        if (handlers.state) handlers.state.view = id === 'referenced' ? 'referenced' : 'missing'
       },
+      handlers.state?.view,
     ),
   )
+  if (handlers.scope) root.append(scopeSwitch(doc, handlers.scope))
 
   const { reference, citing } = gapSections(net.gaps)
   if (!reference.length && !citing.length) {
@@ -150,21 +163,24 @@ export function renderGapsPanel(doc: Document, net: CollectionNetwork, handlers:
       lists.push({ list: built.list, gaps })
       missingView.append(built.wrap)
     }
-    missingView.append(
-      sortControl(doc, (sort) => {
-        // The rows are moved, not rebuilt: an import running or done in a row
-        // keeps its state, and the rank on each row stays its score rank, the
-        // number the graph shows on the mark.
-        for (const { list, gaps } of lists) {
-          for (const gap of sortGaps(gaps, sort)) {
-            const row = rows.get(gap.openAlexId)
-            if (row) list.append(row)
-          }
+    const applySort = (sort: GapSort): void => {
+      if (handlers.state) handlers.state.sort = sort
+      // The rows are moved, not rebuilt: an import running or done in a row
+      // keeps its state, and the rank on each row stays its score rank, the
+      // number the graph shows on the mark.
+      for (const { list, gaps } of lists) {
+        for (const gap of sortGaps(gaps, sort)) {
+          const row = rows.get(gap.openAlexId)
+          if (row) list.append(row)
         }
-      }),
-    )
+      }
+    }
+    const kept = handlers.state?.sort
+    missingView.append(sortControl(doc, applySort, kept))
     if (reference.length) addSection('reference', reference)
     if (citing.length) addSection('citing', citing)
+    // A redraw keeps the order the reader chose.
+    if (kept && kept !== 'score') applySort(kept)
   }
   if (net.probable.length) missingView.append(probableSection(doc, net.probable, handlers))
 
@@ -178,6 +194,7 @@ function viewSwitch(
   doc: Document,
   views: { id: string; label: string }[],
   onChoose: (id: string) => void,
+  initial: string = views[0].id,
 ): HTMLElement {
   const wrap = el(doc, 'div', 'orbit-gaps-views')
   wrap.setAttribute('role', 'tablist')
@@ -202,7 +219,7 @@ function viewSwitch(
     buttons.push(button)
     wrap.append(button)
   }
-  select(views[0].id)
+  select(views.some((view) => view.id === initial) ? initial : views[0].id)
   return wrap
 }
 
@@ -435,7 +452,19 @@ const SORT_LABEL = {
 } as const satisfies Record<GapSort, string>
 
 /** "Sort by" with the four orders; calls back with the one chosen. */
-function sortControl(doc: Document, onSort: (sort: GapSort) => void): HTMLElement {
+/** "Only the picked clusters" as a checkbox; unticked, every work shows and theirs are highlighted. */
+function scopeSwitch(doc: Document, scope: NonNullable<GapsPanelHandlers['scope']>): HTMLElement {
+  const wrap = el(doc, 'label', 'orbit-gaps-scope')
+  wrap.style.cssText = 'display:flex;align-items:center;gap:6px;opacity:.85;cursor:pointer'
+  const box = el(doc, 'input', 'orbit-gaps-scope-box') as HTMLInputElement
+  box.setAttribute('type', 'checkbox')
+  box.checked = scope.filtered
+  box.addEventListener('change', () => scope.onChange(box.checked))
+  wrap.append(box, el(doc, 'span', undefined, getString('gaps-scope-picked')))
+  return wrap
+}
+
+function sortControl(doc: Document, onSort: (sort: GapSort) => void, initial?: GapSort): HTMLElement {
   const wrap = el(doc, 'label', 'orbit-gaps-sort')
   wrap.style.cssText = 'display:flex;align-items:center;gap:6px;opacity:.85'
   wrap.append(el(doc, 'span', undefined, getString('gaps-sort-label')))
@@ -446,6 +475,7 @@ function sortControl(doc: Document, onSort: (sort: GapSort) => void): HTMLElemen
     option.value = sort
     select.append(option)
   }
+  if (initial) select.value = initial
   select.addEventListener('change', () => onSort(select.value as GapSort))
   wrap.append(select)
   return wrap

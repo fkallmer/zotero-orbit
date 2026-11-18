@@ -68,6 +68,7 @@ import type { ItemIdentifier } from './citationTypes.ts'
 import type { NetworkGraphOptions } from './collectionGraph.core'
 import type { BuildProgress, CollectionNetwork, NetworkStep, RequestEstimate } from './collectionTypes'
 import type { ImportOutcome, ImportTarget } from './doiImport'
+import type { GapSort } from './gapsPanel.core'
 import type {
   AxisMetric,
   Chain,
@@ -1758,6 +1759,12 @@ export function renderGraph(
   }
   let nodes = initialNodes
   let links = initialLinks
+  /**
+   * With clusters picked, whether the gaps (list and numbered marks) are
+   * theirs alone, ranked among them, or the whole collection's with theirs
+   * highlighted in the list. The reader switches it in the list.
+   */
+  let gapsFiltered = true
   /** The network's marks for the legend's current switches. Cheap; run on every toggle. */
   const refreshNetwork = (): void => {
     if (!net) return
@@ -1767,7 +1774,10 @@ export function renderGraph(
     )
     // The selection narrows what the marks and the gaps list rank, not only
     // what is drawn: the numbered gaps are this topic's, and so is the list.
-    const graph = networkToGraph(focusNetwork(net, view0.selectedClusters), { ...view0, hiddenClusters })
+    const graph = networkToGraph(gapsFiltered ? focusNetwork(net, view0.selectedClusters) : net, {
+      ...view0,
+      hiddenClusters,
+    })
     nodes = graph.nodes
     links = graph.links
   }
@@ -2175,11 +2185,26 @@ export function renderGraph(
     void Zotero.getActiveZoteroPane()?.selectItem(itemID)
   }
 
+  /** The reader's view and order in the list, kept across its redraws. */
+  const gapsState: { view?: 'missing' | 'referenced'; sort?: GapSort } = {}
   /** The gaps list for the current cluster selection, replacing the last one. */
   paintGaps = (): void => {
     if (!net) return
+    const picked = view0.selectedClusters.size > 0
     aside.replaceChildren(
-      renderGapsPanel(doc, focusNetwork(net, view0.selectedClusters), {
+      renderGapsPanel(doc, picked && gapsFiltered ? focusNetwork(net, view0.selectedClusters) : net, {
+        state: gapsState,
+        scope: picked
+          ? {
+              filtered: gapsFiltered,
+              onChange: (filtered) => {
+                gapsFiltered = filtered
+                refreshNetwork()
+                draw()
+                paintGaps()
+              },
+            }
+          : undefined,
         canImport,
         onImport: (gap) => runImport(gap),
         onFocus: focusMark,
