@@ -302,6 +302,14 @@ export function renderNetworkProgress(
         ? getString('network-step-count', { args: { step: label, done: progress.done, total: progress.total } })
         : label
   paintProgress(doc, container, seed, caption, progress.step, (index + within) / NETWORK_STEPS.length)
+  // What is left of the day, as the last response said: on a long run with
+  // citing works the reader watches it go down, page by page.
+  const budget = budgetLine(doc)
+  const frame = container.querySelector('div > div')
+  if (budget && frame) {
+    budget.style.cssText = 'font-size:11px;opacity:.55;margin-top:8px'
+    frame.append(budget)
+  }
 }
 
 /** What a reader can answer when a scope is larger than the set limit. */

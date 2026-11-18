@@ -20,6 +20,8 @@ All notable changes to Orbit. The format follows
   the ranked gaps over everything. Small collections look as before.
 - **The citing step shows its progress** page by page, with the works found so
   far, instead of standing still for minutes per group.
+- **The OpenAlex budget shows during an analysis**, under the progress bar, so
+  a long run can be watched spending it.
 
 ### Added
 

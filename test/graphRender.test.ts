@@ -978,6 +978,26 @@ describe('a collection network on the tab', () => {
     assert.equal(width('clusters', 1, 1), '100%')
   })
 
+  it('shows what is left of the OpenAlex budget while it runs', async () => {
+    const { parseOpenAlexBudget, recordOpenAlexBudget } = await import('../src/modules/openAlexBudget.core.ts')
+    const container = document.createElement('div')
+    documentBody.append(container)
+    const draw = () =>
+      renderNetworkProgress(document as any, container as any, { kind: 'library', name: 'x' } as any, {
+        step: 'references',
+        done: 3,
+        total: 10,
+      })
+    recordOpenAlexBudget(
+      parseOpenAlexBudget(
+        (name) => ({ 'x-ratelimit-limit-usd': '1', 'x-ratelimit-remaining-usd': '0.91' })[name] ?? null,
+        Date.now(),
+      ),
+    )
+    draw()
+    assert.ok(container.querySelector('[data-role="budget"]'), 'no budget line under the bar')
+  })
+
   it('moves within a group of citing works, page by page, and says how far it got', () => {
     const container = document.createElement('div')
     documentBody.append(container)
