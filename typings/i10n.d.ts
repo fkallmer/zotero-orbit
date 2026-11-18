@@ -272,6 +272,8 @@ export type FluentMessageId =
   | 'pref-openalex-key-label'
   | 'pref-openalex-key-missing'
   | 'pref-openalex-key-unusable'
+  | 'pref-save-button'
+  | 'pref-saved'
   | 'pref-use-colors'
   | 'pref-validate-button'
   | 'prefs-title'

@@ -98,3 +98,6 @@ pref-network-policy-warn =
     .label = Ask first, with an estimate
 pref-network-policy-all =
     .label = Always analyse everything
+pref-save-button =
+    .label = Save
+pref-saved = ✓ Saved

@@ -344,6 +344,8 @@ function bindOpenAlexKeyField(window: Window): void {
   }
 
   input.addEventListener('focusout', commit)
+  // Saved on focusout and Enter already; the button says so where it can be seen.
+  byId(window, `${openAlexKeyInputId}-save`)?.addEventListener('command', commit)
   input.addEventListener('keydown', (event: Event) => {
     if ((event as KeyboardEvent).key === 'Enter') {
       event.preventDefault()
@@ -393,6 +395,26 @@ function bindNetworkLimitFields(window: Window): void {
       setPref('networkSeedPolicy', normalizeSeedPolicy(policyGroup.value))
     })
   }
+
+  // The number field saves on change, which a number input fires only on blur
+  // or Enter: typed and left for the graph straight away, it was not saved.
+  // The button saves both, and says so.
+  const saved = byId<HTMLElement>(window, `${prefPrefix}-network-saved`)
+  byId(window, `${prefPrefix}-network-save`)?.addEventListener('command', () => {
+    if (limitInput) {
+      const next = normalizeSeedLimit(limitInput.value)
+      limitInput.value = String(next)
+      setPref('networkSeedLimit', next)
+    }
+    if (policyGroup) setPref('networkSeedPolicy', normalizeSeedPolicy(policyGroup.value))
+    if (saved) {
+      localization(window).setAttributes(saved, getLocaleID('pref-saved'))
+      window.setTimeout(() => {
+        saved.removeAttribute('data-l10n-id')
+        saved.textContent = ''
+      }, 2500)
+    }
+  })
 }
 
 export function registerPrefsScripts(_window: Window) {
