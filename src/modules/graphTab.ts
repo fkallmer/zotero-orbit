@@ -53,7 +53,7 @@ import {
   placeLabels,
   renderGraphSvg,
 } from './graphModel.core.ts'
-import { clearLibraryIndex, getLibraryMatcher, matchInLibrary } from './libraryIndex'
+import { clearLibraryIndex, getLibraryMatcher, matchInLibrary, normalizeDoi } from './libraryIndex'
 import { exportActions } from './networkExport'
 import { connectedPapersUrl, openAlexCitesUrl } from './networkExport.core'
 import { describeOpenAlexBudget, latestOpenAlexBudget } from './openAlexBudget.core'
@@ -2037,7 +2037,16 @@ export function renderGraph(
 
   // --- The network's own actions: import, focus, show ----------------------
 
-  const importTarget = net ? importTargetFor(net.scope) : null
+  // A single-paper graph files into its library, outside any collection.
+  const importTarget = net ? importTargetFor(net.scope) : { libraryID: seedLibraryID, collectionID: null }
+  const importTargetName = (): string => {
+    if (net) return net.scope.name
+    try {
+      return Zotero.Libraries.getName(seedLibraryID)
+    } catch {
+      return getString('graph-card-title')
+    }
+  }
   let canImport = false
   try {
     canImport = importTarget !== null && canImportInto(importTarget)
@@ -2067,13 +2076,25 @@ export function renderGraph(
     doi: string | null
     year: number | null
   }): Promise<ImportOutcome> => {
-    if (!net || !importTarget || !work.doi) return { status: 'failed', reason: 'no-result' }
-    if (!confirmImport(win, work, net.scope.name)) return { status: 'cancelled' }
+    if (!work.doi) return { status: 'failed', reason: 'no-result' }
+    const target = importTargetName()
+    if (!confirmImport(win, work, target)) return { status: 'cancelled' }
     const outcome = await importByDoi(work.doi, importTarget)
     if (outcome.status === 'imported' || outcome.status === 'exists') {
-      status.textContent = getString('network-import-done', { args: { title: work.title, target: net.scope.name } })
+      status.textContent = getString('network-import-done', { args: { title: work.title, target } })
       try {
-        await rematchAndRedraw()
+        if (net) await rematchAndRedraw()
+        else {
+          // One paper's graph holds its nodes as they are: fill the ring of
+          // the one just filed and draw again, without a request.
+          const itemID = outcome.itemID
+          nodes = nodes.map((node) =>
+            node.doi && work.doi && normalizeDoi(node.doi) === normalizeDoi(work.doi)
+              ? { ...node, itemID, match: 'exact' as const }
+              : node,
+          )
+          draw()
+        }
       } catch (err) {
         Zotero.debug(`Orbit: could not match the network again after an import: ${String(err)}`)
       }
@@ -2114,7 +2135,11 @@ export function renderGraph(
 
   /** What the network adds to a mark's card. */
   const networkActions = (node: GraphNode): CardAction[] => {
-    if (!networkMode) return []
+    if (!networkMode) {
+      return node.itemID === null && node.doi && canImport
+        ? [{ label: getString('graph-card-add'), run: () => void runImport(node) }]
+        : []
+    }
     const actions: CardAction[] = []
     if (node.hollow && node.doi && canImport) {
       actions.push({

@@ -270,6 +270,7 @@ graph-card-doi = Open DOI
 graph-card-source = Semantic Scholar
 graph-card-graph = Graph from here
 graph-card-item = Show in library
+graph-card-add = Add to library
 graph-card-close = Close
 graph-card-no-doi = No DOI, so there is nowhere to open it.
 graph-no-values = None of the surrounding works carry both values the axes ask for, so there is nothing to place.

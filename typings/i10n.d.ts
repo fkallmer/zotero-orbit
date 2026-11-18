@@ -52,6 +52,7 @@ export type FluentMessageId =
   | 'graph-axes-note'
   | 'graph-axis-x'
   | 'graph-axis-y'
+  | 'graph-card-add'
   | 'graph-card-citations'
   | 'graph-card-close'
   | 'graph-card-doi'
