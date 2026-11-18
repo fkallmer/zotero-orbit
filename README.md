@@ -117,15 +117,22 @@ network:
 
 - **Clusters.** Items that cite the same works are grouped (bibliographic
   coupling, Leiden algorithm) and each group is named after its most common
-  OpenAlex topic. Click a cluster in the legend to hide or show it.
+  OpenAlex topic. All clusters show at first; click one in the legend to show
+  only that one, and click more to add them back one by one.
 - **Shared references.** Works cited by at least two of your items appear
   beside them, and the citations between everything on screen are drawn.
 - **Who cites your collection.** With an [OpenAlex API key](#settings), Orbit
   also finds works that cite at least two of your items.
 
+Mark size grows with the number of references on a logarithmic scale, so
+large and small papers stay comparable. The top ten gaps carry their rank as a
+number on a thick ring, ranks 11–30 a thick ring, the rest a faint one.
+
 Large collections are handled by a setting: above 300 items (adjustable),
 Orbit either analyses the first 300, asks first with an estimate of the
-requests it will make, or always analyses everything.
+requests it will make, or always analyses everything. The dialog and the note
+under the graph show what is left of today's OpenAlex budget, as OpenAlex
+reports it.
 
 ### Gaps and import
 
@@ -133,8 +140,13 @@ Beside the network, a list of the works your items lean on that your library
 does not hold. Each is ranked by how many of your items cite it, divided by
 `log10(10 + its citation count)` — so a niche work several of your items share
 ranks above a classic everyone cites, while a work many of your items depend on
-stays high however famous it is. Expanding an entry shows which of your items
-cite it.
+stays high however famous it is. Each entry names its authors and year, can
+be sorted by score, year, citations or reference count, and expands to show
+which of your items cite it.
+
+A second view, **Most referenced**, lists every work at least two of your items
+cite — held or not, including your own items that others in the collection
+cite — so you see what the collection rests on, not only what it lacks.
 
 **Import** files a work into the analysed collection through Zotero's own DOI
 lookup, after asking. If the work is already somewhere in your library, it is

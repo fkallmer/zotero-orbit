@@ -18,10 +18,17 @@ hold, it can say what is missing and file it for you.
   OpenAlex API key — the works that cite several of them.
 - **Clusters.** Items are grouped by the references they share (bibliographic
   coupling, Leiden algorithm via `networkanalysis-ts`) and each group is named
-  after its most common OpenAlex topic. The legend filters by cluster.
+  after its most common OpenAlex topic, with no two clusters sharing a name.
+  Clicking a cluster in the legend shows only it; more clicks add others.
 - **Gaps list.** Works several of your items cite but your library does not
   hold, ranked by how many of your items lean on them, discounted for fame.
-  Each shows which of your items cite it.
+  Each shows its authors, which of your items cite it, and can be sorted by
+  score, year, citations or reference count; the top ten are numbered in the
+  graph.
+- **Most referenced view.** Every work at least two of your items cite, held
+  or not, including your own items that others in the collection cite.
+- **OpenAlex budget display.** The size dialog and the graph show what is left
+  of today's OpenAlex budget and when it resets.
 - **Import by DOI.** One click (with confirmation) files a missing work into
   the analysed collection through Zotero's own DOI lookup. Works already in the
   library are added to the collection instead of imported twice.
@@ -38,12 +45,17 @@ hold, it can say what is missing and file it for you.
 - **OpenAlex API key** setting, sent as a bearer header and never in a URL.
 - **Collection size limit** setting: above N items (300 by default), cap,
   ask first with a request estimate, or always analyse everything.
+- **Save buttons** for the OpenAlex key and the collection settings.
 
 ### Changed
 
 - The contact address now only buys Crossref's faster pool; OpenAlex no longer
   documents one, and its limits are set by the API key instead.
 - The record cache holds up to 6,000 entries (was 2,000).
+- Network marks are sized on a logarithmic scale of their reference count.
+- Hover, zoom and pan redraw only what changed, and labels follow their marks
+  while the view moves.
+- The selected row in the item list keeps a readable citation count.
 
 ### Fixed
 
