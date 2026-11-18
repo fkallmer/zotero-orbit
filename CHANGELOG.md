@@ -37,6 +37,13 @@ All notable changes to Orbit. The format follows
   says which one and for how long, counting down; for Semantic Scholar without
   an API key it suggests adding one.
 
+- **The Citations column shows what is still to come.** During an update,
+  rows waiting their turn show "…" beside their old counts, and each row
+  drops it as it is done.
+- **No count is no longer a blank.** A row Orbit looked up and found nothing
+  for shows "–", and its tooltip names the sources that reported it missing,
+  or says it had no DOI or other identifier to look up.
+
 ### Fixed
 
 - A cached network without a cluster assignment is analysed again rather than
@@ -44,7 +51,7 @@ All notable changes to Orbit. The format follows
 
 ### Internal
 
-- 46 ESLint warnings fixed with real types for Zotero and Gecko values.
+- All 93 ESLint warnings fixed with real types for Zotero and Gecko values.
 - The release checklist names the update-channel step that 0.3.0 missed.
 
 ## [0.3.0] — 2026-11-18

@@ -59,6 +59,9 @@ semantic-scholar-unavailable = Semantic Scholar isn't available and has been tur
 # Column and tooltip
 column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
+column-pending = Waiting to be updated
+column-not-found = No citation count: not found at { $sources }
+column-no-identifier = No citation count: no DOI or other identifier to look it up by
 
 # Gaps list (gaps-*, P8). Add strings below this line only.
 gaps-heading-reference = Cited by your items

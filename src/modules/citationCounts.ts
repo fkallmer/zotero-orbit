@@ -82,6 +82,12 @@ const MAX_RATE_LIMIT_MULTIPLIER = 10
 interface CitationCellData {
   counts: string[]
   databases: string[]
+  /** No count at all: the sources that reported the work missing, by key. */
+  notFound?: string[]
+  /** No count at all, and nothing to look it up by. */
+  noIdentifier?: boolean
+  /** Still waiting in the update queue: the cell shows "…", the counts so far dimmed. */
+  pending?: boolean
 }
 
 /** Engage budget pacing only below this share of a provider's allowance. */
@@ -430,8 +436,30 @@ class RateLimitManager {
 class IgnoredItemsManager {
   private static memoryCache = new Map<number, { databases: string[] }>() // Session-only cache for no_identifier
 
+  /** The last parse, keyed on the raw preference: the column asks once per row. */
+  private static parsed: { raw: string; entries: IgnoreEntries } | null = null
+
   private static loadPersistentData(): IgnoreEntries {
-    return parseIgnoreStore(getPref('ignoredItems')).entries
+    const raw = String(getPref('ignoredItems') ?? '')
+    if (this.parsed?.raw !== raw) this.parsed = { raw, entries: parseIgnoreStore(raw).entries }
+    // A copy: callers edit what they get and save it back.
+    return structuredClone(this.parsed.entries)
+  }
+
+  /**
+   * Why an item has no count, as far as Orbit knows: the sources that
+   * reported it missing, and whether it had no identifier to look up with.
+   * Read-only and cheap enough for the column's paint path.
+   */
+  static missingFor(itemId: number, databases: readonly string[]): { notFound: string[]; noIdentifier: boolean } {
+    const raw = String(getPref('ignoredItems') ?? '')
+    if (this.parsed?.raw !== raw) this.parsed = { raw, entries: parseIgnoreStore(raw).entries }
+    const itemKey = itemId.toString()
+    const entries = this.parsed.entries
+    return {
+      notFound: databases.filter((database) => entries[database]?.[itemKey] !== undefined),
+      noIdentifier: databases.some((database) => this.memoryCache.get(itemId)?.databases.includes(database)),
+    }
   }
 
   private static savePersistentData(entries: IgnoreEntries): void {
@@ -1568,6 +1596,21 @@ let currentIndex = -1
 let totalItems = 0
 let itemsToUpdate: Zotero.Item[] = []
 let updatedCount = 0
+/**
+ * Items the running queue has not reached yet, marked "…" in the column.
+ *
+ * Cheap to show: the columns are redrawn once when the queue starts and once
+ * when it ends. In between, an item whose count is written redraws its own
+ * row (Zotero does that for any saved item), dropping its mark; one whose
+ * lookup changed nothing keeps the mark until the end.
+ */
+const pendingItemIDs = new Set<number>()
+
+function clearPending(): void {
+  if (pendingItemIDs.size === 0) return
+  pendingItemIDs.clear()
+  refreshItemsTree()
+}
 let stopManualRateLimitWatch: (() => void) | null = null
 
 /** The manual progress line: the item counter, plus any rate-limit notice. */
@@ -1602,6 +1645,7 @@ function resetState() {
   totalItems = 0
   itemsToUpdate = []
   updatedCount = 0
+  clearPending()
 }
 
 /**
@@ -1640,6 +1684,8 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
   resetState()
   totalItems = regularItems.length
   itemsToUpdate = regularItems
+  for (const item of regularItems) pendingItemIDs.add(item.id)
+  refreshItemsTree()
 
   if (!silent) {
     // Create progress window
@@ -1690,14 +1736,18 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
       progressWindow.show()
     }
 
+    const item = itemsToUpdate[currentIndex]
     try {
+      // Dropped before the save, so the redraw the save triggers shows the new count.
+      pendingItemIDs.delete(item.id)
       // Manual updates bypass the ignored-item cache.
-      if (await updateItem(itemsToUpdate[currentIndex], operations, false)) updatedCount++
+      if (await updateItem(item, operations, false)) updatedCount++
     } catch (e) {
       if (isErrorNamed(e, 'AbortError')) break
       ztoolkit.log('Error updating citation count for item', e)
     }
   }
+  clearPending()
 
   stopManualRateLimitNotice()
   if (progressWindow) {
@@ -1879,8 +1929,17 @@ class UIRegistrar {
         // on every call, and fetched the parent item from the database for
         // attachments and notes -- all purely diagnostic.
         const result = Core.getCitationCountForColumn(item)
-        // Return JSON string that renderCell will parse
-        return result ? JSON.stringify(result) : ''
+        if (pendingItemIDs.has(item.id)) {
+          // Last key, so sorting by the column still orders by the counts.
+          return JSON.stringify({ counts: [], databases: [], ...result, pending: true })
+        }
+        if (result) return JSON.stringify(result)
+        // No count: say why, when a lookup has said. Only regular items are looked up.
+        if (!item.isRegularItem()) return ''
+        const databases = Helpers.getDatabaseArray(undefined)
+        const missing = IgnoredItemsManager.missingFor(item.id, databases)
+        if (missing.notFound.length === 0 && !missing.noIdentifier) return ''
+        return JSON.stringify({ counts: [], databases: [], ...missing })
       },
       // iconPath: 'chrome://zotero/skin/citations.png',
       renderCell(index, data: unknown, column, isFirstColumn, doc) {
@@ -1924,6 +1983,31 @@ class UIRegistrar {
           }
           span.appendChild(countSpan)
         })
+
+        if (dataToUse.counts.length === 0 && !dataToUse.pending) {
+          // Looked up and not found, or nothing to look up with: a dash, not a blank.
+          const dash = doc.createElement('span')
+          dash.innerText = '–'
+          dash.style.opacity = '0.45'
+          span.appendChild(dash)
+          span.title = dataToUse.noIdentifier
+            ? getString('column-no-identifier')
+            : getString('column-not-found', {
+                args: { sources: (dataToUse.notFound ?? []).map((db) => getOperationName(db)).join(', ') },
+              })
+          return span
+        }
+
+        if (dataToUse.pending) {
+          // The counts so far, dimmed, and "…": this row is still to come.
+          for (const child of Array.from(span.children) as HTMLElement[]) child.style.opacity = '0.45'
+          const dots = doc.createElement('span')
+          dots.innerText = dataToUse.counts.length > 0 ? ' …' : '…'
+          dots.style.opacity = '0.6'
+          span.appendChild(dots)
+          span.title = getString('column-pending')
+          return span
+        }
 
         // Add tooltip with database names
         const tooltip = dataToUse.databases
