@@ -26,6 +26,8 @@ export type FluentMessageId =
   | 'export-open-inciteful'
   | 'export-open-lcn'
   | 'export-vosviewer'
+  | 'gaps-authors-many'
+  | 'gaps-authors-two'
   | 'gaps-citations'
   | 'gaps-citations-unknown'
   | 'gaps-cited-by'

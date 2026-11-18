@@ -12,7 +12,7 @@ import { describe, it } from 'node:test'
 
 import { parseHTML } from 'linkedom'
 
-import { formatScore, gapSections, seedsOfGap, sortGaps } from '../src/modules/gapsPanel.core.ts'
+import { authorLine, formatScore, gapSections, seedsOfGap, sortGaps } from '../src/modules/gapsPanel.core.ts'
 
 import type { CollectionNetwork, Gap, NetworkWork, SeedWork } from '../src/modules/collectionTypes.ts'
 import type { ImportOutcome } from '../src/modules/doiImport.ts'
@@ -438,5 +438,38 @@ describe('sorting the gaps', () => {
     const { root } = render(network(sortable))
     assert.equal(row(root, 'WB').querySelector('.orbit-gap-references')?.textContent, 'orbit-gaps-references')
     assert.equal(row(root, 'WC').querySelector('.orbit-gap-references'), null)
+  })
+})
+
+describe('the author line', () => {
+  it('names one author, two joined, or the first and et al.', () => {
+    assert.deepEqual(authorLine([]), { kind: 'none' })
+    assert.deepEqual(authorLine(['Yann LeCun']), { kind: 'one', first: 'LeCun' })
+    assert.deepEqual(authorLine(['Sepp Hochreiter', 'Jürgen Schmidhuber']), {
+      kind: 'two',
+      first: 'Hochreiter',
+      second: 'Schmidhuber',
+    })
+    assert.deepEqual(authorLine(['Martin Jinek', 'Krzysztof Chylinski', 'Ines Fonfara']), {
+      kind: 'many',
+      first: 'Jinek',
+    })
+  })
+
+  it('takes the surname the way the graph label does, and skips blank names', () => {
+    assert.deepEqual(authorLine(['Doudna, Jennifer A.', '  ']), { kind: 'one', first: 'Doudna' })
+  })
+
+  it('shows the authors in the row, with the full list on hover', () => {
+    const { root } = render(
+      network([
+        gap('WX', 1, 'reference', { authors: ['Martin Jinek', 'Krzysztof Chylinski', 'Ines Fonfara'] }),
+        gap('WY', 2, 'reference', { authors: [] }),
+      ]),
+    )
+    const authors = row(root, 'WX').querySelector('.orbit-gap-authors')
+    assert.equal(authors?.textContent, 'orbit-gaps-authors-many')
+    assert.equal(authors?.getAttribute('title'), 'Martin Jinek, Krzysztof Chylinski, Ines Fonfara')
+    assert.equal(row(root, 'WY').querySelector('.orbit-gap-authors'), null)
   })
 })

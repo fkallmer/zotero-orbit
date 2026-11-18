@@ -6,6 +6,8 @@
  * behind each gap by title. See gapsPanel.ts for the rendering.
  */
 
+import { surnameOf } from './collectionGraph.core'
+
 import type { CollectionNetwork, Gap, SeedWork } from './collectionTypes'
 
 export interface GapSections {
@@ -71,4 +73,23 @@ export function seedsOfGap(gap: Pick<Gap, 'seeds'>, net: Pick<CollectionNetwork,
 /** Two decimals; the score is a ratio, and more digits would suggest a precision it does not have. */
 export function formatScore(score: number): string {
   return Number.isFinite(score) ? score.toFixed(2) : '–'
+}
+
+/**
+ * Who wrote a gap, the way a reference list would say it: one surname, two
+ * joined, or the first and "et al." -- with the surname taken exactly as the
+ * graph takes it for the label on the mark, so list and graph agree.
+ */
+export type AuthorLine =
+  | { kind: 'none' }
+  | { kind: 'one'; first: string }
+  | { kind: 'two'; first: string; second: string }
+  | { kind: 'many'; first: string }
+
+export function authorLine(authors: readonly string[]): AuthorLine {
+  const names = authors.map((name) => surnameOf(name)).filter((name): name is string => name !== null)
+  if (names.length === 0) return { kind: 'none' }
+  if (names.length === 1) return { kind: 'one', first: names[0] }
+  if (names.length === 2) return { kind: 'two', first: names[0], second: names[1] }
+  return { kind: 'many', first: names[0] }
 }

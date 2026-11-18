@@ -63,6 +63,8 @@ gaps-references = { $count ->
     [one] 1 reference
    *[other] { $count } references
   }
+gaps-authors-two = { $first } & { $second }
+gaps-authors-many = { $first } et al.
 gaps-sort-label = Sort by
 gaps-sort-score = Score
 gaps-sort-year = Year

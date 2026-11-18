@@ -13,7 +13,7 @@
 
 import { getString } from '../utils/locale'
 
-import { formatScore, GAP_SORTS, gapSections, seedsOfGap, sortGaps } from './gapsPanel.core'
+import { authorLine, formatScore, GAP_SORTS, gapSections, seedsOfGap, sortGaps } from './gapsPanel.core'
 
 import type { CollectionNetwork, Gap, NetworkWork, OpenAlexId } from './collectionTypes'
 import type { ImportOutcome } from './doiImport'
@@ -113,6 +113,29 @@ export function renderGapsPanel(doc: Document, net: CollectionNetwork, handlers:
   return root
 }
 
+/** The authors as a reference list names them; nothing when none are known. */
+function authorSpan(doc: Document, gap: Gap): HTMLElement[] {
+  const line = authorLine(gap.authors)
+  let text: string
+  switch (line.kind) {
+    case 'none':
+      return []
+    case 'one':
+      text = line.first
+      break
+    case 'two':
+      text = getString('gaps-authors-two', { args: { first: line.first, second: line.second } })
+      break
+    case 'many':
+      text = getString('gaps-authors-many', { args: { first: line.first } })
+      break
+  }
+  const span = el(doc, 'span', 'orbit-gap-authors', text)
+  // The full list on hover, for when the first name is not enough.
+  if (gap.authors.length > 1) span.setAttribute('title', gap.authors.join(', '))
+  return [span]
+}
+
 /** Written out, not built from the sort name, so each string is findable. */
 const SORT_LABEL = {
   score: 'gaps-sort-score',
@@ -184,6 +207,7 @@ function gapRow(doc: Document, net: CollectionNetwork, gap: Gap, handlers: GapsP
   const meta = el(doc, 'div', 'orbit-gap-meta')
   meta.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px 10px;opacity:.75'
   meta.append(
+    ...authorSpan(doc, gap),
     el(doc, 'span', 'orbit-gap-year', gap.year === null ? getString('gaps-year-unknown') : String(gap.year)),
     el(
       doc,
