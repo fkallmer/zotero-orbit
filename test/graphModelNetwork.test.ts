@@ -9,6 +9,7 @@ import {
   CLUSTER_PALETTE,
   FITTED,
   GAP_TIERS,
+  NETWORK_MAX_RADIUS,
   hueFor,
   placeLabels,
   renderGraphSvg,
@@ -351,9 +352,9 @@ describe('labelRoles', () => {
   })
 
   it('keeps unlabelled marks as obstacles', () => {
-    // A small seed under a large unnamed reference: every spot a network seed
-    // tries lies inside the reference's disc, so it goes without a name --
-    // and gets one the moment the reference is taken away.
+    // A small seed under a large unnamed reference: the spots next to the seed
+    // lie inside the reference's disc, so the name goes further out, or
+    // nowhere -- and sits close the moment the reference is taken away.
     const nodes = [
       node({ key: 'big', role: 'reference', year: 2015, citedByCount: 100, referenceCount: 400 }),
       node({ key: 's', role: 'seed', year: 2015, citedByCount: 100, author: 'Ada' }),
@@ -363,16 +364,30 @@ describe('labelRoles', () => {
     const layout = buildGraphLayout(nodes, network)
     assert.ok(layout)
     const only = { labelRoles: ['seed'] as const }
-    const crowded = placeLabels(layout.nodes, FITTED(640, 360), null, undefined, only)
-    assert.ok(!crowded.some((p) => p.key === 's'), 'the seed was named on top of an unnamed mark')
+    const big = layout.nodes.find((n) => n.key === 'big')
+    const seed = layout.nodes.find((n) => n.key === 's')
+    assert.ok(big && seed)
+    const crowded = placeLabels(layout.nodes, FITTED(640, 360), null, undefined, only).find((p) => p.key === 's')
+    // Wherever the name went, it is not on the unnamed mark.
+    if (crowded) assert.ok(Math.abs(crowded.y - big.y) > big.radius, 'the seed was named on top of an unnamed mark')
     const clear = placeLabels(
       layout.nodes.filter((n) => n.key !== 'big'),
       FITTED(640, 360),
       null,
       undefined,
       only,
-    )
-    assert.ok(clear.some((p) => p.key === 's'))
+    ).find((p) => p.key === 's')
+    assert.ok(clear)
+    if (crowded)
+      assert.ok(Math.abs(clear.y - seed.y) < Math.abs(crowded.y - seed.y), 'the obstacle did not move the name')
+  })
+
+  it('caps the size of a mark in a network, not in the single-paper graph', () => {
+    const review = node({ key: 'r', role: 'seed', referenceCount: 4000 })
+    const inNetwork = buildGraphLayout([review], network)
+    const inStar = buildGraphLayout([review], { ...network, mode: 'star' })
+    assert.equal(inNetwork?.nodes[0]?.radius, NETWORK_MAX_RADIUS)
+    assert.ok((inStar?.nodes[0]?.radius ?? 0) > 100)
   })
 })
 

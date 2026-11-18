@@ -292,11 +292,21 @@ export function citationScale(count: number, kind: ScaleKind = 'log'): number {
  * paper among its own influences would otherwise be the smallest dot on a plot
  * that is about it.
  */
+/**
+ * The largest mark in a network. Size still says "this one cites a lot", but
+ * a review with four thousand references would otherwise be a disc 120 px
+ * across, laid over everything near it -- one such in three hundred items
+ * hides a cluster. The single-paper graph keeps its unbounded size: it has
+ * few marks, and its frozen snapshot says it must not change.
+ */
+export const NETWORK_MAX_RADIUS = 28
+
 function radiusFor(referenceCount: number | null, role: GraphRole, mode: GraphMode): number {
   const radius = 6 + Math.sqrt(referenceCount ?? 0) * 1.9
   // In a network the seeds are the collection, hundreds of them, and a floor
   // meant to make one mark findable would only make the field a carpet.
-  return role === 'seed' && mode === 'star' ? Math.max(radius, 16) : radius
+  if (mode === 'network') return Math.min(radius, NETWORK_MAX_RADIUS)
+  return role === 'seed' ? Math.max(radius, 16) : radius
 }
 
 /**

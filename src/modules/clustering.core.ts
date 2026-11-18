@@ -141,6 +141,12 @@ export function labelClusters(
     else members.set(clusterId, [id])
   }
 
+  // Largest first, so when two clusters share their most common topic the
+  // larger one keeps it. Two legend entries with one name tell the reader
+  // nothing about how they differ; the smaller takes its next most common
+  // topic instead, which still says what it is about, and only when it has
+  // none left does it get a number.
+  const used = new Set<string>()
   return [...members.entries()]
     .sort((x, y) => x[0] - y[0])
     .map(([id, ids]) => {
@@ -150,19 +156,22 @@ export function labelClusters(
         const name = topicOf(member)?.name
         if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
       }
-      let best: string | null = null
-      let bestCount = 0
-      for (const [name, count] of counts) {
-        if (count > bestCount || (count === bestCount && best !== null && name < best)) {
-          best = name
-          bestCount = count
-        }
+      const ranked = [...counts].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0))
+      if (ranked.length === 0) return { id, label: fallback(id), topicShare: 0, members: sorted }
+      const fresh = ranked.find(([name]) => !used.has(name))
+      let label: string
+      let count: number
+      if (fresh) {
+        ;[label, count] = fresh
+      } else {
+        // Every topic it has is already a name: number the most common one.
+        const [name, top] = ranked[0]
+        let n = 2
+        while (used.has(`${name} (${n})`)) n++
+        label = `${name} (${n})`
+        count = top
       }
-      return {
-        id,
-        label: best ?? fallback(id),
-        topicShare: best === null ? 0 : bestCount / sorted.length,
-        members: sorted,
-      }
+      used.add(label)
+      return { id, label, topicShare: count / sorted.length, members: sorted }
     })
 }

@@ -129,3 +129,54 @@ describe('labelClusters', () => {
     )
   })
 })
+
+describe('cluster names', () => {
+  const topic = (name: string) => ({ id: name, name })
+
+  it('gives two clusters sharing a top topic their own names', () => {
+    const assignment = new Map<string, number | null>([
+      ['A1', 0],
+      ['A2', 0],
+      ['A3', 0],
+      ['B1', 1],
+      ['B2', 1],
+      ['B3', 1],
+    ])
+    const topics: Record<string, string> = {
+      A1: 'CRISPR',
+      A2: 'CRISPR',
+      A3: 'Phage biology',
+      B1: 'CRISPR',
+      B2: 'CRISPR',
+      B3: 'Base editing',
+    }
+    const clusters = labelClusters(
+      assignment,
+      (id) => topic(topics[id]),
+      (id) => `Cluster ${id + 1}`,
+    )
+    assert.deepEqual(
+      clusters.map((c) => c.label),
+      ['CRISPR', 'Base editing'],
+    )
+    assert.equal(clusters[1]?.topicShare, 1 / 3)
+  })
+
+  it('numbers a cluster that has no topic left that is not already a name', () => {
+    const assignment = new Map<string, number | null>([
+      ['A1', 0],
+      ['A2', 0],
+      ['B1', 1],
+      ['B2', 1],
+    ])
+    const clusters = labelClusters(
+      assignment,
+      () => topic('CRISPR'),
+      (id) => `Cluster ${id + 1}`,
+    )
+    assert.deepEqual(
+      clusters.map((c) => c.label),
+      ['CRISPR', 'CRISPR (2)'],
+    )
+  })
+})
