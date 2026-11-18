@@ -74,6 +74,7 @@ import type {
   GraphTheme,
   LinkDirection,
   ScaleKind,
+  Viewport,
 } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { GraphLink } from './openAlexEnrichment'
@@ -2205,12 +2206,63 @@ export function renderGraph(
     const yTicks = all('[data-axis="y"]')
     const xTicks = all('[data-axis="x"]')
 
+    /**
+     * Read once. Every frame used to split these attribute strings again, for
+     * every mark and every line -- two thousand lines in a large collection --
+     * although they never change after the SVG is drawn.
+     */
+    const pair = (element: Element, name: string): [number, number] => {
+      const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
+      return [Number(a), Number(b)]
+    }
+    const markData = marks.map((mark) => ({ element: mark, key: keyOf(mark), at: pair(mark, 'data-at') }))
+    const lineData = edgeLines.map((line) => {
+      const link = line.getAttribute('data-link')
+      return {
+        element: line,
+        key: keyOf(line),
+        from: pair(line, 'data-from'),
+        to: pair(line, 'data-to'),
+        gaps: pair(line, 'data-gaps'),
+        link: link === null ? null : Number(link),
+        arrow: line.getAttribute('data-arrow'),
+        arrowLit: line.getAttribute('data-arrow-lit'),
+        hidden: false,
+      }
+    })
+    const tickData = (ticks: Element[]) =>
+      ticks.map((tick) => ({ element: tick, home: Number(tick.getAttribute('data-pos')) }))
+    const yTickData = tickData(yTicks)
+    const xTickData = tickData(xTicks)
+
+    /**
+     * Set only what changed. A hover changes the emphasis of a few marks and
+     * lines; writing the same opacity onto the other two thousand made Gecko
+     * restyle all of them, which is most of what a frame cost.
+     */
+    const written = new WeakMap<Element, Map<string, string>>()
+    const put = (element: Element, name: string, value: string): void => {
+      let values = written.get(element)
+      if (!values) {
+        values = new Map()
+        written.set(element, values)
+      }
+      if (values.get(name) === value) return
+      values.set(name, value)
+      element.setAttribute(name, value)
+    }
+
     let kx = 1
     let ky = 1
     let tx = 0
     let ty = 0
     /** One update per frame, however many wheel events arrive between them. */
     let pending = 0
+    /** Whether the view moved since the last frame: hover alone moves nothing. */
+    let moved = true
+    /** When labels were last laid out during a gesture, and the trailing pass after it. */
+    let labelsAt = 0
+    let trailing: ReturnType<typeof setTimeout> | null = null
 
     /**
      * The chain through the mark under the pointer, worked out once per hover
@@ -2245,34 +2297,44 @@ export function renderGraph(
       return String(currentChain()?.keys.has(key) ? dim + (lit - dim) * 0.55 : dim)
     }
 
-    const pair = (element: Element, name: string): [number, number] => {
-      const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
-      return [Number(a), Number(b)]
-    }
-
-    const apply = (): void => {
-      const view = { kx, ky, tx, ty, width, height }
-
-      for (const mark of marks) {
-        const [x, y] = pair(mark, 'data-at')
-        mark.setAttribute('transform', `translate(${(x * kx + tx).toFixed(2)},${(y * ky + ty).toFixed(2)})`)
+    /** Marks, line ends and ticks: only when the view has moved. */
+    const applyGeometry = (view: Viewport): void => {
+      for (const mark of markData) {
+        const [x, y] = mark.at
+        put(mark.element, 'transform', `translate(${(x * kx + tx).toFixed(2)},${(y * ky + ty).toFixed(2)})`)
       }
 
-      for (const line of edgeLines) {
-        const [fx, fy] = pair(line, 'data-from')
-        const [tox, toy] = pair(line, 'data-to')
-        const [startGap, endGap] = pair(line, 'data-gaps')
-        const ends = edgeEnds({ x: fx, y: fy, radius: startGap - 2 }, { x: tox, y: toy, radius: endGap - 7 }, view)
-        line.setAttribute('x1', ends.x1.toFixed(1))
-        line.setAttribute('y1', ends.y1.toFixed(1))
-        line.setAttribute('x2', ends.x2.toFixed(1))
-        line.setAttribute('y2', ends.y2.toFixed(1))
+      for (const line of lineData) {
+        const ends = edgeEnds(
+          { x: line.from[0], y: line.from[1], radius: line.gaps[0] - 2 },
+          { x: line.to[0], y: line.to[1], radius: line.gaps[1] - 7 },
+          view,
+        )
+        put(line.element, 'x1', ends.x1.toFixed(1))
+        put(line.element, 'y1', ends.y1.toFixed(1))
+        put(line.element, 'x2', ends.x2.toFixed(1))
+        put(line.element, 'y2', ends.y2.toFixed(1))
         // Recorded rather than applied: the emphasis pass below decides what
         // is visible, and it must not resurrect a line with no room to draw.
-        line.setAttribute('hidden-short', ends.hidden ? '1' : '0')
-        if (ends.hidden) line.setAttribute('opacity', '0')
+        line.hidden = ends.hidden
+        if (ends.hidden) put(line.element, 'opacity', '0')
       }
 
+      // A tick whose value has moved out of the plot is hidden rather than
+      // stacked against the edge, where it would name a place nobody can see.
+      for (const tick of yTickData) {
+        const at = tick.home * ky + ty
+        put(tick.element, 'transform', `translate(0,${(at - tick.home).toFixed(2)})`)
+        put(tick.element, 'opacity', at > 8 && at < height - AXIS_GUTTER.bottom ? '1' : '0')
+      }
+      for (const tick of xTickData) {
+        const at = tick.home * kx + tx
+        put(tick.element, 'transform', `translate(${(at - tick.home).toFixed(2)},0)`)
+        put(tick.element, 'opacity', at > AXIS_GUTTER.left && at < width - 4 ? '1' : '0')
+      }
+    }
+
+    const applyLabels = (view: Viewport): void => {
       // Re-laid out, not merely repositioned: the marks keep their size while
       // zoom spreads them apart, so a name that could not fit at the fitted
       // view often can once there is room. Zooming reveals labels rather than
@@ -2285,15 +2347,17 @@ export function renderGraph(
       labelSlots.forEach((slot, index) => {
         const placement = placements[index]
         if (!placement) {
-          slot.setAttribute('opacity', '0')
+          put(slot, 'opacity', '0')
           return
         }
         const x = placement.x.toFixed(1)
         // One line is the overwhelming case and costs a single assignment;
         // only the pointed-at mark is ever wrapped, and only that one pays for
         // the tspans it needs.
-        if (placement.lines.length === 1) slot.textContent = placement.lines[0]
-        else {
+        if (placement.lines.length === 1) {
+          if (slot.textContent !== placement.lines[0] || slot.childElementCount > 0)
+            slot.textContent = placement.lines[0]
+        } else {
           slot.textContent = ''
           placement.lines.forEach((line, row) => {
             const tspan = doc.createElementNS(SVG_NS, 'tspan')
@@ -2303,9 +2367,9 @@ export function renderGraph(
             slot.append(tspan)
           })
         }
-        slot.setAttribute('x', x)
-        slot.setAttribute('y', placement.y.toFixed(1))
-        slot.setAttribute('text-anchor', placement.anchor)
+        put(slot, 'x', x)
+        put(slot, 'y', placement.y.toFixed(1))
+        put(slot, 'text-anchor', placement.anchor)
         // Names of unrelated works go out rather than dim.
         //
         // A dimmed name is still a name, and twenty of them around the one
@@ -2313,42 +2377,46 @@ export function renderGraph(
         // marks stay -- they are the shape of the field and dimming is enough
         // for them -- but their captions are what makes it unreadable.
         const related = placement.key === emphasised() || (currentChain()?.keys.has(placement.key) ?? false)
-        slot.setAttribute(
-          'opacity',
-          emphasised() === null ? '0.9' : related ? emphasis(placement.key, 0.9, 0.55, 1) : '0',
-        )
+        put(slot, 'opacity', emphasised() === null ? '0.9' : related ? emphasis(placement.key, 0.9, 0.55, 1) : '0')
       })
+    }
 
-      /**
-       * Pointing at a mark pushes the rest back rather than lighting it up.
-       *
-       * Recede-the-others reads at a glance where brighten-the-one does not:
-       * the plot is already full of saturated marks, and one more of them is
-       * not a signal. Nothing is hidden -- dimmed marks stay visible, keep
-       * their tooltip and remain clickable.
-       */
-      for (const mark of marks) mark.setAttribute('opacity', emphasis(keyOf(mark), 1, 0.22, 1))
+    /**
+     * Pointing at a mark pushes the rest back rather than lighting it up.
+     *
+     * Recede-the-others reads at a glance where brighten-the-one does not:
+     * the plot is already full of saturated marks, and one more of them is
+     * not a signal. Nothing is hidden -- dimmed marks stay visible, keep
+     * their tooltip and remain clickable.
+     */
+    const applyEmphasis = (): void => {
+      for (const mark of markData) put(mark.element, 'opacity', emphasis(mark.key, 1, 0.22, 1))
       /** Lit edges thicken and take the larger head; the rest recede. */
-      const setEdge = (line: Element, lit: boolean, resting: number, dim: number, base: number): void => {
+      const setEdge = (
+        line: (typeof lineData)[number],
+        lit: boolean,
+        resting: number,
+        dim: number,
+        base: number,
+      ): void => {
         const at = emphasised()
-        line.setAttribute('opacity', at === null ? String(resting) : lit ? '0.85' : String(dim))
-        line.setAttribute('stroke-width', at !== null && lit ? String(base * 2) : String(base))
-        const arrow = line.getAttribute(at !== null && lit ? 'data-arrow-lit' : 'data-arrow')
-        if (arrow) line.setAttribute('marker-end', arrow)
+        put(line.element, 'opacity', at === null ? String(resting) : lit ? '0.85' : String(dim))
+        put(line.element, 'stroke-width', at !== null && lit ? String(base * 2) : String(base))
+        const arrow = at !== null && lit ? line.arrowLit : line.arrow
+        if (arrow) put(line.element, 'marker-end', arrow)
       }
 
-      for (const line of edgeLines) {
-        if (line.getAttribute('hidden-short') === '1') continue // too short to draw
-        const linkIndex = line.getAttribute('data-link')
-        if (linkIndex !== null) {
+      for (const line of lineData) {
+        if (line.hidden) continue // too short to draw
+        if (line.link !== null) {
           // A path between two surrounding works, shown while the mark being
           // pointed at is anywhere on its chain. All of them at once is a
           // thicket; only the ones touching it is half the story.
-          const onChain = currentChain()?.edges.has(Number(linkIndex)) ?? false
+          const onChain = currentChain()?.edges.has(line.link) ?? false
           // A network has no star to show its shape, so its citations rest
           // faintly in view; the single-paper graph keeps them for the hover.
           setEdge(line, onChain, networkMode ? NETWORK_LINK_RESTING : 0, networkMode ? NETWORK_LINK_DIM : 0, 1)
-          if (!onChain && !networkMode) line.setAttribute('opacity', '0')
+          if (!onChain && !networkMode) put(line.element, 'opacity', '0')
           continue
         }
         /**
@@ -2361,24 +2429,36 @@ export function renderGraph(
          * seed itself lights all of them, since all of them are its own.
          */
         const at = emphasised()
-        const related = at !== null && (at === seedKey || (currentChain()?.keys.has(keyOf(line)) ?? false))
+        const related = at !== null && (at === seedKey || (currentChain()?.keys.has(line.key) ?? false))
         setEdge(line, related, 0.4, 0.06, 1.2)
       }
+    }
 
-      // A tick whose value has moved out of the plot is hidden rather than
-      // stacked against the edge, where it would name a place nobody can see.
-      for (const tick of yTicks) {
-        const home = Number(tick.getAttribute('data-pos'))
-        const at = home * ky + ty
-        tick.setAttribute('transform', `translate(0,${(at - home).toFixed(2)})`)
-        tick.setAttribute('opacity', at > 8 && at < height - AXIS_GUTTER.bottom ? '1' : '0')
+    /**
+     * One frame. A hover changes only the emphasis and the labels; a pan or a
+     * zoom moves everything. While a gesture runs the labels are laid out at
+     * most every 100 ms, the most expensive part of a frame, and once more
+     * when it settles -- so they follow the view without holding it back.
+     */
+    const apply = (): void => {
+      const view = { kx, ky, tx, ty, width, height }
+      const wasMoved = moved
+      moved = false
+      if (wasMoved) applyGeometry(view)
+      const now = Date.now()
+      if (!wasMoved || now - labelsAt >= 100) {
+        labelsAt = now
+        applyLabels(view)
       }
-      for (const tick of xTicks) {
-        const home = Number(tick.getAttribute('data-pos'))
-        const at = home * kx + tx
-        tick.setAttribute('transform', `translate(${(at - home).toFixed(2)},0)`)
-        tick.setAttribute('opacity', at > AXIS_GUTTER.left && at < width - 4 ? '1' : '0')
+      if (wasMoved) {
+        if (trailing !== null) clearTimeout(trailing)
+        trailing = setTimeout(() => {
+          trailing = null
+          labelsAt = Date.now()
+          applyLabels({ kx, ky, tx, ty, width, height })
+        }, 120)
       }
+      applyEmphasis()
     }
 
     /**
@@ -2424,6 +2504,7 @@ export function renderGraph(
         ty = anchorY - (anchorY - ty) * (next / ky)
         ky = next
       }
+      moved = true
       schedule()
     }
 
@@ -2479,6 +2560,7 @@ export function renderGraph(
       ty += ((event.clientY - from.y) / rect.height) * height
       if (Math.abs(event.clientX - from.x) > 3 || Math.abs(event.clientY - from.y) > 3) dragged = true
       from = { x: event.clientX, y: event.clientY }
+      moved = true
       schedule()
     })
     const release = (): void => {
@@ -2497,11 +2579,13 @@ export function renderGraph(
         ky = 1
         tx = 0
         ty = 0
+        moved = true
         schedule()
       },
       centre: (x: number, y: number) => {
         tx = width / 2 - x * kx
         ty = height / 2 - y * ky
+        moved = true
         schedule()
       },
     }
