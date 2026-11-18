@@ -46,31 +46,33 @@ function initLocale() {
  */
 function getString(localString: FluentMessageId): string
 function getString(localString: FluentMessageId, branch: string): string
-function getString(
-  localeString: FluentMessageId,
-  options: { branch?: string | undefined; args?: Record<string, unknown> },
-): string
-function getString(...inputs: any[]) {
+function getString(localeString: FluentMessageId, options: StringOptions): string
+function getString(...inputs: [FluentMessageId, (string | StringOptions)?]) {
   if (inputs.length === 1) {
     return _getString(inputs[0])
   } else if (inputs.length === 2) {
-    if (typeof inputs[1] === 'string') {
-      return _getString(inputs[0], { branch: inputs[1] })
+    const [id, second] = inputs
+    if (typeof second === 'string') {
+      return _getString(id, { branch: second })
     } else {
-      return _getString(inputs[0], inputs[1])
+      return _getString(id, second)
     }
   } else {
     throw new Error('Invalid arguments')
   }
 }
 
-function _getString(
-  localeString: string,
-  options: { branch?: string | undefined; args?: Record<string, unknown> } = {},
-): string {
+interface StringOptions {
+  branch?: string | undefined
+  args?: L10nArgs
+}
+
+function _getString(localeString: string, options: StringOptions = {}): string {
   const localStringWithPrefix = `${config.addonRef}-${localeString}`
   const { branch, args } = options
-  const pattern = addon.data.locale?.current.formatMessagesSync([{ id: localStringWithPrefix, args }])[0]
+  const pattern: L10nMessage | null | undefined = addon.data.locale?.current.formatMessagesSync([
+    { id: localStringWithPrefix, args },
+  ])[0]
   if (!pattern) {
     return localStringWithPrefix
   }
@@ -80,7 +82,7 @@ function _getString(
         return attr.value
       }
     }
-    return pattern.attributes[branch] || localStringWithPrefix
+    return localStringWithPrefix
   } else {
     return pattern.value || localStringWithPrefix
   }

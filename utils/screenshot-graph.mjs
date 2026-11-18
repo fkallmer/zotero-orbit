@@ -180,7 +180,10 @@ const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>${NAME}</title>
 <style>
   html, body { margin: 0; background: #fff; color: #1c1c1e; }
-  body { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden; }
+  body {
+    font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden;
+  }
   body > div { display: flex; height: 100%; }
 </style></head>
 <body>${container.outerHTML}</body></html>`

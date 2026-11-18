@@ -17,7 +17,7 @@ class Addon {
     runtimeBridge?: RuntimeBridgeReport
     ztoolkit: ZToolkit
     locale?: {
-      current: any
+      current: Localization
     }
     prefs?: {
       window: Window

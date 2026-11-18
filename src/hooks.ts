@@ -247,7 +247,7 @@ function onShutdown(): void {
  * @param type event type
  * @param data event data
  */
-function onPrefsEvent(type: string, data: Record<string, any>) {
+function onPrefsEvent(type: string, data: { window: Window }) {
   switch (type) {
     case 'load':
       void registerPrefsScripts(data.window)
