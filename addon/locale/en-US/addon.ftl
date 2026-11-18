@@ -101,6 +101,9 @@ import-confirm-body = Look up this work by its DOI and add it to â€œ{ $target }â
     { $title } ({ $year })
     DOI: { $doi }
 import-confirm-no-year = no year
+import-choose-body = Look up this work by its DOI and add it where?
+    { $title } ({ $year })
+    DOI: { $doi }
 import-failed-read-only = This library cannot be edited.
 import-failed-no-translator = No translator can look up DOIs.
 import-failed-no-result = The DOI lookup found nothing.

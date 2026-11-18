@@ -38,7 +38,7 @@ import {
   seedCandidates,
 } from './collectionNetwork'
 import { estimateRequests, rematch } from './collectionNetwork.core'
-import { canImportInto, confirmImport, importByDoi } from './doiImport'
+import { canImportInto, chooseImportTarget, confirmImport, importByDoi } from './doiImport'
 import { renderGapsPanel } from './gapsPanel'
 import {
   AXIS_GUTTER,
@@ -65,7 +65,7 @@ import type { FluentMessageId } from '../../typings/i10n'
 import type { ItemIdentifier } from './citationTypes.ts'
 import type { NetworkGraphOptions } from './collectionGraph.core'
 import type { BuildProgress, CollectionNetwork, NetworkStep, RequestEstimate } from './collectionTypes'
-import type { ImportOutcome } from './doiImport'
+import type { ImportOutcome, ImportTarget } from './doiImport'
 import type {
   AxisMetric,
   Chain,
@@ -2037,16 +2037,9 @@ export function renderGraph(
 
   // --- The network's own actions: import, focus, show ----------------------
 
-  // A single-paper graph files into its library, outside any collection.
+  // A single-paper graph has no collection of its own: the reader picks one
+  // on each import. This target only says whether the library is editable.
   const importTarget = net ? importTargetFor(net.scope) : { libraryID: seedLibraryID, collectionID: null }
-  const importTargetName = (): string => {
-    if (net) return net.scope.name
-    try {
-      return Zotero.Libraries.getName(seedLibraryID)
-    } catch {
-      return getString('graph-card-title')
-    }
-  }
   let canImport = false
   try {
     canImport = importTarget !== null && canImportInto(importTarget)
@@ -2077,9 +2070,19 @@ export function renderGraph(
     year: number | null
   }): Promise<ImportOutcome> => {
     if (!work.doi) return { status: 'failed', reason: 'no-result' }
-    const target = importTargetName()
-    if (!confirmImport(win, work, target)) return { status: 'cancelled' }
-    const outcome = await importByDoi(work.doi, importTarget)
+    let target: string
+    let into: ImportTarget
+    if (net) {
+      if (!confirmImport(win, work, net.scope.name)) return { status: 'cancelled' }
+      target = net.scope.name
+      into = importTarget
+    } else {
+      const chosen = chooseImportTarget(win, work, seedLibraryID)
+      if (!chosen) return { status: 'cancelled' }
+      target = chosen.name
+      into = chosen
+    }
+    const outcome = await importByDoi(work.doi, into)
     if (outcome.status === 'imported' || outcome.status === 'exists') {
       status.textContent = getString('network-import-done', { args: { title: work.title, target } })
       try {

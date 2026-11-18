@@ -18,6 +18,7 @@
 import { getString } from '../utils/locale'
 import { debugLog } from '../utils/log'
 
+import { importChoices } from './importChoice.core'
 import { findInLibrary, getLibraryIndex, normalizeDoi } from './libraryIndex'
 
 import type { Gap } from './collectionTypes'
@@ -85,6 +86,49 @@ export function confirmImport(win: Window, work: Pick<Gap, 'title' | 'doi' | 'ye
   })
   // Gecko types the parent as mozIDOMWindowProxy; a chrome Window is one.
   return Services.prompt.confirm(win as unknown as mozIDOMWindowProxy, getString('import-confirm-title'), text)
+}
+
+/**
+ * Ask where a work from a single-paper graph should go: the library itself or
+ * one of its collections, the one open in Zotero offered first. Null when the
+ * reader cancels. The choice is the confirmation; nothing else is asked.
+ */
+export function chooseImportTarget(
+  win: Window,
+  work: Pick<Gap, 'title' | 'doi' | 'year'>,
+  libraryID: number,
+): (ImportTarget & { name: string }) | null {
+  const collections = Zotero.Collections.getByLibrary(libraryID, true).map((collection) => ({
+    id: collection.id,
+    name: collection.name,
+    // Typed as a number, but false for a top-level collection at runtime.
+    parentID: typeof collection.parentID === 'number' && collection.parentID > 0 ? collection.parentID : null,
+  }))
+  let preferred: number | null = null
+  try {
+    const open = Zotero.getActiveZoteroPane()?.getSelectedCollection()
+    if (open && open.libraryID === libraryID) preferred = open.id
+  } catch {
+    // No pane, or nothing selected: the library comes first.
+  }
+  const choices = importChoices(Zotero.Libraries.getName(libraryID), collections, preferred)
+  const text = getString('import-choose-body', {
+    args: {
+      title: work.title,
+      year: work.year === null ? getString('import-confirm-no-year') : String(work.year),
+      doi: work.doi ?? '',
+    },
+  })
+  const selection = { value: 0 }
+  const ok = Services.prompt.select(
+    win as unknown as mozIDOMWindowProxy,
+    getString('import-confirm-title'),
+    text,
+    choices.map((choice) => choice.label),
+    selection,
+  )
+  const choice = ok ? choices[selection.value] : undefined
+  return choice ? { libraryID, collectionID: choice.collectionID, name: choice.label } : null
 }
 
 /**

@@ -110,6 +110,7 @@ export type FluentMessageId =
   | 'graph-zoom-reset'
   | 'import-button'
   | 'import-button-hint'
+  | 'import-choose-body'
   | 'import-confirm-body'
   | 'import-confirm-no-year'
   | 'import-confirm-title'
