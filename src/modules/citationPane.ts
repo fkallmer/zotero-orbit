@@ -141,7 +141,10 @@ function headingWithInfo(doc: Document, text: string, body: HTMLElement): HTMLEl
     'cursor:pointer;opacity:.75;font-style:italic;font-weight:600;font-size:10px;width:13px;height:13px;' +
     'line-height:13px;text-align:center;border:1px solid currentColor;border-radius:50%;flex:none'
   const flip = () => {
-    const notes = [...body.querySelectorAll<HTMLElement>(`[${HINT_ATTR}]`)]
+    // zotero-types declares Gecko's `NodeListOf<T>` as `any`, so name the shape
+    // actually used here.
+    const found = body.querySelectorAll(`[${HINT_ATTR}]`) as unknown as ArrayLike<HTMLElement>
+    const notes = Array.from(found)
     const show = notes.some((note) => note.style.display === 'none')
     for (const note of notes) note.style.display = show ? 'block' : 'none'
     toggle.style.opacity = show ? '1' : '.55'

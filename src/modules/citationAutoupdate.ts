@@ -12,6 +12,8 @@ import { refreshFwciAfterCounts } from './fwciUpdate'
 import { GOOGLE_SCHOLAR_DATABASE } from './googleScholarClient.core'
 import { isSemanticScholarAvailable } from './semanticScholarClient'
 
+import type { ProgressWindowHelper } from 'zotero-plugin-toolkit'
+
 // Preference values outside the menu options fall back to six months.
 const ALLOWED_CUTOFF_MONTHS: ReadonlySet<number> = new Set([3, 6, 12, 24])
 function parseCutoffMonths(raw: string): number {
@@ -104,7 +106,7 @@ let autoUpdateQueue: Zotero.Item[] = []
 let autoUpdateIndex = 0
 let autoUpdateSuccessCount = 0
 let autoUpdateTrigger: UpdateTrigger = 'startup'
-let autoUpdateProgressWindow: any = null
+let autoUpdateProgressWindow: ProgressWindowHelper | null = null
 let autoUpdateRetryCount = 0
 let autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
 const MAX_RETRIES = 3

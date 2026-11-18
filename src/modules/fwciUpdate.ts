@@ -30,6 +30,8 @@ import {
   toLookupDoi,
 } from './openAlexClient.core'
 
+import type { ProgressWindowHelper } from 'zotero-plugin-toolkit'
+
 /** One run at a time; a second would double the request rate for no gain. */
 let running = false
 
@@ -132,7 +134,7 @@ export async function refreshFwciForItems(items: readonly Zotero.Item[], options
   let withValue = 0
   let stopped = false
 
-  let progressWindow: any = null
+  let progressWindow: ProgressWindowHelper | null = null
   if (!silent) {
     progressWindow = new ztoolkit.ProgressWindow(addon.data.config.addonName)
     progressWindow.createLine({ text: getString('progress-fwci-starting'), type: 'default', progress: 0 })

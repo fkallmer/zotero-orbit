@@ -61,7 +61,8 @@ export function buildCitationLinePatterns(databaseTitles: readonly string[]): Re
     new RegExp(String.raw`^GSCC: *\d+(?:\s.*)?$`, 'i'),
     // Pre-localization names, which were never translated.
     new RegExp(
-      String.raw`^\d+ citations \((?:Crossref\/DOI|Inspire\/DOI|Inspire\/arXiv|Semantic Scholar\/DOI|Semantic Scholar\/arXiv)\) ${date}`,
+      String.raw`^\d+ citations \((?:Crossref\/DOI|Inspire\/DOI|Inspire\/arXiv|` +
+        String.raw`Semantic Scholar\/DOI|Semantic Scholar\/arXiv)\) ${date}`,
       'i',
     ),
   ]
