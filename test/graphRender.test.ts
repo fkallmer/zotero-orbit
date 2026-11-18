@@ -767,15 +767,26 @@ describe('a collection network on the tab', () => {
     assert.ok(container.querySelector('[data-cluster="none"]'), 'no entry for the unclustered seed')
   })
 
-  it('takes a cluster’s marks out when its entry is clicked, and puts them back', () => {
+  it('shows only the clicked cluster, adds the next one clicked, and shows all once none is picked', () => {
     const container = draw()
-    assert.ok(markKeys(container).includes('S1'))
+    const all = markKeys(container)
+    assert.ok(all.includes('S1') && all.includes('S3'))
+
+    // One cluster picked: that one alone (S1, S2), the unclustered S3 gone.
     fire(container.querySelector('[data-cluster="0"]'), 'click')
-    const without = markKeys(container)
-    assert.ok(!without.includes('S1') && !without.includes('S2'), without.join(','))
-    assert.ok(without.includes('S3'))
+    const only = markKeys(container)
+    assert.ok(only.includes('S1') && only.includes('S2'), only.join(','))
+    assert.ok(!only.includes('S3'), only.join(','))
+
+    // A second one added: both shown.
+    fire(container.querySelector('[data-cluster="none"]'), 'click')
+    const both = markKeys(container)
+    assert.ok(both.includes('S1') && both.includes('S3'), both.join(','))
+
+    // Both taken out again: back to everything.
     fire(container.querySelector('[data-cluster="0"]'), 'click')
-    assert.ok(markKeys(container).includes('S1'))
+    fire(container.querySelector('[data-cluster="none"]'), 'click')
+    assert.deepEqual(markKeys(container).sort(), all.sort())
   })
 
   it('draws no star: every line is a citation between two works on the plot', () => {

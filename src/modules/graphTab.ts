@@ -21,11 +21,14 @@ import { Helpers } from './citationCounts'
 import {
   centroid,
   clusterEntries,
+  clusterShown,
   DEFAULT_NETWORK_OPTIONS,
+  hiddenBySelection,
   importTargetFor,
   networkScopeFor,
   networkToGraph,
   routeFor,
+  toggleClusterSelection,
 } from './collectionGraph.core'
 import {
   buildCollectionNetwork,
@@ -1087,7 +1090,8 @@ export type NetworkToggle = { cluster: number | null } | 'gaps' | 'held' | 'citi
 
 /** The network view's own state: the legend's switches, kept across redraws. */
 interface NetworkView extends NetworkGraphOptions {
-  hiddenClusters: Set<number | null>
+  /** The clusters picked in the legend; none picked shows all. */
+  selectedClusters: Set<number | null>
 }
 
 /**
@@ -1161,7 +1165,7 @@ function renderNetworkLegend(
     const button = entry(
       dot(color),
       `${label} (${cluster.count})`,
-      !state.hiddenClusters.has(cluster.id),
+      clusterShown(state.selectedClusters, cluster.id),
       ['data-cluster', cluster.id === null ? 'none' : String(cluster.id)],
       () => onToggle({ cluster: cluster.id }),
     )
@@ -1704,14 +1708,18 @@ export function renderGraph(
     ...DEFAULT_NETWORK_OPTIONS,
     showGaps: getPref('graphShowGaps') !== false,
     showCiting: network?.net.coverage.citingIncluded ?? false,
-    hiddenClusters: new Set<number | null>(),
+    selectedClusters: new Set<number | null>(),
   }
   let nodes = initialNodes
   let links = initialLinks
   /** The network's marks for the legend's current switches. Cheap; run on every toggle. */
   const refreshNetwork = (): void => {
     if (!net) return
-    const graph = networkToGraph(net, view0)
+    const hiddenClusters = hiddenBySelection(
+      clusterEntries(net).map((entry) => entry.id),
+      view0.selectedClusters,
+    )
+    const graph = networkToGraph(net, { ...view0, hiddenClusters })
     nodes = graph.nodes
     links = graph.links
   }
@@ -1777,8 +1785,7 @@ export function renderGraph(
   const onNetworkToggle = (which: NetworkToggle): void => {
     if (!net) return
     if (typeof which === 'object') {
-      if (view0.hiddenClusters.has(which.cluster)) view0.hiddenClusters.delete(which.cluster)
-      else view0.hiddenClusters.add(which.cluster)
+      view0.selectedClusters = toggleClusterSelection(view0.selectedClusters, which.cluster)
     } else if (which === 'gaps') {
       view0.showGaps = !view0.showGaps
       setPref('graphShowGaps', view0.showGaps)

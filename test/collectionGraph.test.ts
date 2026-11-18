@@ -4,13 +4,16 @@ import { describe, it } from 'node:test'
 import {
   centroid,
   clusterEntries,
+  clusterShown,
   DEFAULT_NETWORK_OPTIONS,
   DRAW_LIMITS,
+  hiddenBySelection,
   importTargetFor,
   networkScopeFor,
   networkToGraph,
   routeFor,
   surnameOf,
+  toggleClusterSelection,
 } from '../src/modules/collectionGraph.core.ts'
 import { rankGaps } from '../src/modules/collectionNetwork.core.ts'
 
@@ -299,5 +302,28 @@ describe('small helpers', () => {
     assert.equal(surnameOf('Turing, Alan'), 'Turing')
     assert.equal(surnameOf(''), null)
     assert.equal(surnameOf(undefined), null)
+  })
+})
+
+describe('the cluster selection', () => {
+  const all = [0, 1, 2, null]
+
+  it('shows everything with nothing picked', () => {
+    assert.deepEqual([...hiddenBySelection(all, new Set())], [])
+    assert.ok(clusterShown(new Set(), 1))
+  })
+
+  it('shows only what is picked, adding step by step', () => {
+    let picked = toggleClusterSelection(new Set(), 1)
+    assert.deepEqual([...hiddenBySelection(all, picked)].sort(), [0, 2, null].sort())
+    picked = toggleClusterSelection(picked, null)
+    assert.deepEqual([...hiddenBySelection(all, picked)].sort(), [0, 2].sort())
+    assert.ok(clusterShown(picked, null) && !clusterShown(picked, 0))
+  })
+
+  it('takes a picked cluster out again, and shows all once the last one goes', () => {
+    const picked = toggleClusterSelection(toggleClusterSelection(new Set(), 1), 1)
+    assert.equal(picked.size, 0)
+    assert.deepEqual([...hiddenBySelection(all, picked)], [])
   })
 })

@@ -214,6 +214,39 @@ export function networkToGraph(
   return { nodes, links }
 }
 
+/**
+ * The cluster filter, as a selection rather than a list of what is hidden.
+ *
+ * Nothing selected shows every cluster. The first click on a cluster shows
+ * that one alone; further clicks add others, step by step; clicking a
+ * selected cluster takes it out again, and taking the last one out shows all
+ * again. That is the way round a reader asks: "only this topic", then "and
+ * that one", rather than switching off thirteen others one by one.
+ */
+export function toggleClusterSelection(
+  selected: ReadonlySet<number | null>,
+  cluster: number | null,
+): Set<number | null> {
+  const next = new Set(selected)
+  if (next.has(cluster)) next.delete(cluster)
+  else next.add(cluster)
+  return next
+}
+
+/** What a selection hides: nothing when empty, every other cluster otherwise. */
+export function hiddenBySelection(
+  all: readonly (number | null)[],
+  selected: ReadonlySet<number | null>,
+): Set<number | null> {
+  if (selected.size === 0) return new Set()
+  return new Set(all.filter((cluster) => !selected.has(cluster)))
+}
+
+/** Whether a cluster shows under a selection. */
+export function clusterShown(selected: ReadonlySet<number | null>, cluster: number | null): boolean {
+  return selected.size === 0 || selected.has(cluster)
+}
+
 /** One legend entry per cluster, plus the seeds in none. Counts are seeds. */
 export function clusterEntries(
   net: Pick<CollectionNetwork, 'clusters' | 'clusterOf' | 'seeds'>,
