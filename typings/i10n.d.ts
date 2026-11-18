@@ -165,6 +165,7 @@ export type FluentMessageId =
   | 'network-step-count'
   | 'network-step-library'
   | 'network-step-lookup'
+  | 'network-step-pages'
   | 'network-step-references'
   | 'network-step-seeds'
   | 'pane-divergence-note'

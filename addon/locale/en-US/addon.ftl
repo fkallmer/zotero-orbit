@@ -204,6 +204,8 @@ network-step-library = Checking your library
 network-step-clusters = Grouping them into topics
 # $step is one of the network-step-* strings above.
 network-step-count = { $step } ({ $done } of { $total })
+# The citing step, page by page: $group of $total groups, $pages pages into this one, $found works so far.
+network-step-pages = { $step } (group { $group } of { $total }, page { $pages }, { $found } works so far)
 network-scope-gone = This collection no longer exists.
 network-scope-empty = There are no regular items here to analyse.
 network-none-resolved = None of the { $count } items could be found in OpenAlex. An item needs a DOI, an arXiv ID or a PMID to be looked up.

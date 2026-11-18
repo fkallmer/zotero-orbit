@@ -37,7 +37,7 @@ import {
   resolveSeedItems,
   seedCandidates,
 } from './collectionNetwork'
-import { estimateRequests, rematch } from './collectionNetwork.core'
+import { CITING_PAGE_CAP, estimateRequests, rematch } from './collectionNetwork.core'
 import { canImportInto, chooseImportTarget, confirmImport, importByDoi } from './doiImport'
 import { renderGapsPanel } from './gapsPanel'
 import {
@@ -282,12 +282,25 @@ export function renderNetworkProgress(
   progress: BuildProgress,
 ): void {
   const index = Math.max(0, NETWORK_STEPS.indexOf(progress.step))
-  const within = progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0
+  // Pages into a group move the bar too, towards (never onto) the group's end:
+  // how many pages a group has is not known until its last one.
+  const pageShare = progress.pages ? Math.min(0.9, progress.pages / CITING_PAGE_CAP) : 0
+  const within = progress.total > 0 ? Math.min(1, (progress.done + pageShare) / progress.total) : 0
   const label = getString(NETWORK_STEP_LABEL[progress.step])
   const caption =
-    progress.total > 1
-      ? getString('network-step-count', { args: { step: label, done: progress.done, total: progress.total } })
-      : label
+    progress.pages !== undefined && progress.found !== undefined
+      ? getString('network-step-pages', {
+          args: {
+            step: label,
+            group: progress.done + 1,
+            total: progress.total,
+            pages: progress.pages,
+            found: progress.found,
+          },
+        })
+      : progress.total > 1
+        ? getString('network-step-count', { args: { step: label, done: progress.done, total: progress.total } })
+        : label
   paintProgress(doc, container, seed, caption, progress.step, (index + within) / NETWORK_STEPS.length)
 }
 

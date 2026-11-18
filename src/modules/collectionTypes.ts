@@ -167,6 +167,13 @@ export interface BuildProgress {
   step: NetworkStep
   done: number
   total: number
+  /**
+   * Within a group of the `citing` step: pages fetched for the group so far,
+   * and works found across all groups. A group can run to thirty pages, so
+   * without these the bar would sit still for minutes.
+   */
+  pages?: number
+  found?: number
 }
 
 export interface BuildOptions {

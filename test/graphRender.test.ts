@@ -977,4 +977,27 @@ describe('a collection network on the tab', () => {
     assert.equal(width('lookup', 1, 2), '25%')
     assert.equal(width('clusters', 1, 1), '100%')
   })
+
+  it('moves within a group of citing works, page by page, and says how far it got', () => {
+    const container = document.createElement('div')
+    documentBody.append(container)
+    const render = (pages?: number, found?: number) => {
+      renderNetworkProgress(document as any, container as any, { kind: 'library', name: 'x' } as any, {
+        step: 'citing',
+        done: 0,
+        total: 3,
+        ...(pages === undefined ? {} : { pages, found }),
+      })
+      return {
+        width: Number.parseFloat((container.querySelector('[data-progress] > div') as any)?.style.width),
+        text: container.textContent ?? '',
+      }
+    }
+    const before = render()
+    const later = render(6, 540)
+    assert.ok(later.width > before.width, `${later.width} is not past ${before.width}`)
+    assert.ok(later.text.includes('network-step-pages'), 'the page caption is not shown')
+    // Never onto the next group however many pages come in.
+    assert.ok(render(500, 50_000).width < render(undefined).width + (100 / 6 / 3) * 1.0001)
+  })
 })

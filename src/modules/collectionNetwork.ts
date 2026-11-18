@@ -259,9 +259,14 @@ export async function buildCollectionNetwork(
   context: { itemsInScope?: number; capped?: boolean } = {},
 ): Promise<CollectionNetwork> {
   const { signal, onProgress } = options
-  const progress = (step: NetworkStep, done: number, total: number): void => {
+  const progress = (
+    step: NetworkStep,
+    done: number,
+    total: number,
+    detail: { pages?: number; found?: number } = {},
+  ): void => {
     try {
-      onProgress?.({ step, done, total })
+      onProgress?.({ step, done, total, ...detail })
     } catch (err) {
       debugLog('Citation debug - Network progress callback failed:', err)
     }
@@ -449,6 +454,7 @@ export async function buildCollectionNetwork(
           const page = normalizeNetworkWorks(json)
           fetched.push(...page)
           cursor = page.length === 0 ? null : pageMeta(json).nextCursor
+          progress('citing', index, groups.length, { pages, found: fetched.length })
         }
         if (cursor !== null) citingTruncated = true
       } catch (err) {
