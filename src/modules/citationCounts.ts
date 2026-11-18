@@ -201,7 +201,8 @@ function monotonicNow(): number {
 let rateLimitWaits: WaitBoard = {}
 
 function noteRateLimitWait(source: string, untilMonotonicMs: number | null): void {
-  rateLimitWaits = noteWait(pruneWaits(rateLimitWaits, monotonicNow()), source, untilMonotonicMs)
+  const now = monotonicNow()
+  rateLimitWaits = noteWait(pruneWaits(rateLimitWaits, now), source, now, untilMonotonicMs)
 }
 
 // Semantic Scholar runs its own scheduler, so its waits arrive by listener.
@@ -243,13 +244,15 @@ export interface ProgressLineWindow {
 /**
  * Call `redraw` whenever the rate-limit notice would read differently -- each
  * second of a countdown, and once more when the wait ends -- so a queue that is
- * blocked inside a lookup still shows why. Returns the disposer.
+ * blocked inside a lookup still shows why. With `everyTickWhileWaiting`, also
+ * on every tick while a notice is up, for a window that must be kept open by
+ * showing it again. Returns the disposer.
  */
-function watchRateLimitNotice(redraw: () => void): () => void {
+function watchRateLimitNotice(redraw: () => void, everyTickWhileWaiting = false): () => void {
   let lastKey = noticeKey(currentRateLimitNotice())
   const timer = setInterval(() => {
     const key = noticeKey(currentRateLimitNotice())
-    if (key === lastKey) return
+    if (key === lastKey && !(everyTickWhileWaiting && key !== '')) return
     lastKey = key
     try {
       redraw()
@@ -1644,7 +1647,7 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
       const win = progressWindow as ProgressLineWindow | null
       win?.changeLine({ text: manualProgressText() })
       win?.show()
-    })
+    }, true)
   }
 
   void runUpdateQueue(operations, silent)

@@ -14,6 +14,8 @@
 
 /** A rate-limit wait in progress for one source. */
 export interface SourceWait {
+  /** Monotonic ms at which the wait was reported. */
+  readonly sinceMs: number
   /** Monotonic ms at which the source may be asked again. */
   readonly untilMs: number
 }
@@ -36,9 +38,10 @@ export interface RateLimitNotice {
 export const SEMANTIC_SCHOLAR_SOURCE = 'semanticscholar'
 
 /**
- * Waits shorter than this are not worth announcing. The ordinary anonymous
- * Semantic Scholar spacing is 3 s, and a notice that appears and vanishes
- * within one tick of the window's refresh is noise.
+ * Waits shorter than this, in total, are not worth announcing: a notice that
+ * appears and vanishes within one tick of the window's refresh is noise. It is
+ * judged on the whole wait, not on what is left of it, so a wait that is
+ * announced stays announced until it ends.
  */
 export const MIN_NOTICE_MS = 1500
 
@@ -46,14 +49,14 @@ export const MIN_NOTICE_MS = 1500
 const MINUTES_FROM_MS = 120_000
 
 /**
- * Record that `source` is rate-limited until `untilMs`, or that it no longer
- * is (`null`). The newest report wins: a scheduler that has just re-planned
- * its departure knows better than its own earlier estimate.
+ * Record at `nowMs` that `source` is rate-limited until `untilMs`, or that it
+ * no longer is (`null`). The newest report wins: a scheduler that has just
+ * re-planned its departure knows better than its own earlier estimate.
  */
-export function noteWait(board: WaitBoard, source: string, untilMs: number | null): WaitBoard {
+export function noteWait(board: WaitBoard, source: string, nowMs: number, untilMs: number | null): WaitBoard {
   const next: Record<string, SourceWait> = { ...board }
   if (untilMs === null || !Number.isFinite(untilMs)) delete next[source]
-  else next[source] = { untilMs }
+  else next[source] = { sinceMs: nowMs, untilMs }
   return next
 }
 
@@ -86,7 +89,7 @@ export function pickNotice(board: WaitBoard, nowMs: number, semanticScholarKeySe
   let longest: { source: string; remainingMs: number } | null = null
   for (const [source, wait] of Object.entries(board)) {
     const remainingMs = wait.untilMs - nowMs
-    if (remainingMs < MIN_NOTICE_MS) continue
+    if (remainingMs <= 0 || wait.untilMs - wait.sinceMs < MIN_NOTICE_MS) continue
     if (longest === null || remainingMs > longest.remainingMs) longest = { source, remainingMs }
   }
   if (longest === null) return null
