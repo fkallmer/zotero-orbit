@@ -20,6 +20,10 @@ All notable changes to Orbit. The format follows
   the ranked gaps over everything. Small collections look as before.
 - **The citing step shows its progress** page by page, with the works found so
   far, instead of standing still for minutes per group.
+- **The gaps list follows the cluster filter.** Picking clusters in the legend
+  narrows the list, and the numbered marks, to the works those clusters lean
+  on, ranked again among them. Every row carries dots in the colours of the
+  clusters that cite it.
 - **The OpenAlex budget shows during an analysis**, under the progress bar, so
   a long run can be watched spending it.
 

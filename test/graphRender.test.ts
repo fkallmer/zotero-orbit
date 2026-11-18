@@ -789,6 +789,23 @@ describe('a collection network on the tab', () => {
     assert.deepEqual(markKeys(container).sort(), all.sort())
   })
 
+  it('narrows the gaps list to the picked clusters, and marks each row with its clusters', () => {
+    const container = draw()
+    const rows = (): string[] =>
+      [...container.querySelectorAll('.orbit-gap')].map((row: any) => row.getAttribute('data-openalex')).sort()
+    assert.deepEqual(rows(), ['CITER', 'GAP'])
+    // GAP is cited by two Topic A items: one dot, in the first palette colour.
+    const dots = container.querySelectorAll('.orbit-gap[data-openalex="GAP"] .orbit-gap-cluster')
+    assert.equal(dots.length, 1)
+    assert.equal(dots[0].getAttribute('title'), 'Topic A (2)')
+
+    // Only the unclustered item: what it cites or is cited by, nothing of Topic A's.
+    fire(container.querySelector('[data-cluster="none"]'), 'click')
+    assert.deepEqual(rows(), ['CITER'])
+    fire(container.querySelector('[data-cluster="none"]'), 'click')
+    assert.deepEqual(rows(), ['CITER', 'GAP'])
+  })
+
   it('draws no star: every line is a citation between two works on the plot', () => {
     const container = draw()
     const lines = [...container.querySelectorAll('[data-edge]')]

@@ -7,6 +7,7 @@ import {
   clusterShown,
   DEFAULT_NETWORK_OPTIONS,
   DRAW_LIMITS,
+  focusNetwork,
   hiddenBySelection,
   importTargetFor,
   networkScopeFor,
@@ -325,5 +326,55 @@ describe('the cluster selection', () => {
     const picked = toggleClusterSelection(toggleClusterSelection(new Set(), 1), 1)
     assert.equal(picked.size, 0)
     assert.deepEqual([...hiddenBySelection(all, picked)], [])
+  })
+})
+
+describe('focusNetwork', () => {
+  const net = network(
+    [
+      // Cited by both clusters' items; famous, so it ranks low overall.
+      work('W1', { seeds: ['S1', 'S2', 'S3'], citedByCount: 90_000 }),
+      // Only the unclustered item leans on these two.
+      work('W2', { seeds: ['S3'], citedByCount: 5 }),
+      work('W3', { seeds: ['S3'], citedByCount: 50 }),
+      work('W4', { seeds: ['S1', 'S2'], citedByCount: 10 }),
+    ],
+    {
+      citations: [
+        { from: 'S1', to: 'W4' },
+        { from: 'S3', to: 'W2' },
+      ],
+    },
+  )
+
+  it('is the whole network when nothing is selected', () => {
+    assert.equal(focusNetwork(net, new Set()), net)
+  })
+
+  it('keeps only what the selected clusters lean on, ranked again among them', () => {
+    const focused = focusNetwork(net, new Set([null]))
+    assert.deepEqual(
+      focused.seeds.map((s) => s.openAlexId),
+      ['S3'],
+    )
+    assert.deepEqual(
+      focused.gaps.map((gap) => [gap.openAlexId, gap.rank, gap.seeds]),
+      [
+        ['W2', 1, ['S3']],
+        ['W3', 2, ['S3']],
+        ['W1', 3, ['S3']],
+      ],
+    )
+    assert.deepEqual(focused.citations, [{ from: 'S3', to: 'W2' }])
+  })
+
+  it('narrows a shared work to the selected items, and leaves the clusters alone', () => {
+    const focused = focusNetwork(net, new Set([0]))
+    assert.deepEqual(focused.works.find((w) => w.openAlexId === 'W1')?.seeds, ['S1', 'S2'])
+    assert.equal(
+      focused.works.some((w) => w.openAlexId === 'W2'),
+      false,
+    )
+    assert.equal(focused.clusters, net.clusters)
   })
 })

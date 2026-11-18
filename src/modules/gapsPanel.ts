@@ -26,6 +26,27 @@ export interface GapsPanelHandlers {
   onImport: (gap: Gap) => Promise<ImportOutcome>
   onFocus: (openAlexId: OpenAlexId) => void
   onShowItem: (itemID: number) => void
+  /**
+   * The clusters whose items cite a work, in the graph's colours, largest
+   * share first. Drawn as dots before the byline, so a row says which topic
+   * it belongs to the way its mark does. Optional: without it, no dots.
+   */
+  clustersOf?: (seeds: readonly OpenAlexId[]) => { colour: string; label: string; count: number }[]
+}
+
+/** Dots in the clusters' colours, one per cluster citing the work. */
+function clusterDots(doc: Document, seeds: readonly OpenAlexId[], handlers: GapsPanelHandlers): HTMLElement[] {
+  const clusters = handlers.clustersOf?.(seeds) ?? []
+  if (clusters.length === 0) return []
+  const wrap = el(doc, 'span', 'orbit-gap-clusters')
+  wrap.style.cssText = 'display:inline-flex;gap:3px;margin-right:6px;vertical-align:middle'
+  for (const cluster of clusters) {
+    const dot = el(doc, 'span', 'orbit-gap-cluster')
+    dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${cluster.colour}`
+    dot.setAttribute('title', `${cluster.label} (${cluster.count})`)
+    wrap.append(dot)
+  }
+  return [wrap]
 }
 
 /** Spelled out, not built from the reason, so every id is findable in the source. */
@@ -315,6 +336,7 @@ function renderReferenced(
     const body = el(doc, 'div', 'orbit-gap-body')
     body.style.cssText = 'flex:1;min-width:0'
     const { title, byline } = heading(doc, work, () => handlers.onFocus(work.openAlexId))
+    byline.prepend(...clusterDots(doc, work.seeds, handlers))
     body.append(title, byline, figures(doc, work), ...citedBy(doc, net, work.seeds, 'reference', handlers))
     row.append(badge(doc, work.rank, 'orbit-referenced-rank'), body)
 
@@ -437,6 +459,7 @@ function gapRow(doc: Document, net: CollectionNetwork, gap: Gap, handlers: GapsP
   const body = el(doc, 'div', 'orbit-gap-body')
   body.style.cssText = 'flex:1;min-width:0'
   const { title, byline } = heading(doc, gap, () => handlers.onFocus(gap.openAlexId))
+  byline.prepend(...clusterDots(doc, gap.seeds, handlers))
   body.append(title, byline, figures(doc, gap, gap.score), ...citedBy(doc, net, gap.seeds, gap.direction, handlers))
 
   row.append(badge(doc, gap.rank, 'orbit-gap-rank'), body)

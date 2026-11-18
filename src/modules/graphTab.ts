@@ -21,8 +21,10 @@ import { Helpers } from './citationCounts'
 import {
   centroid,
   clusterEntries,
+  clusterOfSeed,
   clusterShown,
   DEFAULT_NETWORK_OPTIONS,
+  focusNetwork,
   hiddenBySelection,
   importTargetFor,
   networkScopeFor,
@@ -310,6 +312,27 @@ export function renderNetworkProgress(
     budget.style.cssText = 'font-size:11px;opacity:.55;margin-top:8px'
     frame.append(budget)
   }
+}
+
+/** The clusters whose items cite a work, in the marks' colours, most items first. */
+function clustersCiting(
+  net: CollectionNetwork,
+  seeds: readonly string[],
+  theme: GraphTheme,
+): { colour: string; label: string; count: number }[] {
+  const counts = new Map<number, number>()
+  for (const id of seeds) {
+    const cluster = clusterOfSeed(net, id)
+    if (cluster !== null) counts.set(cluster, (counts.get(cluster) ?? 0) + 1)
+  }
+  const labels = new Map(net.clusters.map((cluster) => [cluster.id, cluster.label]))
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .map(([id, count]) => ({
+      colour: theme.clusters?.[id] ?? theme.muted,
+      label: labels.get(id) ?? '',
+      count,
+    }))
 }
 
 /** What a reader can answer when a scope is larger than the set limit. */
@@ -1741,7 +1764,9 @@ export function renderGraph(
       clusterEntries(net).map((entry) => entry.id),
       view0.selectedClusters,
     )
-    const graph = networkToGraph(net, { ...view0, hiddenClusters })
+    // The selection narrows what the marks and the gaps list rank, not only
+    // what is drawn: the numbered gaps are this topic's, and so is the list.
+    const graph = networkToGraph(focusNetwork(net, view0.selectedClusters), { ...view0, hiddenClusters })
     nodes = graph.nodes
     links = graph.links
   }
@@ -1804,10 +1829,13 @@ export function renderGraph(
   }
 
   let legend = el(doc, 'div')
+  /** Set once the list exists, further down; a no-op until then. */
+  let paintGaps = (): void => {}
   const onNetworkToggle = (which: NetworkToggle): void => {
     if (!net) return
     if (typeof which === 'object') {
       view0.selectedClusters = toggleClusterSelection(view0.selectedClusters, which.cluster)
+      paintGaps()
     } else if (which === 'gaps') {
       view0.showGaps = !view0.showGaps
       setPref('graphShowGaps', view0.showGaps)
@@ -2146,16 +2174,20 @@ export function renderGraph(
     void Zotero.getActiveZoteroPane()?.selectItem(itemID)
   }
 
-  if (net) {
-    aside.append(
-      renderGapsPanel(doc, net, {
+  /** The gaps list for the current cluster selection, replacing the last one. */
+  paintGaps = (): void => {
+    if (!net) return
+    aside.replaceChildren(
+      renderGapsPanel(doc, focusNetwork(net, view0.selectedClusters), {
         canImport,
         onImport: (gap) => runImport(gap),
         onFocus: focusMark,
         onShowItem: showItem,
+        clustersOf: (seeds) => clustersCiting(net as CollectionNetwork, seeds, theme),
       }),
     )
   }
+  paintGaps()
 
   /** What the network adds to a mark's card. */
   const networkActions = (node: GraphNode): CardAction[] => {
