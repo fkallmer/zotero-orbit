@@ -18,6 +18,7 @@ declare namespace _ZoteroTypes {
       "googleScholarEndpoint": string;
       "semanticScholarApiKey": string;
       "openAlexContact": string;
+      "openAlexApiKey": string;
       "debugLogging": boolean;
       "graphScale": string;
       "graphAxisX": string;
@@ -27,6 +28,10 @@ declare namespace _ZoteroTypes {
       "graphLibraryFilter": string;
       "graphHighlightHops": number;
       "graphLinkDirection": string;
+      "networkSeedLimit": number;
+      "networkSeedPolicy": string;
+      "graphNetworkCiting": boolean;
+      "graphShowGaps": boolean;
       "adoptedLegacyState": boolean;
     };
   }

@@ -17,6 +17,14 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
+// ORBIT_NO_BUMP=1 builds without spending a number: for checking a branch in a
+// worktree, where a rewritten package.json would conflict with every other
+// branch, and for a release whose version was set by hand.
+if (process.env.ORBIT_NO_BUMP === '1') {
+  console.log('Version left as it is (ORBIT_NO_BUMP=1)')
+  process.exit(0)
+}
+
 const path = resolve(import.meta.dirname, '..', 'package.json')
 const raw = readFileSync(path, 'utf8')
 const pkg = JSON.parse(raw)

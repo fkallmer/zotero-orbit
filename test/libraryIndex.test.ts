@@ -16,6 +16,15 @@ interface FakeItem {
   id: number
   isRegularItem: () => boolean
   getField: (name: string) => string
+  getCreators: () => FakeCreator[]
+}
+
+/** The shape `Zotero.Item.getCreators()` returns. */
+interface FakeCreator {
+  creatorTypeID: number
+  fieldMode: 0 | 1
+  firstName: string
+  lastName: string
 }
 
 interface Observer {
@@ -25,6 +34,7 @@ interface Observer {
 /** What the module asked of Zotero, so tests can assert on it. */
 const calls = {
   getAll: [] as Array<[number, boolean]>,
+  strToDate: [] as string[],
   registered: [] as Array<[Observer, string[]]>,
   unregistered: [] as string[],
 }
@@ -52,6 +62,19 @@ globals.Zotero = {
       calls.unregistered.push(id)
     },
   },
+  Date: {
+    // Zotero's parser returns the year as a string, and leaves it out when the
+    // date has none. A four-digit run is enough for the dates used here.
+    strToDate: (date: string) => {
+      calls.strToDate.push(date)
+      const year = /\b(\d{4})\b/.exec(date)?.[1]
+      return year ? { year, part: date } : { part: date }
+    },
+  },
+  CreatorTypes: {
+    // Two of Zotero's ids, enough to tell an author from a reviewed author.
+    getName: (id: number) => ({ 1: 'author', 26: 'reviewedAuthor' })[id] ?? false,
+  },
   // debugLog reads this; off keeps ztoolkit out of the picture.
   Prefs: { get: () => undefined },
 }
@@ -59,13 +82,20 @@ globals.Zotero = {
 const {
   normalizeDoi,
   getLibraryIndex,
+  getLibraryMatcher,
+  matchInLibrary,
   clearLibraryIndex,
   registerLibraryIndexNotifier,
   unregisterLibraryIndexNotifier,
 } = await import('../src/modules/libraryIndex.ts')
 
 /** The fields the index reads. Any other name is a test failure. */
-const INDEXED_FIELDS = new Set(['DOI', 'extra', 'archiveID', 'url'])
+const INDEXED_FIELDS = new Set(['DOI', 'extra', 'archiveID', 'url', 'title', 'date'])
+
+/** A two-field creator, as Zotero stores a person. */
+function person(firstName: string, lastName: string): FakeCreator {
+  return { creatorTypeID: 1, fieldMode: 0, firstName, lastName }
+}
 
 /**
  * A regular item. A string is its DOI; a record sets fields by name. Fields
@@ -74,7 +104,7 @@ const INDEXED_FIELDS = new Set(['DOI', 'extra', 'archiveID', 'url'])
 function item(
   id: number,
   fields: string | Record<string, string>,
-  options: { regular?: boolean; throws?: string[] } = {},
+  options: { regular?: boolean; throws?: string[]; creators?: FakeCreator[] } = {},
 ): FakeItem {
   const values = typeof fields === 'string' ? { DOI: fields } : fields
   return {
@@ -85,6 +115,7 @@ function item(
       if (options.throws?.includes(name)) throw new Error(`'${name}' is not a valid field for this item type`)
       return values[name] ?? ''
     },
+    getCreators: () => options.creators ?? [],
   }
 }
 
@@ -99,6 +130,7 @@ beforeEach(() => {
   libraries = {}
   holdScan = null
   calls.getAll.length = 0
+  calls.strToDate.length = 0
 })
 
 describe('normalizeDoi', () => {
@@ -199,6 +231,144 @@ describe('getLibraryIndex', () => {
     assert.deepEqual([...(await pending)], [['doi:10.1/old', 80]])
     // ...but the next caller sees the edit, not a cached copy of the old scan.
     assert.deepEqual([...(await getLibraryIndex(1))], [['doi:10.1/new', 80]])
+    assert.equal(calls.getAll.length, 2)
+  })
+})
+
+describe('getLibraryMatcher', () => {
+  const TITLE = 'Long Short-Term Memory in Recurrent Networks'
+
+  it('indexes titles with year, creators and identifiers, read off real-shaped items', async () => {
+    libraries[1] = [
+      item(
+        90,
+        {
+          title: `<i>${TITLE}</i>`,
+          date: 'November 15, 1997',
+          DOI: '10.1162/neco.1997.9.8.1735',
+          extra: 'PMID: 9377276',
+        },
+        { creators: [person('Sepp', 'Hochreiter'), person('Jürgen', 'Schmidhuber')] },
+      ),
+      // An institution as a single-field creator: no first name, no initial.
+      item(
+        91,
+        { title: 'Global Report on Infectious Disease', date: '2020-03' },
+        {
+          creators: [{ creatorTypeID: 1, fieldMode: 1, firstName: '', lastName: 'World Health Organization' }],
+        },
+      ),
+    ]
+    const matcher = await getLibraryMatcher(1)
+    assert.deepEqual(matcher.titles.get('long short term memory in recurrent networks'), [
+      {
+        itemID: 90,
+        year: 1997,
+        authors: [
+          { surname: 'hochreiter', initial: 's' },
+          { surname: 'schmidhuber', initial: 'j' },
+        ],
+        keys: ['doi:10.1162/neco.1997.9.8.1735', 'pmid:9377276'],
+      },
+    ])
+    assert.deepEqual(matcher.titles.get('global report on infectious disease'), [
+      { itemID: 91, year: 2020, authors: [{ surname: 'world health organization', initial: null }], keys: [] },
+    ])
+    assert.deepEqual(calls.strToDate, ['November 15, 1997', '2020-03'])
+  })
+
+  it('shares one scan and one cache with getLibraryIndex', async () => {
+    libraries[1] = [item(92, { DOI: '10.1/a', title: TITLE, date: '1997' })]
+    const matcher = await getLibraryMatcher(1)
+    assert.equal(await getLibraryIndex(1), matcher.ids)
+    assert.equal(await getLibraryMatcher(1), matcher)
+    assert.deepEqual(calls.getAll, [[1, true]])
+  })
+
+  it('leaves short titles, missing dates and types without a title field out of harm', async () => {
+    libraries[1] = [
+      item(93, { title: 'Introduction', date: '2001' }, { creators: [person('Ann', 'Roe')] }),
+      item(94, { title: TITLE }, { creators: [person('Sepp', 'Hochreiter')] }),
+      item(95, { DOI: '10.1/c' }, { throws: ['title', 'date'] }),
+      item(96, { title: TITLE, date: 'n.d.' }, { regular: false }),
+    ]
+    const matcher = await getLibraryMatcher(1)
+    assert.deepEqual([...matcher.titles.keys()], ['long short term memory in recurrent networks'])
+    assert.equal(matcher.titles.get('long short term memory in recurrent networks')?.[0]?.year, null)
+    // The undated item cannot be matched by title. Neither its empty date nor
+    // the short title's date is parsed: there is nothing to use it for.
+    assert.deepEqual(calls.strToDate, [])
+    assert.equal(matcher.ids.get('doi:10.1/c'), 95)
+  })
+
+  it('keeps every item under a shared title, so the matcher can refuse to choose', async () => {
+    libraries[1] = [
+      item(97, { title: TITLE, date: '1997' }, { creators: [person('Sepp', 'Hochreiter')] }),
+      item(98, { title: TITLE.toUpperCase(), date: '1997' }, { creators: [person('S.', 'Hochreiter')] }),
+    ]
+    const matcher = await getLibraryMatcher(1)
+    assert.deepEqual(
+      matcher.titles.get('long short term memory in recurrent networks')?.map((c) => c.itemID),
+      [97, 98],
+    )
+    assert.equal(matchInLibrary(matcher, { title: TITLE, year: 1997, authors: ['Sepp Hochreiter'] }), null)
+  })
+
+  it('does not count the reviewed author of a review as its author', async () => {
+    // A review titled after the book it reviews, from the same year: the
+    // book's author is on it, but only as the one reviewed.
+    libraries[1] = [
+      item(
+        102,
+        { title: TITLE, date: '1998' },
+        {
+          creators: [
+            person('Ann', 'Roe'),
+            { creatorTypeID: 26, fieldMode: 0, firstName: 'Sepp', lastName: 'Hochreiter' },
+          ],
+        },
+      ),
+    ]
+    const matcher = await getLibraryMatcher(1)
+    assert.deepEqual(matcher.titles.get('long short term memory in recurrent networks')?.[0]?.authors, [
+      { surname: 'roe', initial: 'a' },
+    ])
+    assert.equal(matchInLibrary(matcher, { title: TITLE, year: 1997, authors: ['Sepp Hochreiter'] }), null)
+  })
+
+  it('matches a reference with no identifier by title, and by identifier first', async () => {
+    libraries[1] = [
+      item(99, { title: TITLE, date: '1997-11-15' }, { creators: [person('Sepp', 'Hochreiter')] }),
+      item(100, { DOI: '10.1/exact', title: 'Something else entirely, at length', date: '2000' }),
+    ]
+    const matcher = await getLibraryMatcher(1)
+    assert.deepEqual(matchInLibrary(matcher, { title: TITLE, year: 1998, authors: ['S. Hochreiter'] }), {
+      itemID: 99,
+      confidence: 'probable',
+      via: 'title',
+    })
+    assert.deepEqual(matchInLibrary(matcher, { doi: '10.1/EXACT', title: TITLE, year: 1997 }), {
+      itemID: 100,
+      confidence: 'exact',
+      via: 'doi',
+    })
+  })
+
+  it('does not keep a scan that an edit overtook', async () => {
+    let release = (): void => {}
+    holdScan = new Promise((resolve) => {
+      release = resolve
+    })
+    libraries[1] = [item(101, { title: TITLE, date: '1997' })]
+    const pending = getLibraryMatcher(1)
+
+    libraries[1] = [item(101, { title: 'A retitled work about something else', date: '1997' })]
+    clearLibraryIndex()
+    holdScan = null
+    release()
+
+    assert.deepEqual([...(await pending).titles.keys()], ['long short term memory in recurrent networks'])
+    assert.deepEqual([...(await getLibraryMatcher(1)).titles.keys()], ['a retitled work about something else'])
     assert.equal(calls.getAll.length, 2)
   })
 })

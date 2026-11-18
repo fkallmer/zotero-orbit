@@ -19,22 +19,53 @@ import { toS2PaperRefs } from '../utils/s2Identifiers'
 
 import { Helpers } from './citationCounts'
 import {
+  centroid,
+  clusterEntries,
+  clusterShown,
+  DEFAULT_NETWORK_OPTIONS,
+  hiddenBySelection,
+  importTargetFor,
+  networkScopeFor,
+  networkToGraph,
+  routeFor,
+  toggleClusterSelection,
+} from './collectionGraph.core'
+import {
+  buildCollectionNetwork,
+  chooseSeeds,
+  readSeedSettings,
+  resolveSeedItems,
+  seedCandidates,
+} from './collectionNetwork'
+import { estimateRequests, rematch } from './collectionNetwork.core'
+import { canImportInto, chooseImportTarget, confirmImport, importByDoi } from './doiImport'
+import { renderGapsPanel } from './gapsPanel'
+import {
   AXIS_GUTTER,
   AXIS_METRICS,
   buildGraphLayout,
   chainFrom,
+  CLUSTER_PALETTE,
   edgeEnds,
+  hueFor,
   LINE_HEIGHT,
   LINK_DIRECTIONS,
   placeLabels,
   renderGraphSvg,
 } from './graphModel.core.ts'
-import { findInLibrary, getLibraryIndex } from './libraryIndex'
+import { clearLibraryIndex, getLibraryMatcher, matchInLibrary, normalizeDoi } from './libraryIndex'
+import { exportActions } from './networkExport'
+import { connectedPapersUrl, openAlexCitesUrl } from './networkExport.core'
+import { describeOpenAlexBudget, latestOpenAlexBudget } from './openAlexBudget.core'
+import { hasOpenAlexApiKey } from './openAlexClient.core'
 import { fetchCitingWorks, fetchGraphLinks, fetchReferences, fetchScholarlyRecord } from './openAlexEnrichment'
 import { s2DetailsCacheKey } from './s2Details'
 
 import type { FluentMessageId } from '../../typings/i10n'
 import type { ItemIdentifier } from './citationTypes.ts'
+import type { NetworkGraphOptions } from './collectionGraph.core'
+import type { BuildProgress, CollectionNetwork, NetworkStep, RequestEstimate } from './collectionTypes'
+import type { ImportOutcome, ImportTarget } from './doiImport'
 import type {
   AxisMetric,
   Chain,
@@ -43,6 +74,7 @@ import type {
   GraphTheme,
   LinkDirection,
   ScaleKind,
+  Viewport,
 } from './graphModel.core.ts'
 import type { ResolvedReference } from './openAlexClient.core.ts'
 import type { GraphLink } from './openAlexEnrichment'
@@ -195,21 +227,143 @@ const STEP_LABEL: Record<LoadStep, FluentMessageId> = {
  * simpler than a lifetime.
  */
 export function renderProgress(doc: Document, container: Element, seed: GraphSeed, done: number, step: LoadStep): void {
-  renderPlaceholder(doc, container, seed, getString(STEP_LABEL[step]))
+  paintProgress(doc, container, seed, getString(STEP_LABEL[step]), String(done), done / LOAD_STEPS.length)
+}
+
+function paintProgress(
+  doc: Document,
+  container: Element,
+  seed: GraphSeed,
+  caption: string,
+  marker: string,
+  fraction: number,
+): void {
+  renderPlaceholder(doc, container, seed, caption)
   const frame = container.querySelector('div > div')
   if (!frame) return
 
   const track = el(doc, 'div')
-  track.setAttribute('data-progress', String(done))
+  track.setAttribute('data-progress', marker)
   track.style.cssText =
     'width:220px;height:4px;border-radius:2px;background:currentColor;opacity:.2;margin-top:10px;overflow:hidden'
 
   const fill = el(doc, 'div')
   fill.style.cssText =
-    `width:${Math.round((done / LOAD_STEPS.length) * 100)}%;height:100%;background:currentColor;` +
+    `width:${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%;height:100%;background:currentColor;` +
     'border-radius:2px;transition:width .2s ease'
   track.append(fill)
   frame.append(track)
+}
+
+/**
+ * The steps a collection analysis runs, in order. The citing step is skipped
+ * without a key or when not asked for, and the bar jumps it.
+ */
+export const NETWORK_STEPS: readonly NetworkStep[] = ['seeds', 'lookup', 'references', 'citing', 'library', 'clusters']
+
+const NETWORK_STEP_LABEL: Record<NetworkStep, FluentMessageId> = {
+  seeds: 'network-step-seeds',
+  lookup: 'network-step-lookup',
+  references: 'network-step-references',
+  citing: 'network-step-citing',
+  library: 'network-step-library',
+  clusters: 'network-step-clusters',
+}
+
+/**
+ * The same bar, for an analysis. Steps of a collection take long enough to
+ * want a count -- three hundred items are three lookups and thirty-six
+ * reference batches -- so the bar moves within a step as well as between them.
+ */
+export function renderNetworkProgress(
+  doc: Document,
+  container: Element,
+  seed: GraphSeed,
+  progress: BuildProgress,
+): void {
+  const index = Math.max(0, NETWORK_STEPS.indexOf(progress.step))
+  const within = progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0
+  const label = getString(NETWORK_STEP_LABEL[progress.step])
+  const caption =
+    progress.total > 1
+      ? getString('network-step-count', { args: { step: label, done: progress.done, total: progress.total } })
+      : label
+  paintProgress(doc, container, seed, caption, progress.step, (index + within) / NETWORK_STEPS.length)
+}
+
+/** What a reader can answer when a scope is larger than the set limit. */
+export type SeedChoice = 'all' | 'cap' | 'cancel'
+
+function formatEstimate(estimate: RequestEstimate): { requests: number; usd: string; share: string } {
+  const percent = estimate.shareOfDailyBudget * 100
+  return {
+    requests: estimate.listRequests,
+    usd: estimate.usd < 0.01 ? estimate.usd.toFixed(4) : estimate.usd.toFixed(2),
+    share: percent > 0 && percent < 1 ? '<1' : String(Math.round(percent)),
+  }
+}
+
+/**
+ * Ask, in the tab, whether to analyse a scope past the limit.
+ *
+ * In the tab rather than in a modal prompt: the question belongs to this
+ * graph, the reader may be looking at another tab when it comes up, and the
+ * answer needs the estimate beside it, which a three-button system dialog
+ * cannot lay out.
+ */
+export function renderSeedChoice(
+  doc: Document,
+  container: Element,
+  seed: GraphSeed,
+  info: { total: number; limit: number; all: RequestEstimate; capped: RequestEstimate },
+  onChoice: (choice: SeedChoice) => void,
+): void {
+  renderPlaceholder(
+    doc,
+    container,
+    seed,
+    getString('network-confirm-body', { args: { name: seed.name, count: info.total, limit: info.limit } }),
+  )
+  const frame = container.querySelector('div > div')
+  if (!frame) return
+  frame.setAttribute('data-role', 'seed-choice')
+  const title = frame.firstElementChild
+  if (title) title.textContent = getString('network-confirm-title')
+
+  const all = el(
+    doc,
+    'div',
+    getString('network-confirm-estimate-all', { args: { count: info.total, ...formatEstimate(info.all) } }),
+  )
+  const capped = el(
+    doc,
+    'div',
+    getString('network-confirm-estimate-cap', { args: { limit: info.limit, ...formatEstimate(info.capped) } }),
+  )
+  const lines = [all, capped]
+  const budget = budgetLine(doc)
+  if (budget) lines.push(budget)
+  for (const line of lines) line.style.cssText = 'font-size:12px;opacity:.85'
+
+  const buttons = el(doc, 'div')
+  buttons.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px'
+  const button = (choice: SeedChoice, label: string): HTMLElement => {
+    const node = el(doc, 'button', label)
+    node.setAttribute('data-choice', choice)
+    node.style.cssText =
+      'font:inherit;font-size:12px;padding:4px 12px;border-radius:5px;cursor:pointer;' +
+      'border:1px solid currentColor;background:transparent;color:inherit'
+    node.addEventListener('click', () => onChoice(choice))
+    return node
+  }
+  buttons.append(
+    button('all', getString('network-confirm-all', { args: { count: info.total } })),
+    button('cap', getString('network-confirm-cap', { args: { limit: info.limit } })),
+    button('cancel', getString('network-confirm-cancel')),
+  )
+  frame.append(...lines, buttons)
+  // The frame is faded as a placeholder; a question should not be.
+  ;(frame as HTMLElement).style.opacity = '1'
 }
 
 export function openGraphTab(seed: GraphSeed): void {
@@ -230,6 +384,8 @@ export function openGraphTab(seed: GraphSeed): void {
     return
   }
 
+  /** Assigned once the load exists; what closing a network tab stops. */
+  let onTabClose = (): void => {}
   const { container } = tabs.add({
     id,
     type: 'orbit-graph',
@@ -243,6 +399,9 @@ export function openGraphTab(seed: GraphSeed): void {
     // the way in -- see installTabIconStyle.
     data: { icon: TAB_ICON_TYPE },
     select: true,
+    // A network analysis runs for minutes and spends the reader's budget;
+    // closing the tab is the obvious way to stop it, so it must.
+    ...(isNetworkSeed(seed) ? { onClose: () => onTabClose() } : {}),
   })
 
   // Something on screen before any fetching starts, so an empty tab always
@@ -258,7 +417,50 @@ export function openGraphTab(seed: GraphSeed): void {
    * has gained the work. Reloading is the only way back to the sources, so it
    * is a button rather than something to discover by closing the tab.
    */
+  /**
+   * One analysis at a time. A reload, or the tab closing, cancels the one
+   * running; the generation keeps a superseded load from painting over the
+   * one that replaced it, or from reporting its cancellation as an error.
+   */
+  let controller: AbortController | null = null
+  let generation = 0
+  /** The answer to "past the limit?", kept for this tab's reloads. */
+  let seedChoice: SeedChoice | null = null
+  onTabClose = () => {
+    generation++
+    controller?.abort()
+    controller = null
+  }
+
   const load = async (force: boolean): Promise<void> => {
+    if (isNetworkSeed(seed)) {
+      controller?.abort()
+      const mine = abortController()
+      controller = mine
+      const current = ++generation
+      const isCurrent = (): boolean => current === generation && !(mine?.signal.aborted ?? false)
+      try {
+        await loadNetwork(win, container, seed, force, {
+          signal: mine?.signal,
+          isCurrent,
+          abort: () => {
+            generation++
+            mine?.abort()
+          },
+          reload: (again) => void load(again),
+          choice: () => seedChoice,
+          remember: (choice) => (seedChoice = choice),
+        })
+      } catch (err) {
+        if ((err as { name?: unknown } | null)?.name === 'AbortError' || !isCurrent()) return
+        // The raw error names the request URL, contact address included; it
+        // belongs in the debug log, not on the page.
+        Zotero.debug(`Orbit: network analysis failed: ${String(err)}`)
+        renderPlaceholder(win.document, container, seed, getString('network-failed'))
+      }
+      return
+    }
+
     try {
       let done = 0
       const step = (which: LoadStep): void => {
@@ -292,6 +494,158 @@ export function openGraphTab(seed: GraphSeed): void {
   }
 
   void load(false)
+}
+
+/** A seed that stands for a set of papers rather than one. */
+type NetworkSeed = Extract<GraphSeed, { kind: 'collection' | 'library' }>
+
+function isNetworkSeed(seed: GraphSeed): seed is NetworkSeed {
+  return routeFor(seed.kind) === 'network'
+}
+
+/**
+ * A controller, or null where the runtime has none that works.
+ *
+ * In degraded mode the bootstrap bridge installs a throwing stub for
+ * `AbortController` (see utils/abort). An analysis without one cannot be cut
+ * short mid-request, but the tab's generation still keeps it from painting.
+ */
+function abortController(): AbortController | null {
+  try {
+    return new AbortController()
+  } catch {
+    return null
+  }
+}
+
+/** What one network load needs from the tab that started it. */
+interface NetworkRun {
+  /** Absent when the runtime's abort primitives are stubs; the generation still guards painting. */
+  signal: AbortSignal | undefined
+  /** False once a reload or the tab closing has superseded this load. */
+  isCurrent: () => boolean
+  abort: () => void
+  reload: (force: boolean) => void
+  choice: () => SeedChoice | null
+  remember: (choice: SeedChoice) => void
+}
+
+/**
+ * A collection or a library, as a network.
+ *
+ * Resolve the scope, choose the seeds by the limit and policy in the
+ * settings, ask when the policy says to, then build -- with the progress on
+ * the bar and the cancellation wired to the tab.
+ */
+async function loadNetwork(
+  win: Window,
+  container: Element,
+  seed: NetworkSeed,
+  force: boolean,
+  run: NetworkRun,
+): Promise<void> {
+  const doc = win.document
+  let collectionLibraryID: number | null = null
+  if (seed.kind === 'collection') {
+    // Collections.get returns false, not undefined, for an unknown id.
+    const collection = Zotero.Collections.get(seed.collectionID)
+    collectionLibraryID = collection ? collection.libraryID : null
+  }
+  const scope = networkScopeFor(seed, collectionLibraryID)
+  if (!scope) {
+    renderPlaceholder(doc, container, seed, getString('network-scope-gone'))
+    return
+  }
+
+  renderNetworkProgress(doc, container, seed, { step: 'seeds', done: 0, total: 0 })
+  const { items, total } = await resolveSeedItems(scope)
+  if (!run.isCurrent()) return
+  if (total === 0) {
+    renderPlaceholder(doc, container, seed, getString('network-scope-empty'))
+    return
+  }
+
+  const candidates = seedCandidates(items)
+  const { limit, policy } = readSeedSettings()
+  const includeCiting = getPref('graphNetworkCiting') === true && hasOpenAlexApiKey()
+  const remembered = run.choice()
+  let choice = chooseSeeds(candidates, limit, remembered === 'cap' ? 'cap' : remembered === 'all' ? 'all' : policy)
+
+  if (choice.needsConfirmation) {
+    const hasKey = hasOpenAlexApiKey()
+    const answer = await new Promise<SeedChoice>((resolve) => {
+      renderSeedChoice(
+        doc,
+        container,
+        seed,
+        {
+          total,
+          limit,
+          all: estimateRequests({ seeds: total, withCiting: includeCiting, hasKey }),
+          capped: estimateRequests({ seeds: Math.min(limit, total), withCiting: includeCiting, hasKey }),
+        },
+        resolve,
+      )
+      // A tab closed while asking leaves the promise unanswered; that is fine,
+      // nothing waits on it but this load.
+    })
+    if (!run.isCurrent()) return
+    if (answer === 'cancel') {
+      renderPlaceholder(doc, container, seed, getString('network-cancelled'))
+      const again = el(doc, 'button', getString('network-ask-again'))
+      again.style.cssText =
+        'font:inherit;font-size:12px;padding:3px 10px;border-radius:5px;cursor:pointer;' +
+        'border:1px solid currentColor;background:transparent;color:inherit'
+      again.addEventListener('click', () => run.reload(false))
+      container.querySelector('div > div')?.append(again)
+      return
+    }
+    run.remember(answer)
+    // As chooseSeeds says: on no, ask again with `cap`.
+    choice = chooseSeeds(candidates, limit, answer)
+  }
+
+  const net = await buildCollectionNetwork(
+    scope,
+    choice.chosen.map((candidate) => candidate.item),
+    {
+      force,
+      includeCiting,
+      signal: run.signal,
+      isCancelled: () => !run.isCurrent() || !container.isConnected,
+      onProgress: (progress) => {
+        // The tab is gone without the notifier having said so: stop spending.
+        if (!container.isConnected) run.abort()
+        if (!run.isCurrent()) return
+        renderNetworkProgress(doc, container, seed, progress)
+      },
+    },
+    { itemsInScope: total, capped: choice.capped },
+  )
+  if (!run.isCurrent()) return
+  if (net.seeds.length === 0) {
+    renderPlaceholder(
+      doc,
+      container,
+      seed,
+      getString('network-none-resolved', { args: { count: choice.chosen.length } }),
+    )
+    return
+  }
+  renderNetworkGraph(win, container, seed, net, {
+    onReload: () => run.reload(true),
+    onIncludeCiting: () => run.reload(false),
+  })
+  Zotero.debug(
+    `Orbit: network rendered with ${net.seeds.length} seeds, ${net.works.length} works, ${net.gaps.length} gaps`,
+  )
+}
+
+/** The selected collection as a network seed, or null when none is selected. */
+export function collectionSeed(): GraphSeed | null {
+  const collections = Zotero.getActiveZoteroPane()?.getSelectedCollections() ?? []
+  if (collections.length === 0) return null
+  return { kind: 'collection', collectionID: collections[0].id, name: collections[0].name }
 }
 
 /** The seed for the current selection, or null when there is nothing to graph. */
@@ -356,7 +710,11 @@ export function registerGraphMenus(): void {
         l10nID: getLocaleID('menuitem-graph-selection'),
         icon: GRAPH_MENU_ICON,
         onCommand: () => {
-          const seed = seedFromSelection()
+          // The collection that was right-clicked, never the item rows that
+          // happen to be selected inside it: right-clicking an already
+          // selected collection leaves those rows selected, and the item menu
+          // already covers graphing them.
+          const seed = collectionSeed()
           if (seed) openGraphTab(seed)
         },
       },
@@ -383,7 +741,15 @@ export function registerGraphMenus(): void {
 
 /** Minimal shape of the parts of Zotero_Tabs this module uses. */
 interface Zotero_Tabs {
-  add: (options: { id: string; type: string; title: string; data: Record<string, unknown>; select?: boolean }) => {
+  add: (options: {
+    id: string
+    type: string
+    title: string
+    data: Record<string, unknown>
+    select?: boolean
+    /** Called by Zotero_Tabs.close, before the content is removed. */
+    onClose?: () => void
+  }) => {
     id: string
     container: Element
   }
@@ -394,8 +760,22 @@ interface Zotero_Tabs {
 function themeFor(win: Window): GraphTheme {
   const dark = win.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false
   return dark
-    ? { seed: '#e66767', reference: '#3987e5', citing: '#199e70', muted: '#c3c2b7', surface: '#1a1a19' }
-    : { seed: '#e34948', reference: '#2a78d6', citing: '#1baf7a', muted: '#5c5c5c', surface: '#ffffff' }
+    ? {
+        seed: '#e66767',
+        reference: '#3987e5',
+        citing: '#199e70',
+        muted: '#c3c2b7',
+        surface: '#1a1a19',
+        clusters: CLUSTER_PALETTE,
+      }
+    : {
+        seed: '#e34948',
+        reference: '#2a78d6',
+        citing: '#1baf7a',
+        muted: '#5c5c5c',
+        surface: '#ffffff',
+        clusters: CLUSTER_PALETTE,
+      }
 }
 
 /**
@@ -411,7 +791,7 @@ async function collectNodes(
   fallbackTitle: string,
   force: boolean,
   onStep: (step: LoadStep) => void = () => {},
-): Promise<GraphNode[]> {
+): Promise<TabNode[]> {
   if (identifiers.length === 0) return []
 
   const record = await fetchScholarlyRecord(identifiers, { force })
@@ -426,7 +806,7 @@ async function collectNodes(
     .map((ref) => readCache<S2Details>(s2DetailsCacheKey(ref.paperId)))
     .find((found) => found !== null)
 
-  let references: ResolvedReference[] = (s2?.references ?? []).map((ref) => ({
+  let references: (ResolvedReference & { s2PaperId?: string | null })[] = (s2?.references ?? []).map((ref) => ({
     title: ref.title,
     doi: ref.doi,
     arxiv: ref.arxiv,
@@ -435,6 +815,8 @@ async function collectNodes(
     citedByCount: ref.citedByCount,
     author: ref.author,
     referenceCount: ref.referenceCount,
+    authors: ref.authors,
+    s2PaperId: ref.paperId,
   }))
   if (references.length === 0) references = await fetchReferences(record, { force })
   onStep('references')
@@ -442,13 +824,13 @@ async function collectNodes(
   const citing = await fetchCitingWorks(record, { force })
   onStep('citing')
 
-  // One pass over the library rather than a search per work; the index is
+  // One pass over the library rather than a search per work; the scan is
   // memoised and dropped when items change. See libraryIndex.
-  const inLibrary = await getLibraryIndex(libraryID)
+  const matcher = await getLibraryMatcher(libraryID)
   onStep('library')
 
   const seen = new Set<string>()
-  const nodes: GraphNode[] = []
+  const nodes: TabNode[] = []
   const push = (
     title: string | null,
     doi: string | null,
@@ -457,7 +839,12 @@ async function collectNodes(
     role: GraphNode['role'],
     author: string | null = null,
     referenceCount: number | null = null,
-    otherIds: { arxiv?: string | null; pmid?: string | null } = {},
+    other: {
+      arxiv?: string | null
+      pmid?: string | null
+      authors?: readonly string[] | null
+      s2PaperId?: string | null
+    } = {},
   ): void => {
     const key = (doi ?? title ?? '').toLowerCase()
     // A work can be both cited and citing across a wider graph; first role wins
@@ -466,9 +853,30 @@ async function collectNodes(
     seen.add(key)
     // Which of these the reader already has is a fact about them rather than
     // about the citation, so it is looked up here and encoded as ink rather
-    // than as a fourth colour.
-    const itemID = findInLibrary(inLibrary, { doi, ...otherIds })
-    nodes.push({ key, title: title ?? doi ?? '', year, citedByCount, role, doi, author, referenceCount, itemID })
+    // than as a fourth colour. By identifier first, then by the guarded title
+    // rule, whose matches are drawn dashed as probable.
+    const match = matchInLibrary(matcher, {
+      doi,
+      arxiv: other.arxiv,
+      pmid: other.pmid,
+      title,
+      year,
+      authors: other.authors,
+    })
+    const node: TabNode = {
+      key,
+      title: title ?? doi ?? '',
+      year,
+      citedByCount,
+      role,
+      doi,
+      author,
+      referenceCount,
+      itemID: match?.itemID ?? null,
+    }
+    if (match) node.match = match.confidence
+    if (other.s2PaperId) node.s2PaperId = other.s2PaperId
+    nodes.push(node)
   }
 
   push(
@@ -479,18 +887,32 @@ async function collectNodes(
     'seed',
     record.authors[0]?.name.split(/\s+/).pop() ?? null,
     record.referencedWorksCount,
+    { authors: record.authors.map((author) => author.name) },
   )
   for (const ref of references) {
     push(ref.title, ref.doi, ref.year, ref.citedByCount, 'reference', ref.author ?? null, ref.referenceCount ?? null, {
       arxiv: ref.arxiv,
       pmid: ref.pmid,
+      authors: ref.authors,
+      s2PaperId: ref.s2PaperId,
     })
   }
   for (const cite of citing) {
-    push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount)
+    push(cite.title, cite.doi, cite.year, cite.citedByCount, 'citing', cite.author, cite.referenceCount, {
+      arxiv: cite.arxiv,
+      pmid: cite.pmid,
+      authors: cite.authors,
+    })
   }
   return nodes
 }
+
+/**
+ * A mark as the tab knows it: the model's node, and the Semantic Scholar id
+ * when the work came from there, for Connected Papers. Kept here rather than
+ * on GraphNode, which describes what is drawn.
+ */
+type TabNode = GraphNode & { s2PaperId?: string | null }
 
 const PADDING = { top: 18, right: 24, bottom: 26, left: 44 }
 
@@ -664,6 +1086,142 @@ function renderLegend(
   return legend
 }
 
+/** What the network legend switches. */
+export type NetworkToggle = { cluster: number | null } | 'gaps' | 'held' | 'citing'
+
+/** The network view's own state: the legend's switches, kept across redraws. */
+interface NetworkView extends NetworkGraphOptions {
+  /** The clusters picked in the legend; none picked shows all. */
+  selectedClusters: Set<number | null>
+}
+
+/**
+ * The legend of a collection network, which is also its filter.
+ *
+ * One entry per cluster, named and counted in seeds, so the colour never has
+ * to carry the topic alone; then the works around them, by what the reader
+ * would do with them: those already held, those missing, and those citing
+ * the collection. The last needs an API key, and says so rather than
+ * disappearing.
+ */
+function renderNetworkLegend(
+  doc: Document,
+  theme: GraphTheme,
+  net: CollectionNetwork,
+  state: NetworkView,
+  onToggle: (which: NetworkToggle) => void,
+): HTMLElement {
+  const legend = el(doc, 'div')
+  legend.setAttribute('data-role', 'legend')
+  legend.style.cssText = 'display:flex;gap:6px 10px;flex-wrap:wrap;font-size:12px;padding:2px 0 8px'
+
+  const entry = (
+    swatch: HTMLElement,
+    text: string,
+    on: boolean,
+    attribute: [string, string],
+    onClick: () => void,
+    disabled = false,
+  ): HTMLElement => {
+    const button = el(doc, 'button') as HTMLButtonElement
+    button.style.cssText =
+      'display:flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:inherit;' +
+      'border:1px solid transparent;border-radius:11px;padding:1px 8px 1px 6px;background:transparent;' +
+      (disabled ? 'cursor:default;opacity:.4;' : 'cursor:pointer;') +
+      (on || disabled ? '' : 'border-color:currentColor;opacity:.4;')
+    button.setAttribute(attribute[0], attribute[1])
+    button.setAttribute('data-state', String(on))
+    button.setAttribute('aria-pressed', String(!on))
+    if (disabled) button.disabled = true
+    else button.addEventListener('click', onClick)
+    button.append(swatch, el(doc, 'span', text))
+    return button
+  }
+  const dot = (color: string, extra = ''): HTMLElement => {
+    const swatch = el(doc, 'span')
+    swatch.style.cssText = `width:9px;height:9px;border-radius:50%;background:${color};flex:none;${extra}`
+    return swatch
+  }
+
+  for (const cluster of clusterEntries(net)) {
+    const color =
+      cluster.id === null
+        ? theme.muted
+        : hueFor(
+            {
+              key: '',
+              title: '',
+              year: null,
+              citedByCount: null,
+              role: 'seed',
+              doi: null,
+              author: null,
+              referenceCount: null,
+              itemID: null,
+              cluster: cluster.id,
+            },
+            theme,
+          )
+    const label = cluster.id === null ? getString('network-legend-unclustered') : cluster.label
+    const button = entry(
+      dot(color),
+      `${label} (${cluster.count})`,
+      clusterShown(state.selectedClusters, cluster.id),
+      ['data-cluster', cluster.id === null ? 'none' : String(cluster.id)],
+      () => onToggle({ cluster: cluster.id }),
+    )
+    button.setAttribute('title', getString('network-legend-cluster-hint'))
+    legend.append(button)
+  }
+
+  const divider = el(doc, 'span')
+  divider.style.cssText = 'width:1px;align-self:stretch;background:currentColor;opacity:.2;margin:0 2px'
+  legend.append(divider)
+
+  const held = net.works.filter((work) => work.match !== null).length
+  const ring = el(doc, 'span')
+  ring.style.cssText = `width:9px;height:9px;border-radius:50%;border:1.6px solid ${theme.reference};flex:none`
+  legend.append(
+    entry(
+      ring,
+      `${getString('network-legend-gaps')} (${net.gaps.length})`,
+      state.showGaps,
+      ['data-filter', 'gaps'],
+      () => onToggle('gaps'),
+    ),
+    entry(
+      dot(theme.reference, `box-shadow:0 0 0 1.5px ${theme.surface},0 0 0 3px ${theme.muted}`),
+      `${getString('network-legend-held')} (${held})`,
+      state.showHeld,
+      ['data-filter', 'held'],
+      () => onToggle('held'),
+    ),
+  )
+
+  const hasKey = hasOpenAlexApiKey()
+  const included = net.coverage.citingIncluded
+  const citingCount = net.works.filter((work) => work.direction === 'citing').length
+  const citing = entry(
+    dot(theme.citing),
+    included
+      ? `${getString('network-legend-citing')} (${citingCount})`
+      : getString(hasKey ? 'network-legend-citing-add' : 'network-legend-citing'),
+    included && state.showCiting,
+    ['data-filter', 'citing'],
+    () => onToggle('citing'),
+    !hasKey && !included,
+  )
+  legend.append(citing)
+  if (!hasKey && !included) {
+    citing.setAttribute('title', getString('network-citing-needs-key'))
+    const note = el(doc, 'span', getString('network-citing-needs-key'))
+    note.setAttribute('data-role', 'citing-note')
+    note.style.cssText = 'font-size:11px;opacity:.6;align-self:center'
+    legend.append(note)
+  }
+  return legend
+}
+
 const METRIC_LABEL: Record<AxisMetric, FluentMessageId> = {
   year: 'graph-metric-year',
   citations: 'graph-metric-citations',
@@ -768,12 +1326,50 @@ export function semanticScholarUrl(doi: string): string {
   return `https://api.semanticscholar.org/${doi}`
 }
 
+/**
+ * What a mark is, in a word or two.
+ *
+ * In a network every seed is one of the reader's own items rather than "this
+ * work", and a missing work is worth saying so about up front.
+ */
+function roleLabel(node: GraphNode, network: boolean): string {
+  if (network && node.role === 'seed') return getString('network-role-seed')
+  return getString(ROLE_LABEL[node.role])
+}
+
+/** "In your library", or "probably" when the match rests on the title. */
+function heldLabel(node: GraphNode): string | null {
+  if (node.itemID === null) return null
+  return node.match === 'probable' ? getString('network-probably-in-library') : getString('graph-in-library')
+}
+
+/** The facts after the title, shared by the strip and the wrapped label. */
+function nodeFacts(node: GraphNode, network: boolean): string[] {
+  return [
+    roleLabel(node, network),
+    node.author,
+    node.year === null ? null : String(node.year),
+    node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
+    node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
+    heldLabel(node),
+    network && node.hollow ? getString('network-legend-gaps') : null,
+  ].filter((part): part is string => Boolean(part))
+}
+
+/** An extra entry on the card, offered by the network view. */
+interface CardAction {
+  label: string
+  run: () => void
+}
+
 function buildMarkCard(
   doc: Document,
   node: GraphNode,
   theme: GraphTheme,
   onClose: () => void,
   onGraph: (node: GraphNode) => void,
+  network = false,
+  extra: CardAction[] = [],
 ): { card: HTMLElement; width: number } {
   const card = el(doc, 'div')
   card.style.cssText =
@@ -787,22 +1383,29 @@ function buildMarkCard(
   const head = el(doc, 'div')
   head.style.cssText = 'display:flex;align-items:center;gap:6px'
   const dot = el(doc, 'span')
-  const roleColor = node.role === 'seed' ? theme.seed : node.role === 'reference' ? theme.reference : theme.citing
-  dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${roleColor};flex:none`
-  const role = el(doc, 'span', getString(ROLE_LABEL[node.role]))
+  // The mark's own hue: its role's in the single-paper graph, its cluster's
+  // for a seed of a network.
+  const markColor = hueFor(node, theme)
+  dot.style.cssText = node.hollow
+    ? `width:9px;height:9px;border-radius:50%;border:1.6px solid ${markColor};box-sizing:border-box;flex:none`
+    : `width:9px;height:9px;border-radius:50%;background:${markColor};flex:none`
+  const role = el(doc, 'span', roleLabel(node, network))
   role.style.cssText = 'opacity:.7'
   head.append(dot, role)
 
-  if (node.itemID !== null) {
+  const held = heldLabel(node)
+  if (held !== null) {
     const badge = el(doc, 'span')
     badge.style.cssText = 'display:flex;align-items:center;gap:5px;opacity:.7'
     const ring = el(doc, 'span')
-    ring.style.cssText = `width:10px;height:10px;border-radius:50%;border:1.6px solid ${theme.muted};flex:none`
-    badge.append(ring, el(doc, 'span', getString('graph-in-library')))
+    ring.style.cssText =
+      `width:10px;height:10px;border-radius:50%;border:1.6px ${node.match === 'probable' ? 'dashed' : 'solid'} ` +
+      `${theme.muted};flex:none`
+    badge.append(ring, el(doc, 'span', held))
     head.append(badge)
   }
 
-  const close = el(doc, 'button', '\u00d7')
+  const close = el(doc, 'button', '×')
   close.style.cssText =
     'margin-left:auto;border:none;background:transparent;color:inherit;opacity:.5;cursor:pointer;' +
     'font-size:15px;line-height:1;padding:0 2px'
@@ -815,13 +1418,13 @@ function buildMarkCard(
   const title = el(doc, 'div', node.title || getString('graph-card-title'))
   title.style.cssText = 'font-weight:600;font-size:12.5px;overflow-wrap:anywhere'
 
-  const byline = [node.author, node.year === null ? null : String(node.year)].filter(Boolean).join(' \u00b7 ')
+  const byline = [node.author, node.year === null ? null : String(node.year)].filter(Boolean).join(' · ')
   const facts = [
     byline,
     node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
     node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
   ].filter(Boolean)
-  const detail = el(doc, 'div', facts.join(' \u00b7 '))
+  const detail = el(doc, 'div', facts.join(' · '))
   detail.style.cssText = 'opacity:.75'
 
   card.append(head, title, detail)
@@ -840,6 +1443,8 @@ function buildMarkCard(
     return button
   }
 
+  // First: on a gap, importing it is what the card is most likely open for.
+  for (const entry of extra) actions.append(action(entry.label, entry.run))
   if (node.itemID !== null) {
     actions.append(
       action(getString('graph-card-item'), () => {
@@ -860,6 +1465,16 @@ function buildMarkCard(
       }),
     )
   }
+  // Connected Papers is keyed by Semantic Scholar's own id, which only works
+  // that came from Semantic Scholar carry.
+  const s2PaperId = (node as TabNode).s2PaperId
+  if (s2PaperId) {
+    actions.append(
+      action(getString('network-card-connected-papers'), () => {
+        Zotero.launchURL(connectedPapersUrl(s2PaperId))
+      }),
+    )
+  }
   if (actions.children.length > 0) card.append(actions)
   else {
     const none = el(doc, 'div', getString('graph-card-no-doi'))
@@ -877,7 +1492,13 @@ function buildMarkCard(
  * plot below never moves: a row that appears on hover would shift every mark
  * out from under the pointer that summoned it.
  */
-function fillDetailStrip(doc: Document, strip: HTMLElement, node: GraphNode | null, theme: GraphTheme): void {
+function fillDetailStrip(
+  doc: Document,
+  strip: HTMLElement,
+  node: GraphNode | null,
+  theme: GraphTheme,
+  network = false,
+): void {
   if (!node) {
     strip.replaceChildren(doc.createTextNode(getString('graph-axes-note')))
     strip.style.opacity = '.7'
@@ -886,21 +1507,12 @@ function fillDetailStrip(doc: Document, strip: HTMLElement, node: GraphNode | nu
   strip.style.opacity = '1'
 
   const dot = el(doc, 'span')
-  const roleColor = node.role === 'seed' ? theme.seed : node.role === 'reference' ? theme.reference : theme.citing
-  dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${roleColor};flex:none`
+  dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${hueFor(node, theme)};flex:none`
 
   const title = el(doc, 'span', node.title || getString('graph-card-title'))
   title.style.cssText = 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0'
 
-  const facts = [
-    getString(ROLE_LABEL[node.role]),
-    node.author,
-    node.year === null ? null : String(node.year),
-    node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
-    node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
-    node.itemID === null ? null : getString('graph-in-library'),
-  ].filter(Boolean)
-  const detail = el(doc, 'span', facts.join(' · '))
+  const detail = el(doc, 'span', nodeFacts(node, network).join(' · '))
   detail.style.cssText = 'opacity:.7;white-space:nowrap;flex:none'
 
   strip.replaceChildren(dot, title, detail)
@@ -912,28 +1524,207 @@ function fillDetailStrip(doc: Document, strip: HTMLElement, node: GraphNode | nu
  * Everything the card would say except the title itself, which is already the
  * lines above it.
  */
-function describeNode(node: GraphNode): string[] {
-  const parts = [
-    getString(ROLE_LABEL[node.role]),
-    node.author,
-    node.year === null ? null : String(node.year),
-    node.citedByCount === null ? null : getString('graph-card-citations', { args: { count: node.citedByCount } }),
-    node.referenceCount === null ? null : getString('graph-card-references', { args: { count: node.referenceCount } }),
-    node.itemID === null ? null : getString('graph-in-library'),
-  ].filter(Boolean)
-  return [parts.join(' · ')]
+function describeNode(node: GraphNode, network = false): string[] {
+  return [nodeFacts(node, network).join(' · ')]
+}
+
+/** What the tab hands renderGraph to draw a collection network. */
+export interface NetworkGraphContext {
+  net: CollectionNetwork
+  /** Build again with the citing works; the legend's citing switch calls it. */
+  onIncludeCiting?: () => void
+}
+
+/**
+ * A collection network on the graph tab.
+ *
+ * The same plot as the single-paper graph -- the axes, zoom, emphasis and
+ * card -- with the network's legend, the gaps list beside it and the exports.
+ */
+export function renderNetworkGraph(
+  win: Window,
+  container: Element,
+  seed: GraphSeed,
+  net: CollectionNetwork,
+  handlers: { onReload?: () => void; onIncludeCiting?: () => void } = {},
+): void {
+  renderGraph(win, container, seed, [], [], handlers.onReload, { net, onIncludeCiting: handlers.onIncludeCiting })
+}
+
+/** The resize listener of the graph drawn into each tab, so a redraw replaces it. */
+const resizeHandlers = new WeakMap<Element, () => void>()
+
+/** How visible a network's citations are with nothing pointed at, and beside a pointed-at chain. */
+const NETWORK_LINK_RESTING = 0.12
+const NETWORK_LINK_DIM = 0.04
+
+/** Spelled out, as in the gaps list, so every id is findable in the source. */
+const IMPORT_FAILURE = {
+  'read-only': 'import-failed-read-only',
+  'no-translator': 'import-failed-no-translator',
+  'no-result': 'import-failed-no-result',
+  'error': 'import-failed-error',
+} as const
+
+/**
+ * The library a single-paper graph checks membership against: the seed's
+ * own, or the user library when there is no item to ask.
+ */
+function libraryOfSeed(seed: GraphSeed): number {
+  switch (seed.kind) {
+    case 'work':
+    case 'library':
+      return seed.libraryID
+    case 'collection': {
+      const collection = Zotero.Collections.get(seed.collectionID)
+      return collection ? collection.libraryID : Zotero.Libraries.userLibraryID
+    }
+    case 'items':
+      return itemsForSeed(seed)[0]?.libraryID ?? Zotero.Libraries.userLibraryID
+  }
+}
+
+/**
+ * What the analysis could not cover, in one quiet line: items OpenAlex did
+ * not know, and a citing side cut short. Null when there is nothing to say.
+ */
+/**
+ * "OpenAlex today: $0.91 of $1.00 left, resets in 14 h" -- what the latest
+ * response said, or nothing before the first one of the day.
+ */
+function budgetText(): string | null {
+  const now = Date.now()
+  const budget = latestOpenAlexBudget(now)
+  if (!budget) return null
+  const figures = describeOpenAlexBudget(budget, now)
+  return figures.hours === null
+    ? getString('network-budget', { args: { remaining: figures.remaining, limit: figures.limit } })
+    : getString('network-budget-reset', {
+        args: { remaining: figures.remaining, limit: figures.limit, hours: figures.hours },
+      })
+}
+
+function budgetLine(doc: Document): HTMLElement | null {
+  const text = budgetText()
+  if (!text) return null
+  const line = el(doc, 'div', text)
+  line.setAttribute('data-role', 'budget')
+  return line
+}
+
+function coverageNote(doc: Document, net: CollectionNetwork): HTMLElement | null {
+  const parts: string[] = []
+  // Read after the build, so it counts what this analysis spent.
+  const budget = budgetText()
+  if (budget) parts.push(budget)
+  if (net.coverage.unresolved.length > 0) {
+    parts.push(getString('network-coverage-unresolved', { args: { count: net.coverage.unresolved.length } }))
+  }
+  if (net.coverage.citingTruncated) parts.push(getString('network-coverage-citing-truncated'))
+  if (parts.length === 0) return null
+  const note = el(doc, 'div', parts.join(' · '))
+  note.setAttribute('data-role', 'coverage')
+  note.style.cssText = 'font-size:11px;opacity:.55;padding-top:2px'
+  return note
+}
+
+/**
+ * A button that opens the list of exports and links for the network.
+ *
+ * Read at the moment it is opened, so an export after an import carries the
+ * works as now matched.
+ */
+function exportMenu(
+  doc: Document,
+  theme: GraphTheme,
+  win: Window,
+  current: () => CollectionNetwork | null,
+): HTMLElement {
+  const wrap = el(doc, 'span')
+  wrap.style.cssText = 'position:relative;display:inline-flex;margin-left:6px'
+  const button = el(doc, 'button', getString('network-export'))
+  button.setAttribute('data-control', 'export')
+  button.setAttribute('aria-haspopup', 'true')
+  button.style.cssText =
+    'font:inherit;font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;' +
+    'border:1px solid currentColor;background:transparent;color:inherit;opacity:.75'
+  const menu = el(doc, 'div')
+  menu.setAttribute('data-role', 'export-menu')
+  menu.style.cssText =
+    'position:absolute;top:100%;left:0;z-index:6;margin-top:3px;min-width:220px;padding:4px 0;' +
+    `background:${theme.surface};border:1px solid ${theme.muted}59;border-radius:6px;` +
+    'box-shadow:0 3px 14px rgba(0,0,0,.22);display:none;flex-direction:column'
+
+  const close = (): void => {
+    menu.style.display = 'none'
+    button.setAttribute('aria-expanded', 'false')
+  }
+  const open = (): void => {
+    const net = current()
+    if (!net) return
+    menu.replaceChildren(
+      ...exportActions(net).map((action) => {
+        const entry = el(doc, 'button', getString(action.l10n))
+        entry.setAttribute('data-export', action.id)
+        entry.style.cssText =
+          'font:inherit;font-size:12px;text-align:left;padding:4px 12px;border:none;background:transparent;' +
+          'color:inherit;cursor:pointer;white-space:nowrap'
+        entry.addEventListener('click', () => {
+          close()
+          action.run(win).catch((err: unknown) => {
+            Zotero.debug(`Orbit: export ${action.id} failed: ${String(err)}`)
+          })
+        })
+        return entry
+      }),
+    )
+    menu.style.display = 'flex'
+    button.setAttribute('aria-expanded', 'true')
+  }
+  button.addEventListener('click', () => (menu.style.display === 'none' ? open() : close()))
+  wrap.append(button, menu)
+  return wrap
 }
 
 export function renderGraph(
   win: Window,
   container: Element,
   seed: GraphSeed,
-  nodes: GraphNode[],
-  links: GraphLink[] = [],
+  initialNodes: GraphNode[],
+  initialLinks: GraphLink[] = [],
   onReload?: () => void,
+  network?: NetworkGraphContext,
 ): void {
   const doc = win.document
   const theme = themeFor(win)
+  /**
+   * A collection rather than one paper: many seeds, no star, the network's
+   * legend, the gaps beside the plot. Everything below that is not about one
+   * of those is shared.
+   */
+  const networkMode = network !== undefined
+  /** Replaced, not mutated, after an import: rematched against the library. */
+  let net: CollectionNetwork | null = network?.net ?? null
+  const view0: NetworkView = {
+    ...DEFAULT_NETWORK_OPTIONS,
+    showGaps: getPref('graphShowGaps') !== false,
+    showCiting: network?.net.coverage.citingIncluded ?? false,
+    selectedClusters: new Set<number | null>(),
+  }
+  let nodes = initialNodes
+  let links = initialLinks
+  /** The network's marks for the legend's current switches. Cheap; run on every toggle. */
+  const refreshNetwork = (): void => {
+    if (!net) return
+    const hiddenClusters = hiddenBySelection(
+      clusterEntries(net).map((entry) => entry.id),
+      view0.selectedClusters,
+    )
+    const graph = networkToGraph(net, { ...view0, hiddenClusters })
+    nodes = graph.nodes
+    links = graph.links
+  }
+  refreshNetwork()
 
   /**
    * Which library a graph opened from here checks membership against.
@@ -942,16 +1733,18 @@ export function renderGraph(
    * Falls back to the user library, which is where a graph opened from a menu
    * with nothing selected would have looked anyway.
    */
-  const seedLibraryID =
-    seed.kind === 'work' ? seed.libraryID : (itemsForSeed(seed)[0]?.libraryID ?? Zotero.Libraries.userLibraryID)
+  const seedLibraryID = net ? net.scope.libraryID : libraryOfSeed(seed)
+  /** The facts under a pointed-at mark's title, worded for the view. */
+  const describe = (node: GraphNode): string[] => describeNode(node, networkMode)
 
   /** How far the highlight reaches, and which way. Neither fetches anything. */
   let hops = readHopsPref()
   let direction = readDirectionPref()
 
   const root = el(doc, 'div')
-  root.style.cssText =
-    'display:flex;flex-direction:column;height:100%;width:100%;padding:14px 18px;box-sizing:border-box'
+  root.style.cssText = networkMode
+    ? 'display:flex;flex-direction:column;height:100%;flex:1;min-width:0;overflow:hidden;padding:14px 18px;box-sizing:border-box'
+    : 'display:flex;flex-direction:column;height:100%;width:100%;min-width:0;contain:inline-size;padding:14px 18px;box-sizing:border-box'
 
   const title = el(doc, 'div', seed.name)
   title.style.cssText = 'font-weight:600;font-size:14px;padding-bottom:2px'
@@ -960,8 +1753,24 @@ export function renderGraph(
   strip.setAttribute('data-role', 'strip')
   strip.style.cssText =
     'font-size:12px;opacity:.7;padding-bottom:6px;display:flex;align-items:center;gap:7px;' +
-    'white-space:nowrap;overflow:hidden;min-height:17px'
-  root.append(title, strip)
+    // width:0 with min-width:100%: the row fills the frame but reports no
+    // width of its own, so a long title under the pointer cannot widen the
+    // tab around it.
+    'white-space:nowrap;overflow:hidden;min-height:17px;height:17px;width:0;min-width:100%'
+  root.append(title)
+  if (net?.coverage.capped) {
+    // Said where the reader looks first: a graph of 300 of 1,200 items is a
+    // different claim from a graph of the collection.
+    const banner = el(
+      doc,
+      'div',
+      getString('network-capped', { args: { analysed: net.coverage.analysed, total: net.coverage.itemsInScope } }),
+    )
+    banner.setAttribute('data-role', 'capped')
+    banner.style.cssText = 'font-size:12px;padding:2px 0 4px;opacity:.85'
+    root.append(banner)
+  }
+  root.append(strip)
 
   // Declared before the selects, which call it; assigned after the plot exists.
   let draw = (): void => {}
@@ -974,19 +1783,44 @@ export function renderGraph(
   }
 
   let legend = el(doc, 'div')
+  const onNetworkToggle = (which: NetworkToggle): void => {
+    if (!net) return
+    if (typeof which === 'object') {
+      view0.selectedClusters = toggleClusterSelection(view0.selectedClusters, which.cluster)
+    } else if (which === 'gaps') {
+      view0.showGaps = !view0.showGaps
+      setPref('graphShowGaps', view0.showGaps)
+    } else if (which === 'held') {
+      view0.showHeld = !view0.showHeld
+    } else if (!net.coverage.citingIncluded) {
+      // Not fetched yet: asking for them is asking to build again, with them.
+      setPref('graphNetworkCiting', true)
+      network?.onIncludeCiting?.()
+      return
+    } else {
+      view0.showCiting = !view0.showCiting
+      // Off is remembered too, so the next analysis does not spend on them.
+      setPref('graphNetworkCiting', view0.showCiting)
+    }
+    refreshNetwork()
+    paintLegend()
+    draw()
+  }
   const paintLegend = (): void => {
-    const next = renderLegend(doc, theme, nodes, filters, (which) => {
-      if (which === 'library') {
-        // all -> only -> missing -> all. One control, both questions.
-        filters.library = LIBRARY_FILTERS[(LIBRARY_FILTERS.indexOf(filters.library) + 1) % LIBRARY_FILTERS.length]
-        setPref('graphLibraryFilter', filters.library)
-      } else {
-        filters[which] = !filters[which]
-        setPref(which === 'reference' ? 'graphShowReferences' : 'graphShowCitations', filters[which])
-      }
-      paintLegend()
-      draw()
-    })
+    const next = net
+      ? renderNetworkLegend(doc, theme, net, view0, onNetworkToggle)
+      : renderLegend(doc, theme, nodes, filters, (which) => {
+          if (which === 'library') {
+            // all -> only -> missing -> all. One control, both questions.
+            filters.library = LIBRARY_FILTERS[(LIBRARY_FILTERS.indexOf(filters.library) + 1) % LIBRARY_FILTERS.length]
+            setPref('graphLibraryFilter', filters.library)
+          } else {
+            filters[which] = !filters[which]
+            setPref(which === 'reference' ? 'graphShowReferences' : 'graphShowCitations', filters[which])
+          }
+          paintLegend()
+          draw()
+        })
     legend.replaceWith(next)
     legend = next
   }
@@ -1084,6 +1918,7 @@ export function renderGraph(
     directionSelect,
     reload,
   )
+  if (networkMode) controls.append(exportMenu(doc, theme, win, () => net))
 
   /**
    * Plot, axis captions and the button rail, on a grid.
@@ -1115,7 +1950,34 @@ export function renderGraph(
 
   frame.append(yCaption, plot, rail, xCaption)
   root.append(controls, frame)
-  container.replaceChildren(root)
+
+  /** One line under the plot for what an import did; empty until one has. */
+  const status = el(doc, 'div')
+  /** The gaps list, beside the plot. Rebuilt only with the whole graph. */
+  const aside = el(doc, 'div')
+  if (net) {
+    status.setAttribute('data-role', 'status')
+    status.style.cssText = 'font-size:11px;opacity:.75;min-height:14px;padding-top:4px'
+    root.append(status)
+    const coverage = coverageNote(doc, net)
+    if (coverage) root.append(coverage)
+
+    aside.setAttribute('data-role', 'gaps')
+    aside.style.cssText =
+      'width:320px;flex:none;height:100%;overflow:auto;box-sizing:border-box;padding:14px 14px 14px 12px;' +
+      'border-left:1px solid currentColor;border-left-color:rgba(127,127,127,.25)'
+
+    const outer = el(doc, 'div')
+    // contain:inline-size: the detail strip above the plot does not wrap, and
+    // its width -- whatever title is pointed at -- otherwise travelled up as a
+    // minimum through Zotero's own tab boxes, which then grew past the window.
+    // That pushed the gaps list off a narrow window, and in and out of view on
+    // every hover. Contained, the frame takes its width from the tab alone.
+    outer.style.cssText =
+      'display:flex;flex-direction:row;height:100%;width:100%;min-width:0;overflow:hidden;contain:inline-size'
+    outer.append(root, aside)
+    container.replaceChildren(outer)
+  } else container.replaceChildren(root)
 
   /** The live view, replaced on every redraw. Null until the first one. */
   let view: {
@@ -1124,12 +1986,15 @@ export function renderGraph(
     reset: () => void
     centre: (x: number, y: number) => void
   } | null = null
+  /** The seed, or the middle of the seeds on show in a network. */
   let seedPoint: { x: number; y: number } | null = null
+  /** The marks as last laid out, for focusing one from the gaps list. */
+  let placed: GraphLayout | null = null
 
   rail.append(
     railButton(doc, ICONS.zoomIn, getString('graph-zoom-in'), () => view?.zoomBy(1 / ZOOM_BUTTON_STEP)),
     railButton(doc, ICONS.zoomOut, getString('graph-zoom-out'), () => view?.zoomBy(ZOOM_BUTTON_STEP)),
-    railButton(doc, ICONS.centre, getString('graph-center-seed'), () => {
+    railButton(doc, ICONS.centre, getString(networkMode ? 'network-center-seeds' : 'graph-center-seed'), () => {
       if (seedPoint) view?.centre(seedPoint.x, seedPoint.y)
     }),
     railButton(doc, ICONS.fit, getString('graph-zoom-reset'), () => view?.reset()),
@@ -1170,18 +2035,149 @@ export function renderGraph(
     escapeHandler = null
   }
 
+  // --- The network's own actions: import, focus, show ----------------------
+
+  // A single-paper graph has no collection of its own: the reader picks one
+  // on each import. This target only says whether the library is editable.
+  const importTarget = net ? importTargetFor(net.scope) : { libraryID: seedLibraryID, collectionID: null }
+  let canImport = false
+  try {
+    canImport = importTarget !== null && canImportInto(importTarget)
+  } catch (err) {
+    Zotero.debug(`Orbit: cannot tell whether the library is editable: ${String(err)}`)
+  }
+
+  /**
+   * Match the network against the library again and redraw, without a
+   * request. The index is dropped first rather than trusting the notifier to
+   * have done it by now: the import has just resolved, and its own
+   * notification may not have.
+   */
+  const rematchAndRedraw = async (): Promise<void> => {
+    if (!net) return
+    clearLibraryIndex()
+    const matcher = await getLibraryMatcher(net.scope.libraryID)
+    net = rematch(net, (work) => matchInLibrary(matcher, work))
+    refreshNetwork()
+    paintLegend()
+    draw()
+  }
+
+  /** Ask, import, rematch. Shared by the gaps list and the card. */
+  const runImport = async (work: {
+    title: string
+    doi: string | null
+    year: number | null
+  }): Promise<ImportOutcome> => {
+    if (!work.doi) return { status: 'failed', reason: 'no-result' }
+    let target: string
+    let into: ImportTarget
+    if (net) {
+      if (!confirmImport(win, work, net.scope.name)) return { status: 'cancelled' }
+      target = net.scope.name
+      into = importTarget
+    } else {
+      const chosen = chooseImportTarget(win, work, seedLibraryID)
+      if (!chosen) return { status: 'cancelled' }
+      target = chosen.name
+      into = chosen
+    }
+    const outcome = await importByDoi(work.doi, into)
+    if (outcome.status === 'imported' || outcome.status === 'exists') {
+      status.textContent = getString('network-import-done', { args: { title: work.title, target } })
+      try {
+        if (net) await rematchAndRedraw()
+        else {
+          // One paper's graph holds its nodes as they are: fill the ring of
+          // the one just filed and draw again, without a request.
+          const itemID = outcome.itemID
+          nodes = nodes.map((node) =>
+            node.doi && work.doi && normalizeDoi(node.doi) === normalizeDoi(work.doi)
+              ? { ...node, itemID, match: 'exact' as const }
+              : node,
+          )
+          draw()
+        }
+      } catch (err) {
+        Zotero.debug(`Orbit: could not match the network again after an import: ${String(err)}`)
+      }
+    } else if (outcome.status === 'failed') {
+      status.textContent = getString(IMPORT_FAILURE[outcome.reason])
+    }
+    return outcome
+  }
+
+  /**
+   * Bring one mark into the middle and hold the emphasis on it. A gap the
+   * plot does not draw -- past the cap, switched off, or with no value for an
+   * axis -- has no mark, and asking for it does nothing.
+   */
+  const focusMark = (key: string): void => {
+    const node = placed?.nodes.find((candidate) => candidate.key === key)
+    if (!node || !view) return
+    closeCard()
+    view.centre(node.x, node.y)
+    pinned = key
+    showEmphasis()
+  }
+
+  const showItem = (itemID: number): void => {
+    void Zotero.getActiveZoteroPane()?.selectItem(itemID)
+  }
+
+  if (net) {
+    aside.append(
+      renderGapsPanel(doc, net, {
+        canImport,
+        onImport: (gap) => runImport(gap),
+        onFocus: focusMark,
+        onShowItem: showItem,
+      }),
+    )
+  }
+
+  /** What the network adds to a mark's card. */
+  const networkActions = (node: GraphNode): CardAction[] => {
+    if (!networkMode) {
+      return node.itemID === null && node.doi && canImport
+        ? [{ label: getString('graph-card-add'), run: () => void runImport(node) }]
+        : []
+    }
+    const actions: CardAction[] = []
+    if (node.hollow && node.doi && canImport) {
+      actions.push({
+        label: getString('network-card-import'),
+        run: () => void runImport(node),
+      })
+    }
+    // Keys are OpenAlex ids in a network.
+    actions.push({
+      label: getString('network-card-cited-by'),
+      run: () => Zotero.launchURL(openAlexCitesUrl(node.key)),
+    })
+    return actions
+  }
+
   const openCard = (node: GraphNode, event: MouseEvent): void => {
     closeCard()
-    const built = buildMarkCard(doc, node, theme, closeCard, (from) => {
-      // A tab of its own, keyed on the DOI, so the graph it came from stays
-      // open behind it.
-      openGraphTab({
-        kind: 'work',
-        doi: from.doi ?? '',
-        name: from.title || getString('graph-card-title'),
-        libraryID: seedLibraryID,
-      })
-    })
+    const built = buildMarkCard(
+      doc,
+      node,
+      theme,
+      closeCard,
+      (from) => {
+        // A tab of its own, keyed on the DOI, so the graph it came from stays
+        // open behind it.
+        openGraphTab({
+          kind: 'work',
+          doi: from.doi ?? '',
+          name: from.title || getString('graph-card-title'),
+          libraryID: seedLibraryID,
+        })
+      },
+      networkMode,
+      networkActions(node),
+    )
     card = built.card
 
     // Placed against the plot, and kept inside it: a card that opens half
@@ -1196,11 +2192,15 @@ export function renderGraph(
     card.style.top = `${Math.min(Math.max(top, 4), Math.max(4, bounds.height - card.offsetHeight - 4))}px`
 
     escapeHandler = (keyEvent: KeyboardEvent): void => {
+      // The tab was closed with the card open: let go of the document.
+      if (!plot.isConnected) {
+        closeCard()
+        return
+      }
       if (keyEvent.key === 'Escape') closeCard()
     }
     doc.addEventListener('keydown', escapeHandler)
   }
-
   /**
    * Wheel to zoom, drag to pan, by transforming the plot inside a fixed frame.
    *
@@ -1234,12 +2234,67 @@ export function renderGraph(
     const yTicks = all('[data-axis="y"]')
     const xTicks = all('[data-axis="x"]')
 
+    /**
+     * Read once. Every frame used to split these attribute strings again, for
+     * every mark and every line -- two thousand lines in a large collection --
+     * although they never change after the SVG is drawn.
+     */
+    const pair = (element: Element, name: string): [number, number] => {
+      const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
+      return [Number(a), Number(b)]
+    }
+    const markData = marks.map((mark) => ({ element: mark, key: keyOf(mark), at: pair(mark, 'data-at') }))
+    const lineData = edgeLines.map((line) => {
+      const link = line.getAttribute('data-link')
+      return {
+        element: line,
+        key: keyOf(line),
+        from: pair(line, 'data-from'),
+        to: pair(line, 'data-to'),
+        gaps: pair(line, 'data-gaps'),
+        link: link === null ? null : Number(link),
+        arrow: line.getAttribute('data-arrow'),
+        arrowLit: line.getAttribute('data-arrow-lit'),
+        hidden: false,
+      }
+    })
+    const tickData = (ticks: Element[]) =>
+      ticks.map((tick) => ({ element: tick, home: Number(tick.getAttribute('data-pos')) }))
+    const yTickData = tickData(yTicks)
+    const xTickData = tickData(xTicks)
+
+    /**
+     * Set only what changed. A hover changes the emphasis of a few marks and
+     * lines; writing the same opacity onto the other two thousand made Gecko
+     * restyle all of them, which is most of what a frame cost.
+     */
+    const written = new WeakMap<Element, Map<string, string>>()
+    const put = (element: Element, name: string, value: string): void => {
+      let values = written.get(element)
+      if (!values) {
+        values = new Map()
+        written.set(element, values)
+      }
+      if (values.get(name) === value) return
+      values.set(name, value)
+      element.setAttribute(name, value)
+    }
+
     let kx = 1
     let ky = 1
     let tx = 0
     let ty = 0
     /** One update per frame, however many wheel events arrive between them. */
     let pending = 0
+    /** Whether the view moved since the last frame: hover alone moves nothing. */
+    let moved = true
+    /** When labels were last laid out during a gesture, and the trailing pass after it. */
+    let labelsAt = 0
+    let trailing: ReturnType<typeof setTimeout> | null = null
+    /** Where each label sits relative to its mark, from the last full layout. */
+    const labelOffsets: ({ key: string; dx: number; dy: number } | null)[] = []
+    const markAt = new Map(markData.map((mark) => [mark.key, mark.at]))
+    const screen = (at: [number, number]): [number, number] => [at[0] * kx + tx, at[1] * ky + ty]
 
     /**
      * The chain through the mark under the pointer, worked out once per hover
@@ -1274,52 +2329,73 @@ export function renderGraph(
       return String(currentChain()?.keys.has(key) ? dim + (lit - dim) * 0.55 : dim)
     }
 
-    const pair = (element: Element, name: string): [number, number] => {
-      const [a, b] = (element.getAttribute(name) ?? '0,0').split(',')
-      return [Number(a), Number(b)]
-    }
-
-    const apply = (): void => {
-      const view = { kx, ky, tx, ty, width, height }
-
-      for (const mark of marks) {
-        const [x, y] = pair(mark, 'data-at')
-        mark.setAttribute('transform', `translate(${(x * kx + tx).toFixed(2)},${(y * ky + ty).toFixed(2)})`)
+    /** Marks, line ends and ticks: only when the view has moved. */
+    const applyGeometry = (view: Viewport): void => {
+      for (const mark of markData) {
+        const [x, y] = mark.at
+        put(mark.element, 'transform', `translate(${(x * kx + tx).toFixed(2)},${(y * ky + ty).toFixed(2)})`)
       }
 
-      for (const line of edgeLines) {
-        const [fx, fy] = pair(line, 'data-from')
-        const [tox, toy] = pair(line, 'data-to')
-        const [startGap, endGap] = pair(line, 'data-gaps')
-        const ends = edgeEnds({ x: fx, y: fy, radius: startGap - 2 }, { x: tox, y: toy, radius: endGap - 7 }, view)
-        line.setAttribute('x1', ends.x1.toFixed(1))
-        line.setAttribute('y1', ends.y1.toFixed(1))
-        line.setAttribute('x2', ends.x2.toFixed(1))
-        line.setAttribute('y2', ends.y2.toFixed(1))
+      for (const line of lineData) {
+        const ends = edgeEnds(
+          { x: line.from[0], y: line.from[1], radius: line.gaps[0] - 2 },
+          { x: line.to[0], y: line.to[1], radius: line.gaps[1] - 7 },
+          view,
+        )
+        put(line.element, 'x1', ends.x1.toFixed(1))
+        put(line.element, 'y1', ends.y1.toFixed(1))
+        put(line.element, 'x2', ends.x2.toFixed(1))
+        put(line.element, 'y2', ends.y2.toFixed(1))
         // Recorded rather than applied: the emphasis pass below decides what
         // is visible, and it must not resurrect a line with no room to draw.
-        line.setAttribute('hidden-short', ends.hidden ? '1' : '0')
-        if (ends.hidden) line.setAttribute('opacity', '0')
+        line.hidden = ends.hidden
+        if (ends.hidden) put(line.element, 'opacity', '0')
       }
 
+      // A tick whose value has moved out of the plot is hidden rather than
+      // stacked against the edge, where it would name a place nobody can see.
+      for (const tick of yTickData) {
+        const at = tick.home * ky + ty
+        put(tick.element, 'transform', `translate(0,${(at - tick.home).toFixed(2)})`)
+        put(tick.element, 'opacity', at > 8 && at < height - AXIS_GUTTER.bottom ? '1' : '0')
+      }
+      for (const tick of xTickData) {
+        const at = tick.home * kx + tx
+        put(tick.element, 'transform', `translate(${(at - tick.home).toFixed(2)},0)`)
+        put(tick.element, 'opacity', at > AXIS_GUTTER.left && at < width - 4 ? '1' : '0')
+      }
+    }
+
+    const applyLabels = (view: Viewport): void => {
       // Re-laid out, not merely repositioned: the marks keep their size while
       // zoom spreads them apart, so a name that could not fit at the fitted
       // view often can once there is room. Zooming reveals labels rather than
       // magnifying the ones already there, which is the point of zooming.
       // The emphasised mark goes down first and carries its title.
-      const placements = placeLabels(layout.nodes, view, emphasised(), describeNode)
+      const placements = placeLabels(layout.nodes, view, emphasised(), describe, {
+        labelRoles: layout.labelRoles,
+        mode: layout.mode,
+      })
       labelSlots.forEach((slot, index) => {
         const placement = placements[index]
         if (!placement) {
-          slot.setAttribute('opacity', '0')
+          labelOffsets[index] = null
+          put(slot, 'opacity', '0')
           return
         }
+        const anchor = markAt.get(placement.key)
+        if (anchor) {
+          const [mx, my] = screen(anchor)
+          labelOffsets[index] = { key: placement.key, dx: placement.x - mx, dy: placement.y - my }
+        } else labelOffsets[index] = null
         const x = placement.x.toFixed(1)
         // One line is the overwhelming case and costs a single assignment;
         // only the pointed-at mark is ever wrapped, and only that one pays for
         // the tspans it needs.
-        if (placement.lines.length === 1) slot.textContent = placement.lines[0]
-        else {
+        if (placement.lines.length === 1) {
+          if (slot.textContent !== placement.lines[0] || slot.childElementCount > 0)
+            slot.textContent = placement.lines[0]
+        } else {
           slot.textContent = ''
           placement.lines.forEach((line, row) => {
             const tspan = doc.createElementNS(SVG_NS, 'tspan')
@@ -1329,9 +2405,9 @@ export function renderGraph(
             slot.append(tspan)
           })
         }
-        slot.setAttribute('x', x)
-        slot.setAttribute('y', placement.y.toFixed(1))
-        slot.setAttribute('text-anchor', placement.anchor)
+        put(slot, 'x', x)
+        put(slot, 'y', placement.y.toFixed(1))
+        put(slot, 'text-anchor', placement.anchor)
         // Names of unrelated works go out rather than dim.
         //
         // A dimmed name is still a name, and twenty of them around the one
@@ -1339,40 +2415,66 @@ export function renderGraph(
         // marks stay -- they are the shape of the field and dimming is enough
         // for them -- but their captions are what makes it unreadable.
         const related = placement.key === emphasised() || (currentChain()?.keys.has(placement.key) ?? false)
-        slot.setAttribute(
-          'opacity',
-          emphasised() === null ? '0.9' : related ? emphasis(placement.key, 0.9, 0.55, 1) : '0',
-        )
+        put(slot, 'opacity', emphasised() === null ? '0.9' : related ? emphasis(placement.key, 0.9, 0.55, 1) : '0')
       })
+    }
 
-      /**
-       * Pointing at a mark pushes the rest back rather than lighting it up.
-       *
-       * Recede-the-others reads at a glance where brighten-the-one does not:
-       * the plot is already full of saturated marks, and one more of them is
-       * not a signal. Nothing is hidden -- dimmed marks stay visible, keep
-       * their tooltip and remain clickable.
-       */
-      for (const mark of marks) mark.setAttribute('opacity', emphasis(keyOf(mark), 1, 0.22, 1))
+    /**
+     * Between two full layouts during a gesture, each label travels with its
+     * mark at the offset it was placed at, so the names stay on their marks
+     * instead of waiting for the next layout to catch up.
+     */
+    const carryLabels = (): void => {
+      labelSlots.forEach((slot, index) => {
+        const offset = labelOffsets[index]
+        if (!offset) return
+        const anchor = markAt.get(offset.key)
+        if (!anchor) return
+        const [mx, my] = screen(anchor)
+        const x = (mx + offset.dx).toFixed(1)
+        put(slot, 'x', x)
+        put(slot, 'y', (my + offset.dy).toFixed(1))
+        // A wrapped title positions each line by its own x.
+        for (const tspan of Array.from(slot.children)) tspan.setAttribute('x', x)
+      })
+    }
+
+    /**
+     * Pointing at a mark pushes the rest back rather than lighting it up.
+     *
+     * Recede-the-others reads at a glance where brighten-the-one does not:
+     * the plot is already full of saturated marks, and one more of them is
+     * not a signal. Nothing is hidden -- dimmed marks stay visible, keep
+     * their tooltip and remain clickable.
+     */
+    const applyEmphasis = (): void => {
+      for (const mark of markData) put(mark.element, 'opacity', emphasis(mark.key, 1, 0.22, 1))
       /** Lit edges thicken and take the larger head; the rest recede. */
-      const setEdge = (line: Element, lit: boolean, resting: number, dim: number, base: number): void => {
+      const setEdge = (
+        line: (typeof lineData)[number],
+        lit: boolean,
+        resting: number,
+        dim: number,
+        base: number,
+      ): void => {
         const at = emphasised()
-        line.setAttribute('opacity', at === null ? String(resting) : lit ? '0.85' : String(dim))
-        line.setAttribute('stroke-width', at !== null && lit ? String(base * 2) : String(base))
-        const arrow = line.getAttribute(at !== null && lit ? 'data-arrow-lit' : 'data-arrow')
-        if (arrow) line.setAttribute('marker-end', arrow)
+        put(line.element, 'opacity', at === null ? String(resting) : lit ? '0.85' : String(dim))
+        put(line.element, 'stroke-width', at !== null && lit ? String(base * 2) : String(base))
+        const arrow = at !== null && lit ? line.arrowLit : line.arrow
+        if (arrow) put(line.element, 'marker-end', arrow)
       }
 
-      for (const line of edgeLines) {
-        if (line.getAttribute('hidden-short') === '1') continue // too short to draw
-        const linkIndex = line.getAttribute('data-link')
-        if (linkIndex !== null) {
+      for (const line of lineData) {
+        if (line.hidden) continue // too short to draw
+        if (line.link !== null) {
           // A path between two surrounding works, shown while the mark being
           // pointed at is anywhere on its chain. All of them at once is a
           // thicket; only the ones touching it is half the story.
-          const onChain = currentChain()?.edges.has(Number(linkIndex)) ?? false
-          setEdge(line, onChain, 0, 0, 1)
-          if (!onChain) line.setAttribute('opacity', '0')
+          const onChain = currentChain()?.edges.has(line.link) ?? false
+          // A network has no star to show its shape, so its citations rest
+          // faintly in view; the single-paper graph keeps them for the hover.
+          setEdge(line, onChain, networkMode ? NETWORK_LINK_RESTING : 0, networkMode ? NETWORK_LINK_DIM : 0, 1)
+          if (!onChain && !networkMode) put(line.element, 'opacity', '0')
           continue
         }
         /**
@@ -1385,24 +2487,36 @@ export function renderGraph(
          * seed itself lights all of them, since all of them are its own.
          */
         const at = emphasised()
-        const related = at !== null && (at === seedKey || (currentChain()?.keys.has(keyOf(line)) ?? false))
+        const related = at !== null && (at === seedKey || (currentChain()?.keys.has(line.key) ?? false))
         setEdge(line, related, 0.4, 0.06, 1.2)
       }
+    }
 
-      // A tick whose value has moved out of the plot is hidden rather than
-      // stacked against the edge, where it would name a place nobody can see.
-      for (const tick of yTicks) {
-        const home = Number(tick.getAttribute('data-pos'))
-        const at = home * ky + ty
-        tick.setAttribute('transform', `translate(0,${(at - home).toFixed(2)})`)
-        tick.setAttribute('opacity', at > 8 && at < height - AXIS_GUTTER.bottom ? '1' : '0')
+    /**
+     * One frame. A hover changes only the emphasis and the labels; a pan or a
+     * zoom moves everything. While a gesture runs the labels are laid out at
+     * most every 100 ms, the most expensive part of a frame, and once more
+     * when it settles -- so they follow the view without holding it back.
+     */
+    const apply = (): void => {
+      const view = { kx, ky, tx, ty, width, height }
+      const wasMoved = moved
+      moved = false
+      if (wasMoved) applyGeometry(view)
+      const now = Date.now()
+      if (!wasMoved || now - labelsAt >= 100) {
+        labelsAt = now
+        applyLabels(view)
+      } else carryLabels()
+      if (wasMoved) {
+        if (trailing !== null) clearTimeout(trailing)
+        trailing = setTimeout(() => {
+          trailing = null
+          labelsAt = Date.now()
+          applyLabels({ kx, ky, tx, ty, width, height })
+        }, 120)
       }
-      for (const tick of xTicks) {
-        const home = Number(tick.getAttribute('data-pos'))
-        const at = home * kx + tx
-        tick.setAttribute('transform', `translate(${(at - home).toFixed(2)},0)`)
-        tick.setAttribute('opacity', at > AXIS_GUTTER.left && at < width - 4 ? '1' : '0')
-      }
+      applyEmphasis()
     }
 
     /**
@@ -1448,6 +2562,7 @@ export function renderGraph(
         ty = anchorY - (anchorY - ty) * (next / ky)
         ky = next
       }
+      moved = true
       schedule()
     }
 
@@ -1503,6 +2618,7 @@ export function renderGraph(
       ty += ((event.clientY - from.y) / rect.height) * height
       if (Math.abs(event.clientX - from.x) > 3 || Math.abs(event.clientY - from.y) > 3) dragged = true
       from = { x: event.clientX, y: event.clientY }
+      moved = true
       schedule()
     })
     const release = (): void => {
@@ -1521,11 +2637,13 @@ export function renderGraph(
         ky = 1
         tx = 0
         ty = 0
+        moved = true
         schedule()
       },
       centre: (x: number, y: number) => {
         tx = width / 2 - x * kx
         ty = height / 2 - y * ky
+        moved = true
         schedule()
       },
     }
@@ -1537,7 +2655,7 @@ export function renderGraph(
     // longer there.
     closeCard()
     pointedAt = null
-    fillDetailStrip(doc, strip, null, theme)
+    fillDetailStrip(doc, strip, null, theme, networkMode)
     // Number.isFinite, not just Math.max: an unmeasured element yields
     // undefined, Math.max(320, undefined) is NaN, and a layout built on NaN
     // renders every mark at nowhere -- an empty plot with nothing to see and
@@ -1545,8 +2663,15 @@ export function renderGraph(
     const span = (measured: number, floor: number): number => Math.max(floor, Number.isFinite(measured) ? measured : 0)
     const width = span(plot.clientWidth, 320)
     const height = span(plot.clientHeight, 220)
-    const shown = nodes.filter((node) => keepNode(node, filters))
-    const layout = buildGraphLayout(shown, { width, height, padding: PADDING, scale, xMetric, yMetric, links })
+    // A network's own switches have already chosen its marks.
+    const shown = networkMode ? nodes : nodes.filter((node) => keepNode(node, filters))
+    const layout = buildGraphLayout(
+      shown,
+      networkMode
+        ? { width, height, padding: PADDING, scale, xMetric, yMetric, links, mode: 'network', labelRoles: ['seed'] }
+        : { width, height, padding: PADDING, scale, xMetric, yMetric, links },
+    )
+    placed = layout
     yCaption.textContent = getString(METRIC_DIRECTION[yMetric])
     xCaption.textContent = getString(METRIC_DIRECTION[xMetric])
     // Log or linear is a question about counts. With years on both axes there
@@ -1599,15 +2724,24 @@ export function renderGraph(
 
     showEmphasis = (): void => {
       const at = emphasised()
-      fillDetailStrip(doc, strip, at === null ? null : (byKey.get(at) ?? null), theme)
+      fillDetailStrip(doc, strip, at === null ? null : (byKey.get(at) ?? null), theme, networkMode)
       view?.repaint()
     }
 
     view = installPanAndZoom(imported as unknown as SVGSVGElement, layout, width, height)
-    const seedNode = layout.nodes.find((node) => node.role === 'seed')
-    seedPoint = seedNode ? { x: seedNode.x, y: seedNode.y } : null
+    // Several seeds have no one place; the middle of those on show is where
+    // the collection is.
+    seedPoint = centroid(layout.nodes.filter((node) => node.role === 'seed'))
 
+    // Drawn at the size it was laid out for. At 100% the SVG rescaled itself
+    // whenever the plot's box moved, so any shift around it -- a strip, a
+    // panel -- made every mark jump. A real change of size comes through the
+    // resize handler, which lays out again.
+    ;(imported as Element).setAttribute('width', String(width))
+    ;(imported as Element).setAttribute('height', String(height))
     plot.replaceChildren(imported)
+    // The resting links are set by the repaint, not by the markup.
+    if (networkMode) view?.repaint()
     if (layout.dropped > 0) {
       const note = el(doc, 'div', getString('graph-dropped-no-value', { args: { count: layout.dropped } }))
       note.style.cssText = 'position:absolute;right:0;bottom:0;font-size:11px;opacity:.6'
@@ -1625,7 +2759,21 @@ export function renderGraph(
   draw()
   // The plot is sized by flex; redraw when the window changes rather than
   // stretching a fixed viewBox.
-  win.addEventListener('resize', draw)
+  // One listener per tab: a reload draws a new graph into the same container,
+  // and the old one must stop redrawing a plot that is no longer there.
+  const previous = resizeHandlers.get(container)
+  if (previous) win.removeEventListener('resize', previous)
+  // And a closed tab must not keep redrawing a detached plot: the listener
+  // takes itself off the first time it fires without a tab to draw into.
+  const onResize = (): void => {
+    if (!container.isConnected) {
+      win.removeEventListener('resize', onResize)
+      return
+    }
+    draw()
+  }
+  resizeHandlers.set(container, onResize)
+  win.addEventListener('resize', onResize)
 }
 
 /**
@@ -1634,8 +2782,15 @@ export function renderGraph(
  * A seed is either an item in the library, whose identifiers Zotero already
  * holds, or a bare DOI from a mark on another graph. Both end up as the same
  * list, so nothing downstream has to know which it was.
+ *
+ * Collections and libraries never come here: they are analysed as networks
+ * (see loadNetwork). They used to, and a library -- with no item to start
+ * from -- always ended in an empty graph, while a collection was drawn from
+ * its first item alone.
  */
-function startingPoint(seed: GraphSeed): { identifiers: ItemIdentifier[]; libraryID: number; title: string } | null {
+function startingPoint(
+  seed: Extract<GraphSeed, { kind: 'items' | 'work' }>,
+): { identifiers: ItemIdentifier[]; libraryID: number; title: string } | null {
   if (seed.kind === 'work') {
     return {
       identifiers: [{ type: 'doi', id: seed.doi, source: 'Graph' }],
@@ -1652,31 +2807,17 @@ function startingPoint(seed: GraphSeed): { identifiers: ItemIdentifier[]; librar
   }
 }
 
-/** The items a seed stands for. Collections and libraries are seeded by content. */
-function itemsForSeed(seed: GraphSeed): Zotero.Item[] {
-  switch (seed.kind) {
-    case 'items':
-      // One seed, always. The graph is drawn from a single work's point of view
-      // -- its references behind it, what cites it ahead -- and merging several
-      // perspectives into one plot answers no question anyone asked.
-      return seed.itemIDs
-        .slice(0, 1)
-        .map((id) => Zotero.Items.get(id))
-        .filter((item): item is Zotero.Item => Boolean(item))
-    case 'collection': {
-      const collection = Zotero.Collections.get(seed.collectionID)
-      // One seed for now: a graph of every item in a collection is a different
-      // shape of question and a much larger set of requests.
-      return collection
-        ? collection
-            .getChildItems()
-            .filter((item) => item.isRegularItem())
-            .slice(0, 1)
-        : []
-    }
-    case 'library':
-    case 'work':
-      // Handled by startingPoint, which does not need a Zotero item.
-      return []
-  }
+/**
+ * The item a selection is drawn from.
+ *
+ * One seed, always. The graph is drawn from a single work's point of view --
+ * its references behind it, what cites it ahead -- and merging several
+ * perspectives into one plot answers no question anyone asked. A set of
+ * papers is what the collection analysis is for.
+ */
+function itemsForSeed(seed: Extract<GraphSeed, { kind: 'items' }>): Zotero.Item[] {
+  return seed.itemIDs
+    .slice(0, 1)
+    .map((id) => Zotero.Items.get(id))
+    .filter((item): item is Zotero.Item => Boolean(item))
 }

@@ -173,4 +173,64 @@ describe('the item pane section', () => {
     assert.ok(lines >= 0 && lines < (body.textContent ?? '').indexOf('Not on the shelf'))
     assert.equal((body.textContent ?? '').split('\u2713').length - 1, 1, 'exactly one tick')
   })
+
+  it('marks a title-only match as probable: hollow, linked, held first and counted apart', () => {
+    const probableTitle = 'A Theory of Everything in Particular'
+    const body = render('', {
+      references: [
+        { title: 'Not on the shelf', doi: '10.1/elsewhere', year: 2001, citedByCount: 900 },
+        { title: probableTitle, doi: null, year: 2010, citedByCount: 3, authors: ['John Smith'] },
+        // The same title by someone else: no mark, however alike it looks.
+        { title: probableTitle, doi: '10.1/other', year: 2010, citedByCount: 2, authors: ['Kate Smith'] },
+        { title: 'Held by its DOI', doi: '10.1/held', year: 2005, citedByCount: 1 },
+      ],
+      inLibrary: new Map([['doi:10.1/held', 41]]),
+      libraryTitles: new Map([
+        [
+          'a theory of everything in particular',
+          [{ itemID: 42, year: 2010, authors: [{ surname: 'smith', initial: 'j' }], keys: [] }],
+        ],
+      ]),
+    })
+    const text = body.textContent ?? ''
+    assert.equal(text.split('\u2713').length - 1, 1, 'one solid tick, for the DOI match')
+    assert.equal(text.split('\u25cb').length - 1, 1, 'one hollow ring, for the title match')
+
+    const ring = [...body.querySelectorAll('span')].find((span) => span.textContent === '\u25cb')
+    assert.equal(ring?.getAttribute('title'), 'orbit-pane-reference-probable-in-library')
+    const tick = [...body.querySelectorAll('span')].find((span) => span.textContent === '\u2713')
+    assert.equal(tick?.getAttribute('title'), 'orbit-pane-reference-in-library')
+
+    // The probable one still selects the item rather than linking out; it has
+    // no DOI, so without the match it would have been plain text.
+    const anchors = [...body.querySelectorAll('a')]
+    const probable = anchors.find((a) => (a.textContent ?? '').startsWith(probableTitle))
+    assert.ok(probable, 'the probable match should be a link')
+    assert.equal(probable.getAttribute('href'), null)
+
+    // Both held ones before the unheld, despite the citation counts.
+    assert.ok(text.indexOf('Held by its DOI') < text.indexOf('Not on the shelf'))
+    assert.ok(text.indexOf(probableTitle) < text.indexOf('Not on the shelf'))
+
+    // One exact, one probable, counted on separate rows.
+    assert.ok(text.includes('orbit-pane-label-references-held1'), 'exact count')
+    assert.ok(text.includes('orbit-pane-reference-probable-count1'), 'probable count')
+  })
+
+  it('draws no probable row and no ring when nothing matched by title', () => {
+    const body = render('', {
+      references: [{ title: 'A Theory of Everything in Particular', doi: null, year: 2010, citedByCount: 3 }],
+      libraryTitles: new Map([
+        [
+          'a theory of everything in particular',
+          [{ itemID: 42, year: 2010, authors: [{ surname: 'smith', initial: 'j' }], keys: [] }],
+        ],
+      ]),
+    })
+    const text = body.textContent ?? ''
+    // A reference without authors -- an S2 entry cached before they were kept.
+    assert.ok(!text.includes('\u25cb'))
+    assert.ok(!text.includes('pane-reference-probable-count'))
+    assert.ok(!text.includes('pane-label-references-held'))
+  })
 })

@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: If you use Orbit in your research, please cite it as below.
+title: 'Orbit: citation counts, context and collection analysis for Zotero'
+type: software
+authors:
+  - family-names: Kallmer
+    given-names: Falk
+repository-code: 'https://github.com/fkallmer/zotero-orbit'
+url: 'https://github.com/fkallmer/zotero-orbit'
+# As package.json declares it: AGPL-3.0, with one file under MPL-2.0.
+license:
+  - AGPL-3.0
+  - MPL-2.0
+version: 0.3.0
+date-released: 2026-11-18
+keywords:
+  - Zotero
+  - bibliometrics
+  - citation analysis
+  - citation graph
+  - OpenAlex
+  - Semantic Scholar

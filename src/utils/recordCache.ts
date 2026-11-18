@@ -30,8 +30,14 @@ const CACHE_VERSION = 3
 /** Entries older than this are refetched. OpenAlex counts move slowly. */
 const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000
 
-/** Hard ceiling on entries; the oldest go first once it is reached. */
-const MAX_ENTRIES = 2000
+/**
+ * Hard ceiling on entries; the oldest go first once it is reached.
+ *
+ * Raised from 2000: one collection analysis of 300 seeds writes about 300 seed
+ * entries on top of the item pane's records, references and citing lists, and
+ * at 2000 a single large analysis would push out what the pane had cached.
+ */
+const MAX_ENTRIES = 6000
 
 /** How long writes are batched before hitting disk. */
 const FLUSH_DELAY_MS = 5000

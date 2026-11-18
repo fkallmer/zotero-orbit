@@ -27,6 +27,7 @@ import {
   normalizeWork,
   normalizeWorkLinks,
   OPENALEX_DATABASE,
+  openAlexAuthHeaders,
   openAlexRecordCacheKey,
   REFERENCE_CHUNK,
   toLookupDoi,
@@ -43,32 +44,66 @@ function sourceCacheKey(sourceId: string): string {
   return `source:${sourceId.toLowerCase()}`
 }
 
-async function fetchJson(url: string): Promise<unknown> {
-  await RateLimitManager.waitForRateLimit(OPENALEX_DATABASE)
-  let response: Response
-  try {
-    response = await lookupFetch(url, { headers: requestHeaders() })
-  } catch (err) {
-    debugLog('Citation debug - OpenAlex enrichment request failed:', err)
-    return null
-  }
+/**
+ * An OpenAlex response that was not a success.
+ *
+ * Carries the status so a caller can tell a rate limit (429) from a request
+ * OpenAlex refused outright -- a cursor past page one without a key, say.
+ */
+export class OpenAlexHttpError extends Error {
+  readonly status: number
 
-  // Same budget accounting as the count path; the pane's requests spend from
-  // the same allowance.
+  constructor(status: number, url: string) {
+    super(`OpenAlex HTTP ${status} for ${url}`)
+    this.name = 'OpenAlexHttpError'
+    this.status = status
+  }
+}
+
+/**
+ * One paced, authenticated OpenAlex request.
+ *
+ * The single path every OpenAlex request in this module takes: it waits its
+ * turn, spends from the shared budget, backs off on a 429, and carries the key
+ * as a header. Throws on failure; what `lookupFetch` throws (an abort, a
+ * timeout) passes through as it is, so a shutdown stays recognisable.
+ */
+async function requestOpenAlex(url: string): Promise<unknown> {
+  await RateLimitManager.waitForRateLimit(OPENALEX_DATABASE)
+  const response = await lookupFetch(url, { headers: { ...requestHeaders(), ...openAlexAuthHeaders() } })
+
+  // Same budget accounting as the count path; these requests spend from the
+  // same allowance.
   RateLimitManager.noteBudget(OPENALEX_DATABASE, response)
 
   if (!response.ok) {
     if (response.status === 429) RateLimitManager.handleRateLimit(OPENALEX_DATABASE)
-    debugLog(`Citation debug - OpenAlex enrichment HTTP ${response.status} for ${url}`)
-    return null
+    throw new OpenAlexHttpError(response.status, url)
   }
 
+  const json: unknown = await response.json()
+  RateLimitManager.handleSuccess(OPENALEX_DATABASE)
+  return json
+}
+
+/**
+ * One page of an OpenAlex list, parsed.
+ *
+ * For the collection network, which pages through list and cursor URLs and
+ * caches the finished analysis rather than each page -- so nothing is cached
+ * here. Throws `OpenAlexHttpError` on an HTTP failure.
+ */
+export async function fetchOpenAlexPage(url: string): Promise<unknown> {
+  return requestOpenAlex(url)
+}
+
+/** The item pane's variant: any failure reads as "nothing there". */
+async function fetchJson(url: string): Promise<unknown> {
   try {
-    const json: unknown = await response.json()
-    RateLimitManager.handleSuccess(OPENALEX_DATABASE)
-    return json
+    return await requestOpenAlex(url)
   } catch (err) {
-    debugLog('Citation debug - OpenAlex enrichment body parse failed:', err)
+    if (err instanceof OpenAlexHttpError) debugLog(`Citation debug - OpenAlex enrichment HTTP ${err.status} for ${url}`)
+    else debugLog('Citation debug - OpenAlex enrichment request failed:', err)
     return null
   }
 }

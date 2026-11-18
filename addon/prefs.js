@@ -12,6 +12,10 @@ pref('semanticScholarApiKey', '')
 // The address Crossref and OpenAlex are given for their polite pools. Empty
 // means anonymous, which both providers support. See utils/contact.
 pref('openAlexContact', '')
+// Sent to OpenAlex only, as a bearer token, never in a URL. Optional: without
+// one OpenAlex allows a smaller daily budget, and the collection graph cannot
+// page through the works that cite it.
+pref('openAlexApiKey', '')
 // Diagnostics. A real boolean, not the 'true'/'false' strings the older prefs
 // above use -- that is a wart worth not extending. No UI: set it in Zotero's
 // Config Editor (extensions.zotero.orbit.debugLogging) when asked for
@@ -26,6 +30,12 @@ pref('graphShowCitations', true)
 pref('graphLibraryFilter', 'all')
 pref('graphHighlightHops', 1)
 pref('graphLinkDirection', 'both')
+// Collection and library graphs. Above the limit, 'cap' analyses the first N,
+// 'warn' asks first, 'all' never asks. See collectionTypes.SeedPolicy.
+pref('networkSeedLimit', 300)
+pref('networkSeedPolicy', 'warn')
+pref('graphNetworkCiting', false)
+pref('graphShowGaps', true)
 
 // Set once the settings and cache from the Citation Tally name have been
 // taken over. See utils/adoptLegacyState.

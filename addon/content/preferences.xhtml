@@ -204,6 +204,95 @@
           style="margin-bottom: 5px; min-height: 20px; margin-top: 0px">
           <html:span id="zotero-prefpane-__addonRef__-openAlexContact-status-text"></html:span>
         </html:div>
+
+        <description
+          data-l10n-id="pref-openalex-key-intro"
+          style="margin: 10px 0 5px 0" />
+        <hbox
+          id="zotero-prefpane-__addonRef__-openAlexApiKey-group"
+          align="center"
+          style="margin-bottom: 10px">
+          <html:label
+            data-l10n-id="pref-openalex-key-label"
+            for="zotero-prefpane-__addonRef__-openAlexApiKey"
+            style="margin-right: 8px"></html:label>
+          <html:input
+            type="password"
+            id="zotero-prefpane-__addonRef__-openAlexApiKey"
+            class="__addonRef__-pref-apikey-input"
+            data-l10n-id="pref-openalex-key-field"
+            autocomplete="off"
+            spellcheck="false"
+            style="flex: 1; min-width: 240px" />
+          <button
+            id="zotero-prefpane-__addonRef__-openAlexApiKey-save"
+            data-l10n-id="pref-save-button"
+            style="margin-left: 8px" />
+        </hbox>
+        <html:div
+          id="zotero-prefpane-__addonRef__-openAlexApiKey-status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          style="margin-bottom: 5px; min-height: 20px; margin-top: 0px">
+          <html:span id="zotero-prefpane-__addonRef__-openAlexApiKey-status-text"></html:span>
+          <html:span
+            id="zotero-prefpane-__addonRef__-openAlexApiKey-status-cleaned"
+            class="__addonRef__-status-part"></html:span>
+        </html:div>
+      </groupbox>
+    </html:div>
+
+    <label
+      data-l10n-id="pref-network-heading"
+      style="font-weight: bold; margin-top: 10px; margin-left: 10px" />
+    <html:div class="__addonRef__-pref-options-div">
+      <groupbox>
+        <description
+          data-l10n-id="pref-network-description"
+          style="margin: 5px 0" />
+        <hbox
+          align="center"
+          style="margin-bottom: 5px">
+          <html:label
+            data-l10n-id="pref-network-limit-label"
+            for="zotero-prefpane-__addonRef__-networkSeedLimit"
+            style="margin-right: 8px"></html:label>
+          <html:input
+            type="number"
+            id="zotero-prefpane-__addonRef__-networkSeedLimit"
+            data-l10n-id="pref-network-limit-field"
+            min="10"
+            max="5000"
+            style="width: 8em; padding: 4px" />
+        </hbox>
+        <html:div
+          data-l10n-id="pref-network-limit-help"
+          style="margin-bottom: 8px; font-size: 90%; opacity: 0.75"></html:div>
+        <description data-l10n-id="pref-network-policy-label" />
+        <radiogroup id="zotero-prefpane-__addonRef__-networkSeedPolicy">
+          <radio
+            data-l10n-id="pref-network-policy-cap"
+            value="cap" />
+          <radio
+            data-l10n-id="pref-network-policy-warn"
+            value="warn" />
+          <radio
+            data-l10n-id="pref-network-policy-all"
+            value="all" />
+        </radiogroup>
+        <hbox
+          align="center"
+          style="margin-top: 6px">
+          <button
+            id="zotero-prefpane-__addonRef__-network-save"
+            data-l10n-id="pref-save-button" />
+          <html:span
+            id="zotero-prefpane-__addonRef__-network-saved"
+            role="status"
+            aria-live="polite"
+            style="margin-left: 8px; opacity: 0.8"></html:span>
+        </hbox>
       </groupbox>
     </html:div>
   </groupbox>

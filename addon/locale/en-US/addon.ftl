@@ -49,6 +49,66 @@ semantic-scholar-unavailable = Semantic Scholar isn't available and has been tur
 column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
 
+# Gaps list (gaps-*, P8). Add strings below this line only.
+gaps-heading-reference = Cited by your items
+gaps-heading-citing = Citing your items
+gaps-empty = No gaps: every work that several of your items cite, or that cites several of them, is already in your library.
+gaps-year-unknown = no year
+gaps-citations = { $count ->
+    [one] 1 citation
+   *[other] { $count } citations
+  }
+gaps-citations-unknown = citations unknown
+gaps-references = { $count ->
+    [one] 1 reference
+   *[other] { $count } references
+  }
+gaps-authors-two = { $first } & { $second }
+gaps-authors-many = { $first } et al.
+gaps-view-missing = Missing ({ $count })
+gaps-view-referenced = Most referenced ({ $count })
+referenced-intro = Works at least two of your items cite, held or not: what the collection rests on.
+referenced-empty = No work is cited by two or more of your items.
+referenced-held-seed = ✓ One of your items
+referenced-held-exact = ✓ In your library
+referenced-held-probable = ○ Probably in your library
+gaps-sort-label = Sort by
+gaps-sort-score = Score
+gaps-sort-year = Year
+gaps-sort-citations = Citations
+gaps-sort-references = References
+gaps-score = score { $score }
+gaps-score-hint = How many of your items it is connected to, divided by the base-10 logarithm of ten plus its citation count. The divisor is 1 for an uncited work (or an unknown count), 2 at ninety citations and 3 at a thousand, so fame lowers the score without cancelling it: a niche work several of your items share ranks above a classic everyone cites, but a work many of your items lean on stays high however well known it is.
+gaps-cited-by = { $count ->
+    [one] cited by 1 of your items
+   *[other] cited by { $count } of your items
+  }
+gaps-cites = { $count ->
+    [one] cites 1 of your items
+   *[other] cites { $count } of your items
+  }
+gaps-probable-heading = Probably in your library ({ $count })
+gaps-probable-hint = Matched by title, year and first author rather than by an identifier. Check before importing these: the library most likely holds them already.
+gaps-show-item = Show item
+
+# Import by DOI (import-*, P8). Add strings below this line only.
+import-button = Import
+import-button-hint = Look up { $doi } and add it to your library
+import-running = Importing…
+import-done = ✓ In your library
+import-confirm-title = Add to your library?
+import-confirm-body = Look up this work by its DOI and add it to “{ $target }”?
+    { $title } ({ $year })
+    DOI: { $doi }
+import-confirm-no-year = no year
+import-choose-body = Look up this work by its DOI and add it where?
+    { $title } ({ $year })
+    DOI: { $doi }
+import-failed-read-only = This library cannot be edited.
+import-failed-no-translator = No translator can look up DOIs.
+import-failed-no-result = The DOI lookup found nothing.
+import-failed-error = The import failed.
+
 # Item pane section
 # Attribute-only, like Zotero's own section strings (section-tags, sidenav-info).
 # A Fluent message with a *value* is written into the element's textContent,
@@ -103,6 +163,8 @@ pane-heading-references = References
 pane-label-references = Cited works
 pane-label-references-held = In your library
 pane-reference-in-library = Already in your library
+pane-reference-probable-in-library = Probably in your library (matched by title)
+pane-reference-probable-count = Probably in your library
 pane-references-more = and { $count } more
 pane-hint-references = Works this paper cites, as far as Semantic Scholar resolved them — consistently more than OpenAlex finds, and still fewer than the printed bibliography. Treat it as a floor, not a count.
 pane-label-influential = Influential citations
@@ -112,6 +174,61 @@ column-fwci = Field-weighted impact
 pane-references-none = Semantic Scholar lists no references for this work.
 pane-references-elided = The publisher has asked Semantic Scholar not to serve this work's reference list through its API — { $count } references exist and are visible on the Semantic Scholar site. OpenAlex had none for this work either.
 pane-reference-cited-by = Citations of this cited work
+
+# Collection and library network (network-*, P4/P9). Add strings below this line only.
+network-failed = The analysis stopped because OpenAlex did not answer, even after a few tries. Try again in a minute. A free OpenAlex API key (Settings → Orbit) raises its limits.
+network-budget = OpenAlex today: US$ { $remaining } of { $limit } left
+network-budget-reset = OpenAlex today: US$ { $remaining } of { $limit } left, resets in { $hours ->
+    [one] 1 hour
+   *[other] { $hours } hours
+  }
+# Name of a topic cluster none of whose papers has an OpenAlex topic. $number counts from 1.
+network-cluster-fallback = Cluster { $number }
+# The steps of an analysis, under the progress bar.
+network-step-seeds = Reading your items' identifiers
+network-step-lookup = Looking your items up in OpenAlex
+network-step-references = Resolving the works they cite in common
+network-step-citing = Finding works that cite several of them
+network-step-library = Checking your library
+network-step-clusters = Grouping them into topics
+# $step is one of the network-step-* strings above.
+network-step-count = { $step } ({ $done } of { $total })
+network-scope-gone = This collection no longer exists.
+network-scope-empty = There are no regular items here to analyse.
+network-none-resolved = None of the { $count } items could be found in OpenAlex. An item needs a DOI, an arXiv ID or a PMID to be looked up.
+# Asked in the tab when a collection holds more items than the limit in the settings.
+network-confirm-title = A large analysis
+network-confirm-body = “{ $name }” holds { $count } items, more than the { $limit } set in Orbit's settings.
+# $usd is in US dollars; $share is a percentage of OpenAlex's daily budget, possibly "<1".
+network-confirm-estimate-all = All { $count }: about { $requests } OpenAlex requests, US$ { $usd }, { $share } % of today's budget.
+network-confirm-estimate-cap = The first { $limit }: about { $requests } OpenAlex requests, US$ { $usd }, { $share } % of today's budget.
+network-confirm-all = Analyse all { $count }
+network-confirm-cap = Analyse the first { $limit }
+network-confirm-cancel = Cancel
+network-cancelled = Not analysed.
+network-ask-again = Choose again
+network-capped = Analysing { $analysed } of { $total } items, as set in Orbit's settings.
+network-legend-unclustered = Unclustered
+network-legend-cluster-hint = Show only this topic; click more topics to add them, click a chosen one again to take it out
+network-legend-gaps = Not in your library
+network-legend-held = Also in your library
+network-legend-citing = Citing works
+network-legend-citing-add = Add citing works
+network-citing-needs-key = needs an OpenAlex API key
+network-role-seed = Your item
+network-probably-in-library = Probably in your library
+network-center-seeds = Centre on your items
+network-export = Export and open…
+network-card-import = Import
+network-card-cited-by = Cited by (OpenAlex)
+network-card-connected-papers = Connected Papers
+network-import-done = “{ $title }” is in { $target } now.
+network-coverage-unresolved = { $count ->
+    [one] 1 item not found in OpenAlex
+   *[other] { $count } items not found in OpenAlex
+  }
+network-coverage-citing-truncated = citing works incomplete
+
 
 # Citation graph tab
 graph-tab-title = Graph: { $name }
@@ -156,6 +273,7 @@ graph-card-doi = Open DOI
 graph-card-source = Semantic Scholar
 graph-card-graph = Graph from here
 graph-card-item = Show in library
+graph-card-add = Add to library
 graph-card-close = Close
 graph-card-no-doi = No DOI, so there is nowhere to open it.
 graph-no-values = None of the surrounding works carry both values the axes ask for, so there is nothing to place.
@@ -181,3 +299,15 @@ graph-empty = No OpenAlex record for this item, so there is nothing to graph. Wo
 graph-scale-log = Scale: logarithmic
 graph-scale-linear = Scale: linear
 graph-scale-hint = Logarithmic keeps orders of magnitude readable; linear separates works that are cited similarly often.
+
+# Exports and links to other tools (export-*, P6). Add strings below this line only.
+export-vosviewer = Export network for VOSviewer…
+export-graphml = Export network as GraphML…
+export-gaps-csv = Export gaps as CSV…
+export-gaps-ris = Export gaps as RIS…
+export-open-lcn = Open in Local Citation Network
+export-open-inciteful = Open in Inciteful
+export-filter-vosviewer = VOSviewer JSON
+export-filter-graphml = GraphML
+export-filter-csv = CSV
+export-filter-ris = RIS

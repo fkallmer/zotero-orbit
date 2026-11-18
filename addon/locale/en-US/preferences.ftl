@@ -64,7 +64,7 @@ pref-apikey-cleaned = Removed invisible characters from the pasted key ({ $chara
 # The polite-pool contact. Not a key, and not secret -- it is sent with every
 # request on purpose.
 pref-contact-heading = Contact address
-pref-contact-intro = Optional. Crossref and OpenAlex give faster, higher limits to requests that say who is making them. Yours is sent with those requests and with nothing else.
+pref-contact-intro = Optional. Crossref serves requests that say who is making them from a faster, more reliable pool. Yours is sent with Crossref and OpenAlex requests and with nothing else. OpenAlex no longer gives an address higher limits; for those, use the OpenAlex key below.
 pref-contact-label = Email
 pref-contact-field =
     .placeholder = you@example.org
@@ -74,3 +74,30 @@ pref-contact-built-in = Using the address this copy was built with
 pref-contact-anonymous = Not set — using the common pool, which is slower
 
 pref-help = { $name } [Build { $version } { $time }]
+
+# OpenAlex API key and collection network limits (pref-openalex-key-*, pref-network-*, P1). Add strings below this line only.
+pref-openalex-key-intro = Optional, free from openalex.org. Without a key, OpenAlex allows $0.10 of requests a day; with one, $1. The collection graph needs a key to list the works that cite your items.
+pref-openalex-key-label = OpenAlex key
+pref-openalex-key-field =
+    .placeholder = OpenAlex API key
+pref-openalex-key-in-use = ✓ Sent to OpenAlex as a bearer token
+pref-openalex-key-missing = Not set — OpenAlex's smaller daily budget; the collection graph cannot list works citing it
+pref-openalex-key-cleaned = Removed invisible characters from the pasted key ({ $characters }).
+pref-openalex-key-unusable = ✗ The key contains characters that cannot be sent ({ $characters }), so no key is sent
+
+pref-network-heading = Collection graph
+pref-network-description = Each item in a collection or library graph costs OpenAlex requests. Above this many items, Orbit does what you choose below.
+pref-network-limit-label = Item limit (N)
+pref-network-limit-field =
+    .placeholder = 300
+pref-network-limit-help = From 10 to 5000. Anything else resets to 300.
+pref-network-policy-label = When a collection holds more than N items:
+pref-network-policy-cap =
+    .label = Analyse only the first N
+pref-network-policy-warn =
+    .label = Ask first, with an estimate
+pref-network-policy-all =
+    .label = Always analyse everything
+pref-save-button =
+    .label = Save
+pref-saved = ✓ Saved
