@@ -8,7 +8,7 @@
 
 import { surnameOf } from './collectionGraph.core'
 
-import type { CollectionNetwork, Gap, SeedWork } from './collectionTypes'
+import type { CollectionNetwork, Gap, OpenAlexId, SeedWork } from './collectionTypes'
 
 export interface GapSections {
   /** Works the seeds cite: "Cited by your items". */
@@ -92,4 +92,93 @@ export function authorLine(authors: readonly string[]): AuthorLine {
   if (names.length === 1) return { kind: 'one', first: names[0] }
   if (names.length === 2) return { kind: 'two', first: names[0], second: names[1] }
   return { kind: 'many', first: names[0] }
+}
+
+/**
+ * A work the analysed items cite, held or not: the "most referenced" view.
+ *
+ * The gaps list answers "what am I missing"; this answers "what does my
+ * collection rest on", so it keeps what the library already holds -- the
+ * shared references it has, and the user's own items that other items cite.
+ */
+export interface ReferencedWork {
+  openAlexId: OpenAlexId
+  title: string
+  authors: string[]
+  year: number | null
+  citedByCount: number | null
+  referenceCount: number | null
+  doi: string | null
+  /** The analysed items that cite it. */
+  seeds: OpenAlexId[]
+  /** 'seed': one of the analysed items. Otherwise how the library holds it, or null. */
+  held: 'seed' | 'exact' | 'probable' | null
+  itemID: number | null
+  /** 1-based, by how many analysed items cite it. */
+  rank: number
+}
+
+/**
+ * Every work at least two analysed items cite, most cited by them first:
+ * the shared references (held or missing) and the analysed items themselves
+ * where other analysed items cite them. Ties go to the more cited work
+ * overall, then the newer one.
+ */
+export function mostReferenced(
+  net: Pick<CollectionNetwork, 'seeds' | 'works' | 'citations'>,
+  minSeeds = 2,
+): ReferencedWork[] {
+  const seedIds = new Set(net.seeds.map((seed) => seed.openAlexId))
+  const entries: Omit<ReferencedWork, 'rank'>[] = []
+
+  for (const work of net.works) {
+    if (work.direction !== 'reference' || work.seeds.length < minSeeds) continue
+    entries.push({
+      openAlexId: work.openAlexId,
+      title: work.title,
+      authors: work.authors,
+      year: work.year,
+      citedByCount: work.citedByCount,
+      referenceCount: work.referenceCount,
+      doi: work.doi,
+      seeds: work.seeds,
+      held: work.match?.confidence ?? null,
+      itemID: work.match?.itemID ?? null,
+    })
+  }
+
+  // The analysed items cited by other analysed items, from the citation edges.
+  const citers = new Map<OpenAlexId, Set<OpenAlexId>>()
+  for (const edge of net.citations) {
+    if (!seedIds.has(edge.from) || !seedIds.has(edge.to) || edge.from === edge.to) continue
+    const set = citers.get(edge.to) ?? new Set<OpenAlexId>()
+    set.add(edge.from)
+    citers.set(edge.to, set)
+  }
+  for (const seed of net.seeds) {
+    const by = citers.get(seed.openAlexId)
+    if (!by || by.size < minSeeds) continue
+    entries.push({
+      openAlexId: seed.openAlexId,
+      title: seed.title,
+      authors: seed.authors,
+      year: seed.year,
+      citedByCount: seed.citedByCount,
+      referenceCount: seed.referenceCount,
+      doi: seed.doi,
+      seeds: [...by].sort(),
+      held: 'seed',
+      itemID: seed.itemID,
+    })
+  }
+
+  return entries
+    .sort(
+      (a, b) =>
+        b.seeds.length - a.seeds.length ||
+        (b.citedByCount ?? -1) - (a.citedByCount ?? -1) ||
+        (b.year ?? -1) - (a.year ?? -1) ||
+        (a.openAlexId < b.openAlexId ? -1 : a.openAlexId > b.openAlexId ? 1 : 0),
+    )
+    .map((entry, index) => ({ ...entry, rank: index + 1 }))
 }

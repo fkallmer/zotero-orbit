@@ -13,11 +13,11 @@
 
 import { getString } from '../utils/locale'
 
-import { authorLine, formatScore, GAP_SORTS, gapSections, seedsOfGap, sortGaps } from './gapsPanel.core'
+import { authorLine, formatScore, GAP_SORTS, gapSections, mostReferenced, seedsOfGap, sortGaps } from './gapsPanel.core'
 
 import type { CollectionNetwork, Gap, NetworkWork, OpenAlexId } from './collectionTypes'
 import type { ImportOutcome } from './doiImport'
-import type { GapSort } from './gapsPanel.core'
+import type { GapSort, ReferencedWork } from './gapsPanel.core'
 
 export interface GapsPanelHandlers {
   /** False hides every Import button: a read-only library, or nowhere to import to. */
@@ -75,24 +75,55 @@ function disclosure(doc: Document, label: string, body: HTMLElement, open: boole
   return toggle
 }
 
+/** The neutral tints the panel is drawn with: readable on a light tab and a dark one. */
+const TINT = {
+  card: 'rgba(127,127,127,.07)',
+  cardHover: 'rgba(127,127,127,.14)',
+  chip: 'rgba(127,127,127,.16)',
+  line: 'rgba(127,127,127,.25)',
+} as const
+
+/** How many rows get a filled badge: the ten the graph numbers on its marks. */
+const NUMBERED = 10
+
 export function renderGapsPanel(doc: Document, net: CollectionNetwork, handlers: GapsPanelHandlers): HTMLElement {
   const root = el(doc, 'div', 'orbit-gaps')
-  root.style.cssText = 'display:flex;flex-direction:column;gap:12px;font-size:12px;line-height:1.4'
+  root.style.cssText = 'display:flex;flex-direction:column;gap:10px;font-size:12px;line-height:1.4'
+
+  const referenced = mostReferenced(net)
+  const missingView = el(doc, 'div', 'orbit-gaps-view-missing')
+  missingView.style.cssText = 'display:flex;flex-direction:column;gap:12px'
+  const referencedView = el(doc, 'div', 'orbit-gaps-view-referenced')
+  referencedView.style.cssText = 'display:none;flex-direction:column;gap:6px'
+
+  root.append(
+    viewSwitch(
+      doc,
+      [
+        { id: 'missing', label: getString('gaps-view-missing', { args: { count: net.gaps.length } }) },
+        { id: 'referenced', label: getString('gaps-view-referenced', { args: { count: referenced.length } }) },
+      ],
+      (id) => {
+        missingView.style.display = id === 'missing' ? 'flex' : 'none'
+        referencedView.style.display = id === 'referenced' ? 'flex' : 'none'
+      },
+    ),
+  )
 
   const { reference, citing } = gapSections(net.gaps)
   if (!reference.length && !citing.length) {
     const empty = el(doc, 'div', 'orbit-gaps-empty', getString('gaps-empty'))
     empty.style.opacity = '0.7'
-    root.append(empty)
+    missingView.append(empty)
   } else {
     const lists: { list: HTMLElement; gaps: Gap[] }[] = []
     const rows = new Map<OpenAlexId, HTMLElement>()
     const addSection = (direction: Gap['direction'], gaps: Gap[]): void => {
       const built = section(doc, net, direction, gaps, handlers, rows)
       lists.push({ list: built.list, gaps })
-      root.append(built.wrap)
+      missingView.append(built.wrap)
     }
-    root.append(
+    missingView.append(
       sortControl(doc, (sort) => {
         // The rows are moved, not rebuilt: an import running or done in a row
         // keeps its state, and the rank on each row stays its score rank, the
@@ -108,13 +139,221 @@ export function renderGapsPanel(doc: Document, net: CollectionNetwork, handlers:
     if (reference.length) addSection('reference', reference)
     if (citing.length) addSection('citing', citing)
   }
+  if (net.probable.length) missingView.append(probableSection(doc, net.probable, handlers))
 
-  if (net.probable.length) root.append(probableSection(doc, net.probable, handlers))
+  renderReferenced(doc, net, referenced, handlers, referencedView)
+  root.append(missingView, referencedView)
   return root
 }
 
+/** Two or more views, one shown: a segmented control rather than tabs inside a tab. */
+function viewSwitch(
+  doc: Document,
+  views: { id: string; label: string }[],
+  onChoose: (id: string) => void,
+): HTMLElement {
+  const wrap = el(doc, 'div', 'orbit-gaps-views')
+  wrap.setAttribute('role', 'tablist')
+  wrap.style.cssText = `display:flex;border:1px solid ${TINT.line};border-radius:7px;overflow:hidden;flex:none`
+  const buttons: HTMLElement[] = []
+  const select = (id: string): void => {
+    for (const button of buttons) {
+      const on = button.getAttribute('data-view') === id
+      button.setAttribute('aria-selected', String(on))
+      button.style.background = on ? TINT.chip : 'transparent'
+      button.style.fontWeight = on ? '600' : '400'
+    }
+    onChoose(id)
+  }
+  for (const view of views) {
+    const button = el(doc, 'button', 'orbit-gaps-view', view.label)
+    button.setAttribute('role', 'tab')
+    button.setAttribute('data-view', view.id)
+    button.style.cssText =
+      'flex:1;border:0;padding:5px 8px;font:inherit;font-size:12px;color:inherit;cursor:pointer;background:transparent'
+    button.addEventListener('click', () => select(view.id))
+    buttons.push(button)
+    wrap.append(button)
+  }
+  select(views[0].id)
+  return wrap
+}
+
+/** A row as a card: tinted, a little lighter under the pointer. */
+function card(doc: Document, tag: string, className: string): HTMLElement {
+  const row = el(doc, tag, className)
+  row.style.cssText =
+    `display:flex;gap:9px;align-items:flex-start;padding:8px 9px;border-radius:8px;background:${TINT.card};` +
+    'transition:background-color .12s'
+  row.addEventListener('mouseenter', () => (row.style.background = TINT.cardHover))
+  row.addEventListener('mouseleave', () => (row.style.background = TINT.card))
+  return row
+}
+
+/** The rank in a round badge; filled for the first ten, as the graph numbers them. */
+function badge(doc: Document, rank: number, className: string): HTMLElement {
+  const node = el(doc, 'span', className, String(rank))
+  const filled = rank <= NUMBERED
+  node.style.cssText =
+    'flex:none;min-width:22px;height:22px;padding:0 4px;box-sizing:border-box;border-radius:11px;display:flex;' +
+    'align-items:center;justify-content:center;font-size:11px;font-weight:700;border:1.5px solid currentColor;' +
+    (filled ? `background:${TINT.chip};opacity:.95` : 'opacity:.55')
+  return node
+}
+
+/** A small rounded figure: "3,052 citations", "67 references". */
+function chip(doc: Document, className: string, text: string): HTMLElement {
+  const node = el(doc, 'span', className, text)
+  node.style.cssText = `background:${TINT.chip};border-radius:9px;padding:0 7px;font-size:11px;white-space:nowrap`
+  return node
+}
+
+/** Title, then "Author · Year", the way the graph labels the mark. */
+function heading(doc: Document, work: Pick<Gap, 'title' | 'openAlexId' | 'authors' | 'year'>, onFocus: () => void) {
+  const title = link(doc, work.title || work.openAlexId, onFocus, 'orbit-gap-title')
+  title.style.cssText +=
+    ';font-weight:600;text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;' +
+    'overflow:hidden'
+  title.setAttribute('title', work.title)
+  const byline = el(doc, 'div', 'orbit-gap-byline')
+  byline.style.cssText = 'opacity:.72;margin-top:1px'
+  const parts = [...authorSpan(doc, work)]
+  const year = el(
+    doc,
+    'span',
+    'orbit-gap-year',
+    work.year === null ? getString('gaps-year-unknown') : String(work.year),
+  )
+  if (parts.length) parts.push(el(doc, 'span', undefined, ' · '))
+  parts.push(year)
+  byline.append(...parts)
+  return { title, byline }
+}
+
+/** The citation and reference counts as chips; the gap's score beside them when it has one. */
+function figures(doc: Document, work: Pick<Gap, 'citedByCount' | 'referenceCount'>, score?: number): HTMLElement {
+  const meta = el(doc, 'div', 'orbit-gap-meta')
+  meta.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:5px'
+  meta.append(
+    chip(
+      doc,
+      'orbit-gap-cited',
+      work.citedByCount === null
+        ? getString('gaps-citations-unknown')
+        : getString('gaps-citations', { args: { count: work.citedByCount } }),
+    ),
+  )
+  if (work.referenceCount !== null) {
+    meta.append(
+      chip(doc, 'orbit-gap-references', getString('gaps-references', { args: { count: work.referenceCount } })),
+    )
+  }
+  if (score !== undefined) {
+    const scoreChip = chip(doc, 'orbit-gap-score', getString('gaps-score', { args: { score: formatScore(score) } }))
+    scoreChip.setAttribute('title', getString('gaps-score-hint'))
+    scoreChip.style.cursor = 'help'
+    meta.append(scoreChip)
+  }
+  return meta
+}
+
+/** "cited by 24 of your items", opening onto their titles. */
+function citedBy(
+  doc: Document,
+  net: CollectionNetwork,
+  seedIds: readonly OpenAlexId[],
+  direction: Gap['direction'],
+  handlers: GapsPanelHandlers,
+): HTMLElement[] {
+  const seeds = seedsOfGap({ seeds: [...seedIds] }, net)
+  const seedList = el(doc, 'ul', 'orbit-gap-seeds')
+  seedList.style.cssText = 'margin:3px 0 0;padding-left:16px'
+  for (const seed of seeds) {
+    const entry = el(doc, 'li')
+    entry.append(link(doc, seed.title || seed.openAlexId, () => handlers.onShowItem(seed.itemID), 'orbit-gap-seed'))
+    seedList.append(entry)
+  }
+  const count = seedIds.length
+  const toggle = disclosure(
+    doc,
+    getString(direction === 'reference' ? 'gaps-cited-by' : 'gaps-cites', { args: { count } }),
+    seedList,
+    false,
+    'orbit-gap-seeds-toggle',
+  )
+  toggle.setAttribute('data-count', String(count))
+  const line = el(doc, 'div')
+  line.style.cssText = 'opacity:.72;margin-top:4px'
+  line.append(toggle)
+  return [line, seedList]
+}
+
+/** The "most referenced" view: what the collection rests on, held or not. */
+function renderReferenced(
+  doc: Document,
+  net: CollectionNetwork,
+  works: ReferencedWork[],
+  handlers: GapsPanelHandlers,
+  into: HTMLElement,
+): void {
+  const intro = el(doc, 'div', 'orbit-referenced-intro', getString('referenced-intro'))
+  intro.style.cssText = 'opacity:.72'
+  into.append(intro)
+  if (works.length === 0) {
+    const empty = el(doc, 'div', 'orbit-referenced-empty', getString('referenced-empty'))
+    empty.style.opacity = '0.7'
+    into.append(empty)
+    return
+  }
+  const gaps = new Map(net.gaps.map((gap) => [gap.openAlexId, gap]))
+  const list = el(doc, 'ol', 'orbit-referenced-list')
+  list.style.cssText = 'list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px'
+  for (const work of works) {
+    const row = card(doc, 'li', 'orbit-referenced')
+    row.setAttribute('data-openalex', work.openAlexId)
+    row.setAttribute('data-held', work.held ?? 'none')
+    const body = el(doc, 'div', 'orbit-gap-body')
+    body.style.cssText = 'flex:1;min-width:0'
+    const { title, byline } = heading(doc, work, () => handlers.onFocus(work.openAlexId))
+    body.append(title, byline, figures(doc, work), ...citedBy(doc, net, work.seeds, 'reference', handlers))
+    row.append(badge(doc, work.rank, 'orbit-referenced-rank'), body)
+
+    const gap = gaps.get(work.openAlexId)
+    if (work.held !== null && work.itemID !== null) {
+      row.append(heldControl(doc, work.held, work.itemID, handlers))
+    } else if (gap && handlers.canImport && gap.doi) {
+      row.append(importControl(doc, gap, handlers))
+    }
+    list.append(row)
+  }
+  into.append(list)
+}
+
+/** Where a held work is: in the library (or one of the analysed items), with a way to it. */
+function heldControl(
+  doc: Document,
+  held: NonNullable<ReferencedWork['held']>,
+  itemID: number,
+  handlers: GapsPanelHandlers,
+): HTMLElement {
+  const wrap = el(doc, 'div', 'orbit-referenced-held')
+  wrap.style.cssText = 'flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px'
+  const label = {
+    seed: 'referenced-held-seed',
+    exact: 'referenced-held-exact',
+    probable: 'referenced-held-probable',
+  } as const
+  const state = el(doc, 'span', 'orbit-referenced-state', getString(label[held]))
+  state.style.cssText = 'opacity:.8;white-space:nowrap'
+  wrap.append(
+    state,
+    link(doc, getString('gaps-show-item'), () => handlers.onShowItem(itemID), 'orbit-gaps-show-item'),
+  )
+  return wrap
+}
+
 /** The authors as a reference list names them; nothing when none are known. */
-function authorSpan(doc: Document, gap: Gap): HTMLElement[] {
+function authorSpan(doc: Document, gap: Pick<Gap, 'authors'>): HTMLElement[] {
   const line = authorLine(gap.authors)
   let text: string
   switch (line.kind) {
@@ -177,7 +416,7 @@ function section(
     'orbit-gaps-heading',
     getString(direction === 'reference' ? 'gaps-heading-reference' : 'gaps-heading-citing'),
   )
-  heading.style.cssText = 'font-weight:600;margin:0 0 4px'
+  heading.style.cssText = 'font-weight:600;margin:0 0 6px;font-size:12px;opacity:.85'
   wrap.append(heading)
   const list = el(doc, 'ol', 'orbit-gaps-list')
   list.style.cssText = 'list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px'
@@ -191,67 +430,16 @@ function section(
 }
 
 function gapRow(doc: Document, net: CollectionNetwork, gap: Gap, handlers: GapsPanelHandlers): HTMLElement {
-  const row = el(doc, 'li', 'orbit-gap')
+  const row = card(doc, 'li', 'orbit-gap')
   row.setAttribute('data-openalex', gap.openAlexId)
   row.setAttribute('data-rank', String(gap.rank))
-  row.style.cssText = 'display:flex;gap:8px;align-items:baseline'
-
-  const rank = el(doc, 'span', 'orbit-gap-rank', String(gap.rank))
-  rank.style.cssText = 'opacity:.6;min-width:2ch;text-align:right;flex:none'
 
   const body = el(doc, 'div', 'orbit-gap-body')
   body.style.cssText = 'flex:1;min-width:0'
-  const title = link(doc, gap.title || gap.openAlexId, () => handlers.onFocus(gap.openAlexId), 'orbit-gap-title')
-  body.append(title)
+  const { title, byline } = heading(doc, gap, () => handlers.onFocus(gap.openAlexId))
+  body.append(title, byline, figures(doc, gap, gap.score), ...citedBy(doc, net, gap.seeds, gap.direction, handlers))
 
-  const meta = el(doc, 'div', 'orbit-gap-meta')
-  meta.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px 10px;opacity:.75'
-  meta.append(
-    ...authorSpan(doc, gap),
-    el(doc, 'span', 'orbit-gap-year', gap.year === null ? getString('gaps-year-unknown') : String(gap.year)),
-    el(
-      doc,
-      'span',
-      'orbit-gap-cited',
-      gap.citedByCount === null
-        ? getString('gaps-citations-unknown')
-        : getString('gaps-citations', { args: { count: gap.citedByCount } }),
-    ),
-  )
-  if (gap.referenceCount !== null) {
-    meta.append(
-      el(doc, 'span', 'orbit-gap-references', getString('gaps-references', { args: { count: gap.referenceCount } })),
-    )
-  }
-  const score = el(doc, 'span', 'orbit-gap-score', getString('gaps-score', { args: { score: formatScore(gap.score) } }))
-  score.setAttribute('title', getString('gaps-score-hint'))
-  score.style.cursor = 'help'
-  meta.append(score)
-  body.append(meta)
-
-  const seeds = seedsOfGap(gap, net)
-  const seedList = el(doc, 'ul', 'orbit-gap-seeds')
-  seedList.style.cssText = 'margin:2px 0 0;padding-left:16px'
-  for (const seed of seeds) {
-    const entry = el(doc, 'li')
-    entry.append(link(doc, seed.title || seed.openAlexId, () => handlers.onShowItem(seed.itemID), 'orbit-gap-seed'))
-    seedList.append(entry)
-  }
-  const count = gap.seeds.length
-  const seedToggle = disclosure(
-    doc,
-    getString(gap.direction === 'reference' ? 'gaps-cited-by' : 'gaps-cites', { args: { count } }),
-    seedList,
-    false,
-    'orbit-gap-seeds-toggle',
-  )
-  seedToggle.setAttribute('data-count', String(count))
-  const seedLine = el(doc, 'div')
-  seedLine.style.opacity = '0.75'
-  seedLine.append(seedToggle)
-  body.append(seedLine, seedList)
-
-  row.append(rank, body)
+  row.append(badge(doc, gap.rank, 'orbit-gap-rank'), body)
   if (handlers.canImport && gap.doi) row.append(importControl(doc, gap, handlers))
   return row
 }
@@ -260,6 +448,9 @@ function importControl(doc: Document, gap: Gap, handlers: GapsPanelHandlers): HT
   const wrap = el(doc, 'div', 'orbit-gap-import-wrap')
   wrap.style.cssText = 'flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px'
   const button = el(doc, 'button', 'orbit-gap-import', getString('import-button')) as HTMLButtonElement
+  button.style.cssText =
+    `font:inherit;font-size:11px;padding:2px 9px;border-radius:9px;border:1px solid ${TINT.line};` +
+    'background:transparent;color:inherit;cursor:pointer;white-space:nowrap'
   button.setAttribute('data-state', 'idle')
   button.setAttribute('title', getString('import-button-hint', { args: { doi: gap.doi ?? '' } }))
   const note = el(doc, 'span', 'orbit-gap-import-error')

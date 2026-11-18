@@ -1965,9 +1965,6 @@ export function renderGraph(
     aside.style.cssText =
       'width:320px;flex:none;height:100%;overflow:auto;box-sizing:border-box;padding:14px 14px 14px 12px;' +
       'border-left:1px solid currentColor;border-left-color:rgba(127,127,127,.25)'
-    const heading = el(doc, 'div', getString('network-gaps-title'))
-    heading.style.cssText = 'font-weight:600;font-size:13px;padding-bottom:8px'
-    aside.append(heading)
 
     const outer = el(doc, 'div')
     // contain:inline-size: the detail strip above the plot does not wrap, and

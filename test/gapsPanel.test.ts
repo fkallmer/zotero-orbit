@@ -12,7 +12,14 @@ import { describe, it } from 'node:test'
 
 import { parseHTML } from 'linkedom'
 
-import { authorLine, formatScore, gapSections, seedsOfGap, sortGaps } from '../src/modules/gapsPanel.core.ts'
+import {
+  authorLine,
+  formatScore,
+  gapSections,
+  mostReferenced,
+  seedsOfGap,
+  sortGaps,
+} from '../src/modules/gapsPanel.core.ts'
 
 import type { CollectionNetwork, Gap, NetworkWork, SeedWork } from '../src/modules/collectionTypes.ts'
 import type { ImportOutcome } from '../src/modules/doiImport.ts'
@@ -471,5 +478,63 @@ describe('the author line', () => {
     assert.equal(authors?.textContent, 'orbit-gaps-authors-many')
     assert.equal(authors?.getAttribute('title'), 'Martin Jinek, Krzysztof Chylinski, Ines Fonfara')
     assert.equal(row(root, 'WY').querySelector('.orbit-gap-authors'), null)
+  })
+})
+
+describe('the most referenced view', () => {
+  // W1..W3 are the analysed items. HELD is a shared reference the library has,
+  // MISS one it lacks, ONCE is cited by one item only; W2 is cited by W1 and W3.
+  const held: NetworkWork = {
+    ...probableWork('HELD', 700),
+    title: 'Held work',
+    seeds: ['W1', 'W2', 'W3'],
+    citedByCount: 900,
+    match: { itemID: 700, confidence: 'exact', via: 'doi' },
+  }
+  const missing = gap('MISS', 1, 'reference', { seeds: ['W1', 'W3'], citedByCount: 50 })
+  const once = gap('ONCE', 2, 'reference', { seeds: ['W1'] })
+  const net: CollectionNetwork = {
+    ...network([missing, once]),
+    works: [held, missing, once],
+    citations: [
+      { from: 'W1', to: 'W2' },
+      { from: 'W3', to: 'W2' },
+      { from: 'W1', to: 'HELD' },
+    ],
+  }
+
+  it('lists every work two items cite, held or not, the analysed items included', () => {
+    const list = mostReferenced(net)
+    assert.deepEqual(
+      list.map((w) => [w.openAlexId, w.seeds.length, w.held, w.rank]),
+      [
+        ['HELD', 3, 'exact', 1],
+        ['MISS', 2, null, 2],
+        ['W2', 2, 'seed', 3],
+      ],
+    )
+  })
+
+  it('switches between the missing works and the most referenced', () => {
+    const { root } = render(net)
+    const missingView = root.querySelector<HTMLElement>('.orbit-gaps-view-missing')
+    const referencedView = root.querySelector<HTMLElement>('.orbit-gaps-view-referenced')
+    assert.equal(missingView?.style.display, 'flex')
+    assert.equal(referencedView?.style.display, 'none')
+    click(root.querySelector('.orbit-gaps-view[data-view="referenced"]'))
+    assert.equal(missingView?.style.display, 'none')
+    assert.equal(referencedView?.style.display, 'flex')
+  })
+
+  it('offers Show item for what is held and Import for what is not', () => {
+    const { root, calls } = render(net)
+    const heldRow = root.querySelector('.orbit-referenced[data-openalex="HELD"]')
+    assert.equal(heldRow?.getAttribute('data-held'), 'exact')
+    click(heldRow?.querySelector('.orbit-gaps-show-item') ?? null)
+    assert.deepEqual(calls.show, [700])
+    const missingRow = root.querySelector('.orbit-referenced[data-openalex="MISS"]')
+    assert.ok(missingRow?.querySelector('.orbit-gap-import'), 'no import on a missing work')
+    const seedRow = root.querySelector('.orbit-referenced[data-openalex="W2"]')
+    assert.equal(seedRow?.getAttribute('data-held'), 'seed')
   })
 })
