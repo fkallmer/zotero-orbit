@@ -64,6 +64,7 @@ import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
 import type { ScholarlyRecord } from './openAlexClient.core'
 import type { RateLimitNotice, WaitBoard } from './rateLimitNotice.core'
+import type { ProgressWindowHelper } from 'zotero-plugin-toolkit'
 
 // Semantic Scholar uses its own scheduler and has no entry in this millisecond table.
 const DEFAULT_RATE_LIMITS: Record<string, number> = {
@@ -76,6 +77,12 @@ const DEFAULT_RATE_LIMITS: Record<string, number> = {
 }
 
 const MAX_RATE_LIMIT_MULTIPLIER = 10
+
+/** What the citation column's data provider serialises for each row. */
+interface CitationCellData {
+  counts: string[]
+  databases: string[]
+}
 
 /** Engage budget pacing only below this share of a provider's allowance. */
 const BUDGET_PACING_THRESHOLD = 0.2
@@ -1265,7 +1272,8 @@ class DBInterface {
       }
 
       debugLog(
-        `Citation debug - INSPIRE citation count: ${count} (via ${identifier.type} ${identifier.id} from ${identifier.source})`,
+        `Citation debug - INSPIRE citation count: ${count} ` +
+          `(via ${identifier.type} ${identifier.id} from ${identifier.source})`,
       )
       RateLimitManager.handleSuccess('inspire')
       return { count, status: 'success' }
@@ -1372,7 +1380,8 @@ class DBInterface {
       }
 
       debugLog(
-        `Citation debug - OpenAlex citation count: ${count} (via ${identifier.type} ${identifier.id} from ${identifier.source})`,
+        `Citation debug - OpenAlex citation count: ${count} ` +
+          `(via ${identifier.type} ${identifier.id} from ${identifier.source})`,
       )
       RateLimitManager.handleSuccess(OPENALEX_DATABASE)
       return { count, status: 'success' }
@@ -1554,7 +1563,7 @@ const notifierCallback = {
 }
 
 // Progress window tracking
-let progressWindow: any
+let progressWindow: ProgressWindowHelper | null = null
 let currentIndex = -1
 let totalItems = 0
 let itemsToUpdate: Zotero.Item[] = []
@@ -1874,16 +1883,16 @@ class UIRegistrar {
         return result ? JSON.stringify(result) : ''
       },
       // iconPath: 'chrome://zotero/skin/citations.png',
-      renderCell(index, data: any, column, isFirstColumn, doc) {
+      renderCell(index, data: unknown, column, isFirstColumn, doc) {
         const span = doc.createElement('span')
         span.className = `cell ${column.className}`
         span.style.textAlign = 'center'
 
         // Parse JSON data if it's a string
-        let parsedData: { counts: string[]; databases: string[] } | null = null
+        let parsedData: CitationCellData | null = null
         if (data && typeof data === 'string') {
           try {
-            parsedData = JSON.parse(data)
+            parsedData = JSON.parse(data) as CitationCellData
           } catch (e) {
             // Display as text if JSON parsing fails
             span.innerText = data
@@ -1895,7 +1904,7 @@ class UIRegistrar {
         }
 
         // Create colored spans for each count
-        const dataToUse = parsedData || data
+        const dataToUse = parsedData || (data as CitationCellData)
         const useColors = getPref('useColors') === 'color' && dataToUse.databases.length > 1
 
         dataToUse.counts.forEach((count: string, idx: number) => {
@@ -1920,7 +1929,9 @@ class UIRegistrar {
         const tooltip = dataToUse.databases
           .map((db: string, idx: number) => {
             const displayName = getOperationName(db)
-            return getString('tooltip-citation-tallies', { args: { displayName, count: dataToUse.counts[idx] } })
+            return getString('tooltip-citation-tallies', {
+              args: { displayName, count: dataToUse.counts[idx] },
+            })
           })
           .join(', ')
         span.title = tooltip

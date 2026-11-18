@@ -687,9 +687,19 @@ async function loadNetwork(
   )
 }
 
+/**
+ * The pane's selection methods this module calls. Zotero has them, but
+ * zotero-types leaves them to the pane's `any` index signature.
+ */
+interface PaneSelection {
+  getSelectedCollections(): Zotero.Collection[]
+  getSelectedLibraryIDs(): number[]
+}
+
 /** The selected collection as a network seed, or null when none is selected. */
 export function collectionSeed(): GraphSeed | null {
-  const collections = Zotero.getActiveZoteroPane()?.getSelectedCollections() ?? []
+  const pane = Zotero.getActiveZoteroPane() as PaneSelection | null
+  const collections = pane?.getSelectedCollections() ?? []
   if (collections.length === 0) return null
   return { kind: 'collection', collectionID: collections[0].id, name: collections[0].name }
 }
@@ -711,7 +721,7 @@ export function seedFromSelection(): GraphSeed | null {
     }
   }
 
-  const collections = pane.getSelectedCollections()
+  const collections = (pane as unknown as PaneSelection).getSelectedCollections()
   if (collections.length > 0) {
     return { kind: 'collection', collectionID: collections[0].id, name: collections[0].name }
   }
@@ -730,7 +740,7 @@ export function registerGraphMenus(): void {
         l10nID: getLocaleID('menuitem-graph-library'),
         icon: GRAPH_MENU_ICON,
         onCommand: () => {
-          const pane = Zotero.getActiveZoteroPane()
+          const pane = Zotero.getActiveZoteroPane() as PaneSelection | null
           const libraryIDs = pane?.getSelectedLibraryIDs() ?? []
           const libraryID = libraryIDs[0] ?? Zotero.Libraries.userLibraryID
           const library = Zotero.Libraries.get(libraryID)
