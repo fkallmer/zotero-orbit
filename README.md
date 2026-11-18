@@ -114,6 +114,8 @@ Right-click an item → **Citation graph**.
 Right-click a collection → **Citation graph**, or `Tools → Citation graph for
 this library`.
 
+![A collection of 299 papers as one network: clusters by colour, the works they share but the library lacks as open rings, and the ranked gaps list beside it](docs/assets/readme/collection.png)
+
 Orbit looks up every item in the collection at OpenAlex and draws them as one
 network:
 
