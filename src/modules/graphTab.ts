@@ -21,8 +21,10 @@ import { Helpers } from './citationCounts'
 import {
   centroid,
   clusterEntries,
+  clusterOfSeed,
   clusterShown,
   DEFAULT_NETWORK_OPTIONS,
+  focusNetwork,
   hiddenBySelection,
   importTargetFor,
   networkScopeFor,
@@ -37,7 +39,7 @@ import {
   resolveSeedItems,
   seedCandidates,
 } from './collectionNetwork'
-import { estimateRequests, rematch } from './collectionNetwork.core'
+import { CITING_PAGE_CAP, estimateRequests, rematch } from './collectionNetwork.core'
 import { canImportInto, chooseImportTarget, confirmImport, importByDoi } from './doiImport'
 import { renderGapsPanel } from './gapsPanel'
 import {
@@ -66,6 +68,7 @@ import type { ItemIdentifier } from './citationTypes.ts'
 import type { NetworkGraphOptions } from './collectionGraph.core'
 import type { BuildProgress, CollectionNetwork, NetworkStep, RequestEstimate } from './collectionTypes'
 import type { ImportOutcome, ImportTarget } from './doiImport'
+import type { GapSort } from './gapsPanel.core'
 import type {
   AxisMetric,
   Chain,
@@ -282,13 +285,56 @@ export function renderNetworkProgress(
   progress: BuildProgress,
 ): void {
   const index = Math.max(0, NETWORK_STEPS.indexOf(progress.step))
-  const within = progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0
+  // Pages into a group move the bar too, towards (never onto) the group's end:
+  // how many pages a group has is not known until its last one.
+  const pageShare = progress.pages ? Math.min(0.9, progress.pages / CITING_PAGE_CAP) : 0
+  const within = progress.total > 0 ? Math.min(1, (progress.done + pageShare) / progress.total) : 0
   const label = getString(NETWORK_STEP_LABEL[progress.step])
   const caption =
-    progress.total > 1
-      ? getString('network-step-count', { args: { step: label, done: progress.done, total: progress.total } })
-      : label
+    progress.pages !== undefined && progress.found !== undefined
+      ? getString('network-step-pages', {
+          args: {
+            step: label,
+            group: progress.done + 1,
+            total: progress.total,
+            pages: progress.pages,
+            found: progress.found,
+          },
+        })
+      : progress.total > 1
+        ? getString('network-step-count', { args: { step: label, done: progress.done, total: progress.total } })
+        : label
   paintProgress(doc, container, seed, caption, progress.step, (index + within) / NETWORK_STEPS.length)
+  // What is left of the day, as the last response said: on a long run with
+  // citing works the reader watches it go down, page by page.
+  const budget = budgetLine(doc)
+  const frame = container.querySelector('div > div')
+  if (budget && frame) {
+    budget.style.cssText = 'font-size:11px;opacity:.55;margin-top:8px'
+    frame.append(budget)
+  }
+}
+
+/** The clusters whose items cite a work, in the marks' colours, most items first. */
+function clustersCiting(
+  net: CollectionNetwork,
+  seeds: readonly string[],
+  theme: GraphTheme,
+): { id: number; colour: string; label: string; count: number }[] {
+  const counts = new Map<number, number>()
+  for (const id of seeds) {
+    const cluster = clusterOfSeed(net, id)
+    if (cluster !== null) counts.set(cluster, (counts.get(cluster) ?? 0) + 1)
+  }
+  const labels = new Map(net.clusters.map((cluster) => [cluster.id, cluster.label]))
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .map(([id, count]) => ({
+      id,
+      colour: theme.clusters?.[id] ?? theme.muted,
+      label: labels.get(id) ?? '',
+      count,
+    }))
 }
 
 /** What a reader can answer when a scope is larger than the set limit. */
@@ -641,9 +687,19 @@ async function loadNetwork(
   )
 }
 
+/**
+ * The pane's selection methods this module calls. Zotero has them, but
+ * zotero-types leaves them to the pane's `any` index signature.
+ */
+interface PaneSelection {
+  getSelectedCollections(): Zotero.Collection[]
+  getSelectedLibraryIDs(): number[]
+}
+
 /** The selected collection as a network seed, or null when none is selected. */
 export function collectionSeed(): GraphSeed | null {
-  const collections = Zotero.getActiveZoteroPane()?.getSelectedCollections() ?? []
+  const pane = Zotero.getActiveZoteroPane() as PaneSelection | null
+  const collections = pane?.getSelectedCollections() ?? []
   if (collections.length === 0) return null
   return { kind: 'collection', collectionID: collections[0].id, name: collections[0].name }
 }
@@ -665,7 +721,7 @@ export function seedFromSelection(): GraphSeed | null {
     }
   }
 
-  const collections = pane.getSelectedCollections()
+  const collections = (pane as unknown as PaneSelection).getSelectedCollections()
   if (collections.length > 0) {
     return { kind: 'collection', collectionID: collections[0].id, name: collections[0].name }
   }
@@ -684,7 +740,7 @@ export function registerGraphMenus(): void {
         l10nID: getLocaleID('menuitem-graph-library'),
         icon: GRAPH_MENU_ICON,
         onCommand: () => {
-          const pane = Zotero.getActiveZoteroPane()
+          const pane = Zotero.getActiveZoteroPane() as PaneSelection | null
           const libraryIDs = pane?.getSelectedLibraryIDs() ?? []
           const libraryID = libraryIDs[0] ?? Zotero.Libraries.userLibraryID
           const library = Zotero.Libraries.get(libraryID)
@@ -1713,6 +1769,12 @@ export function renderGraph(
   }
   let nodes = initialNodes
   let links = initialLinks
+  /**
+   * With clusters picked, whether the gaps (list and numbered marks) are
+   * theirs alone, ranked among them, or the whole collection's with theirs
+   * highlighted in the list. The reader switches it in the list.
+   */
+  let gapsFiltered = true
   /** The network's marks for the legend's current switches. Cheap; run on every toggle. */
   const refreshNetwork = (): void => {
     if (!net) return
@@ -1720,7 +1782,12 @@ export function renderGraph(
       clusterEntries(net).map((entry) => entry.id),
       view0.selectedClusters,
     )
-    const graph = networkToGraph(net, { ...view0, hiddenClusters })
+    // The selection narrows what the marks and the gaps list rank, not only
+    // what is drawn: the numbered gaps are this topic's, and so is the list.
+    const graph = networkToGraph(gapsFiltered ? focusNetwork(net, view0.selectedClusters) : net, {
+      ...view0,
+      hiddenClusters,
+    })
     nodes = graph.nodes
     links = graph.links
   }
@@ -1783,10 +1850,13 @@ export function renderGraph(
   }
 
   let legend = el(doc, 'div')
+  /** Set once the list exists, further down; a no-op until then. */
+  let paintGaps = (): void => {}
   const onNetworkToggle = (which: NetworkToggle): void => {
     if (!net) return
     if (typeof which === 'object') {
       view0.selectedClusters = toggleClusterSelection(view0.selectedClusters, which.cluster)
+      paintGaps()
     } else if (which === 'gaps') {
       view0.showGaps = !view0.showGaps
       setPref('graphShowGaps', view0.showGaps)
@@ -2125,16 +2195,43 @@ export function renderGraph(
     void Zotero.getActiveZoteroPane()?.selectItem(itemID)
   }
 
-  if (net) {
-    aside.append(
-      renderGapsPanel(doc, net, {
+  /** The reader's view and order in the list, kept across its redraws. */
+  const gapsState: { view?: 'missing' | 'referenced'; sort?: GapSort } = {}
+  /** The gaps list for the current cluster selection, replacing the last one. */
+  paintGaps = (): void => {
+    if (!net) return
+    const picked = view0.selectedClusters.size > 0
+    aside.replaceChildren(
+      renderGapsPanel(doc, picked && gapsFiltered ? focusNetwork(net, view0.selectedClusters) : net, {
+        state: gapsState,
+        scope: picked
+          ? {
+              filtered: gapsFiltered,
+              onChange: (filtered) => {
+                gapsFiltered = filtered
+                refreshNetwork()
+                draw()
+                paintGaps()
+              },
+            }
+          : undefined,
         canImport,
         onImport: (gap) => runImport(gap),
         onFocus: focusMark,
         onShowItem: showItem,
+        clustersOf: (seeds) => clustersCiting(net as CollectionNetwork, seeds, theme),
+        highlightOf: (seeds) => {
+          // Filtered, every row is the picked clusters' anyway: no wash.
+          if (view0.selectedClusters.size === 0 || gapsFiltered) return null
+          // Only a work that belongs to a picked cluster: most of the items
+          // citing it are in one. One item of twenty-four is not belonging.
+          const [main] = clustersCiting(net as CollectionNetwork, seeds, theme)
+          return main && view0.selectedClusters.has(main.id) ? main.colour : null
+        },
       }),
     )
   }
+  paintGaps()
 
   /** What the network adds to a mark's card. */
   const networkActions = (node: GraphNode): CardAction[] => {
@@ -2294,6 +2391,19 @@ export function renderGraph(
     /** Where each label sits relative to its mark, from the last full layout. */
     const labelOffsets: ({ key: string; dx: number; dy: number } | null)[] = []
     const markAt = new Map(markData.map((mark) => [mark.key, mark.at]))
+    /** The translucent discs of a crowded network, by key, with the fill each rests at. */
+    const translucent = new Map<string, { disc: Element; resting: string }>()
+    if ((layout.markScale ?? 1) < 1) {
+      const hollow = new Set(layout.nodes.filter((node) => node.hollow).map((node) => node.key))
+      for (const mark of markData) {
+        if (hollow.has(mark.key)) continue
+        const disc = mark.element.querySelector('[data-doi]')
+        const resting = disc?.getAttribute('fill-opacity')
+        if (disc && resting) translucent.set(mark.key, { disc, resting })
+      }
+    }
+    /** The disc currently drawn solid, if any. */
+    let solid: string | null = null
     const screen = (at: [number, number]): [number, number] => [at[0] * kx + tx, at[1] * ky + ty]
 
     /**
@@ -2449,6 +2559,17 @@ export function renderGraph(
      */
     const applyEmphasis = (): void => {
       for (const mark of markData) put(mark.element, 'opacity', emphasis(mark.key, 1, 0.22, 1))
+      // A crowded network's discs rest translucent so overlaps show; the one
+      // being pointed at is drawn solid. One disc written per change of mark,
+      // not one per mark.
+      const at = emphasised()
+      if (at !== solid) {
+        const was = solid === null ? undefined : translucent.get(solid)
+        if (was) put(was.disc, 'fill-opacity', was.resting)
+        const now = at === null ? undefined : translucent.get(at)
+        if (now) put(now.disc, 'fill-opacity', '1')
+        solid = at
+      }
       /** Lit edges thicken and take the larger head; the rest recede. */
       const setEdge = (
         line: (typeof lineData)[number],

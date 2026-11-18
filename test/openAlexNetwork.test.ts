@@ -129,7 +129,30 @@ describe('normalizeNetworkWorks', () => {
     assert.deepEqual(lstm.authors, ['Sepp Hochreiter', 'Jürgen Schmidhuber'])
     assert.equal(lstm.referencedWorks.length, 5)
     for (const id of lstm.referencedWorks) assert.match(id, /^W\d+$/)
-    assert.deepEqual(lstm.primaryTopic, { id: 'T10320', name: 'Neural Networks and Applications' })
+    assert.deepEqual(lstm.primaryTopic, {
+      id: 'T10320',
+      name: 'Neural Networks and Applications',
+      subfield: { id: 'subfields/1702', name: 'Artificial Intelligence' },
+      field: { id: 'fields/17', name: 'Computer Science' },
+    })
+  })
+
+  it('leaves out a subfield or field it cannot read, rather than setting it undefined', () => {
+    const [work] = normalizeNetworkWorks({
+      results: [
+        {
+          id: 'W1',
+          primary_topic: {
+            id: 'https://openalex.org/T1',
+            display_name: 'Topic',
+            subfield: { id: 'https://openalex.org/subfields/2', display_name: '' },
+            field: { id: 'https://openalex.org/fields/3', display_name: 'Field' },
+          },
+        },
+      ],
+    })
+    assert.deepEqual(work.primaryTopic, { id: 'T1', name: 'Topic', field: { id: 'fields/3', name: 'Field' } })
+    assert.equal(Object.hasOwn(work.primaryTopic ?? {}, 'subfield'), false)
   })
 
   it('reads a citing page, which has no topic', () => {

@@ -66,6 +66,11 @@ Counts from Crossref, OpenAlex, Semantic Scholar, INSPIRE and Google Scholar,
 in the order you choose, each in its own colour, separated by `|`. Hovering a
 cell says which number came from where.
 
+While an update runs, rows still waiting their turn show `…`. A row with no
+count at all shows `–` once a lookup has come back empty; its tooltip names the
+sources that reported the work missing, or says it had no DOI or other
+identifier to look it up by.
+
 A second, sortable column shows OpenAlex's field-weighted citation impact — how
 a paper compares to others of its field, year and type, where 1.0 is average.
 Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675
@@ -122,9 +127,10 @@ Orbit looks up every item in the collection at OpenAlex and draws them as one
 network:
 
 - **Clusters.** Items that cite the same works are grouped (bibliographic
-  coupling, Leiden algorithm) and each group is named after its most common
-  OpenAlex topic. All clusters show at first; click one in the legend to show
-  only that one, and click more to add them back one by one.
+  coupling, Leiden algorithm) and each group is named after the OpenAlex
+  topic or subfield most of its items share. All clusters show at first;
+  click one in the legend to show only that one, and click more to add them
+  back one by one.
 - **Shared references.** Works cited by at least two of your items appear
   beside them, and the citations between everything on screen are drawn.
 - **Who cites your collection.** With an [OpenAlex API key](#settings), Orbit
@@ -270,8 +276,11 @@ papers usually carry one; web pages, theses and datasets often do not.
 
 ### Why are some clusters called "Cluster 3"?
 
-A cluster is named after the OpenAlex topic most of its items share. When
-OpenAlex has no topic for them, it gets a number.
+A cluster is named after the narrower of the OpenAlex topic or subfield at
+least half of its items share — "CRISPR and Genetic Engineering" when the
+group is that focused, "Molecular Biology" when it is broader. Without such a
+majority it takes whatever most of them carry. No two clusters share a name.
+When OpenAlex has no topic for any of its items, it gets a number.
 
 ### Why can I not switch on "works citing my collection"?
 

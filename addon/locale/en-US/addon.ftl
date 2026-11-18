@@ -34,6 +34,17 @@ auto-update-connection-retry = Connection issue, retrying... ({ $current }/{ $ma
 auto-update-stopped = Auto update stopped: { $error }
 auto-update-completed = Auto update completed: { $updated }/{ $total } items updated
 
+# Appended to a progress line while a citation source makes Orbit wait after
+# telling it to slow down (HTTP 429). $progress is the line it is appended to,
+# $wait is rate-limit-wait-duration, $source a database display name.
+rate-limit-wait-duration = { $unit ->
+    [minutes] { $amount } min
+   *[seconds] { $amount } s
+  }
+rate-limit-waiting = { $progress } — { $source } is rate-limiting Orbit, waiting { $wait }.
+rate-limit-waiting-semanticscholar = { $progress } — Semantic Scholar is rate-limiting Orbit, waiting { $wait }.
+rate-limit-waiting-semanticscholar-no-key = { $progress } — Semantic Scholar is rate-limiting Orbit, waiting { $wait }. A free API key (Settings → Orbit) raises the limit.
+
 # Database display names
 database-crossref = Crossref
 database-googlescholar = Google Scholar
@@ -48,6 +59,9 @@ semantic-scholar-unavailable = Semantic Scholar isn't available and has been tur
 # Column and tooltip
 column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
+column-pending = Waiting to be updated
+column-not-found = No citation count: not found at { $sources }
+column-no-identifier = No citation count: no DOI or other identifier to look it up by
 
 # Gaps list (gaps-*, P8). Add strings below this line only.
 gaps-heading-reference = Cited by your items
@@ -72,6 +86,7 @@ referenced-empty = No work is cited by two or more of your items.
 referenced-held-seed = ✓ One of your items
 referenced-held-exact = ✓ In your library
 referenced-held-probable = ○ Probably in your library
+gaps-scope-picked = Only works of the picked clusters
 gaps-sort-label = Sort by
 gaps-sort-score = Score
 gaps-sort-year = Year
@@ -193,6 +208,8 @@ network-step-library = Checking your library
 network-step-clusters = Grouping them into topics
 # $step is one of the network-step-* strings above.
 network-step-count = { $step } ({ $done } of { $total })
+# The citing step, page by page: $group of $total groups, $pages pages into this one, $found works so far.
+network-step-pages = { $step } (group { $group } of { $total }, page { $pages }, { $found } works so far)
 network-scope-gone = This collection no longer exists.
 network-scope-empty = There are no regular items here to analyse.
 network-none-resolved = None of the { $count } items could be found in OpenAlex. An item needs a DOI, an arXiv ID or a PMID to be looked up.

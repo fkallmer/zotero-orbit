@@ -48,6 +48,24 @@ export type NetworkScope =
  */
 export type SeedPolicy = 'cap' | 'warn' | 'all'
 
+/** One rung of the OpenAlex topic hierarchy: a topic, subfield or field. */
+export interface TopicRef {
+  /** Bare: 'T10320', 'subfields/1702', 'fields/17'. */
+  id: string
+  name: string
+}
+
+/**
+ * A work's OpenAlex primary topic, with the subfield and field it sits in.
+ *
+ * Those two are optional: networks cached before 0.3.1 carry the topic alone,
+ * and the cluster names fall back to topics for them.
+ */
+export interface PrimaryTopic extends TopicRef {
+  subfield?: TopicRef
+  field?: TopicRef
+}
+
 /** A seed item as OpenAlex knows it. */
 export interface SeedWork {
   itemID: number
@@ -59,7 +77,7 @@ export interface SeedWork {
   referenceCount: number | null
   authors: string[]
   referencedWorks: OpenAlexId[]
-  primaryTopic: { id: string; name: string } | null
+  primaryTopic: PrimaryTopic | null
 }
 
 /** A non-seed work connected to at least MIN_SHARED seeds. */
@@ -102,7 +120,7 @@ export interface Cluster {
   /** 0-based, ordered by size, largest first. */
   id: number
   label: string
-  /** Share of members carrying the label topic, 0..1. */
+  /** Share of members carrying what the label names (a topic, subfield or field), 0..1. */
   topicShare: number
   members: OpenAlexId[]
 }
@@ -149,6 +167,13 @@ export interface BuildProgress {
   step: NetworkStep
   done: number
   total: number
+  /**
+   * Within a group of the `citing` step: pages fetched for the group so far,
+   * and works found across all groups. A group can run to thirty pages, so
+   * without these the bar would sit still for minutes.
+   */
+  pages?: number
+  found?: number
 }
 
 export interface BuildOptions {

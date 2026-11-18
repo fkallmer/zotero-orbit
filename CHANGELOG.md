@@ -4,6 +4,56 @@ All notable changes to Orbit. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) as far as a 0.x plugin can.
 
+## [0.3.1] — 2026-11-18
+
+### Changed
+
+- **Clearer cluster names.** A cluster is named after the narrower of the
+  OpenAlex topic or subfield that at least half of its items share, so a broad
+  group reads "Molecular Biology" rather than a topic a third of it carries.
+  Names are unique and at most 45 characters. Networks analysed before keep
+  their topic names until analysed again; their duplicates are resolved on
+  load.
+- **Readable large networks.** In a crowded collection graph every mark
+  shrinks by the same share (never below half), discs turn slightly
+  translucent with thinner rings, small marks are drawn over large ones, and
+  the ranked gaps over everything. Small collections look as before.
+- **The citing step shows its progress** page by page, with the works found so
+  far, instead of standing still for minutes per group.
+- **The gaps list follows the cluster filter.** Picking clusters in the legend
+  narrows the list, and the numbered marks, to the works those clusters lean
+  on, ranked again among them. Every row carries dots in the colours of the
+  clusters that cite it, and with clusters picked, a light wash of the
+  picked cluster's colour behind it. Unticking "Only works of the picked
+  clusters" keeps every work in the list and washes only those mostly cited
+  by the picked clusters. The
+  chosen view and order survive picking clusters.
+- **The OpenAlex budget shows during an analysis**, under the progress bar, so
+  a long run can be watched spending it.
+
+### Added
+
+- **Rate-limit notice.** When a source makes Orbit wait, the progress window
+  says which one and for how long, counting down; for Semantic Scholar without
+  an API key it suggests adding one.
+
+- **The Citations column shows what is still to come.** During an update,
+  rows waiting their turn show "…" beside their old counts, and each row
+  drops it as it is done.
+- **No count is no longer a blank.** A row Orbit looked up and found nothing
+  for shows "–", and its tooltip names the sources that reported it missing,
+  or says it had no DOI or other identifier to look up.
+
+### Fixed
+
+- A cached network without a cluster assignment is analysed again rather than
+  breaking the graph.
+
+### Internal
+
+- All 93 ESLint warnings fixed with real types for Zotero and Gecko values.
+- The release checklist names the update-channel step that 0.3.0 missed.
+
 ## [0.3.0] — 2026-11-18
 
 The collection release: Orbit now reads a whole collection, or a whole
@@ -92,5 +142,6 @@ First release under the Orbit name, forked from
 - A citation graph tab for one paper: what it cites and what cites it, with
   selectable axes and the citations among its neighbours.
 
+[0.3.1]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fkallmer/zotero-orbit/compare/v0.2.22...v0.3.0
 [0.2.22]: https://github.com/fkallmer/zotero-orbit/releases/tag/v0.2.22

@@ -789,6 +789,43 @@ describe('a collection network on the tab', () => {
     assert.deepEqual(markKeys(container).sort(), all.sort())
   })
 
+  it('narrows the gaps list to the picked clusters, and marks each row with its clusters', () => {
+    const container = draw()
+    const rows = (): string[] =>
+      [...container.querySelectorAll('.orbit-gap')].map((row: any) => row.getAttribute('data-openalex')).sort()
+    assert.deepEqual(rows(), ['CITER', 'GAP'])
+    // GAP is cited by two Topic A items: one dot, in the first palette colour.
+    const dots = container.querySelectorAll('.orbit-gap[data-openalex="GAP"] .orbit-gap-cluster')
+    assert.equal(dots.length, 1)
+    assert.equal(dots[0].getAttribute('title'), 'Topic A (2)')
+
+    assert.equal(container.querySelector('.orbit-gap[data-highlight]'), null, 'a highlight with nothing picked')
+
+    // Only the unclustered item: what it cites or is cited by, nothing of Topic A's.
+    fire(container.querySelector('[data-cluster="none"]'), 'click')
+    assert.deepEqual(rows(), ['CITER'])
+    fire(container.querySelector('[data-cluster="none"]'), 'click')
+    assert.deepEqual(rows(), ['CITER', 'GAP'])
+
+    // Topic A picked, filtered: every row is Topic A's, so none is washed.
+    fire(container.querySelector('[data-cluster="0"]'), 'click')
+    assert.equal(container.querySelector('.orbit-gap[data-highlight]'), null, 'a wash on a filtered list')
+
+    // Unticking "only the picked clusters": every work again, Topic A's still highlighted.
+    const box = container.querySelector('.orbit-gaps-scope-box')
+    assert.ok(box, 'no scope switch with a cluster picked')
+    box.checked = false
+    fire(box, 'change')
+    assert.deepEqual(rows(), ['CITER', 'GAP'])
+    assert.ok(container.querySelector('.orbit-gap[data-openalex="GAP"]').getAttribute('data-highlight'))
+    // CITER is cited by S1 (Topic A) and the unclustered S3: Topic A is its only cluster.
+    assert.ok(container.querySelector('.orbit-gap[data-openalex="CITER"]').getAttribute('data-highlight'))
+
+    // Nothing picked: no switch.
+    fire(container.querySelector('[data-cluster="0"]'), 'click')
+    assert.equal(container.querySelector('.orbit-gaps-scope-box'), null)
+  })
+
   it('draws no star: every line is a citation between two works on the plot', () => {
     const container = draw()
     const lines = [...container.querySelectorAll('[data-edge]')]
@@ -816,6 +853,27 @@ describe('a collection network on the tab', () => {
     const gap = container.querySelector('circle[data-key="GAP"]')
     assert.equal(gap?.getAttribute('fill-opacity'), '0.14', 'top gap not drawn as a tinted ring')
     assert.equal(container.querySelector('[data-mark][data-key="GAP"] text')?.textContent, '1')
+  })
+
+  it('draws a crowded collection translucent, and the mark pointed at solid', () => {
+    const seeds = Array.from({ length: 300 }, (_, i) => ({
+      ...seedWork(`S${i}`, 1000 + i, 2000 + (i % 25)),
+      citedByCount: 100 + ((i * 37) % 900),
+      referenceCount: 200,
+    }))
+    const container = draw(network({ seeds, clusterOf: {}, clusters: [] }))
+    const disc = (key: string): any => container.querySelector(`circle[data-key="${key}"]`)
+    const resting = disc('S1')?.getAttribute('fill-opacity')
+    assert.ok(resting && Number(resting) < 1, `S1 rests at ${resting}`)
+    fire(container.querySelector('[data-mark][data-key="S1"]'), 'mouseover')
+    assert.equal(disc('S1')?.getAttribute('fill-opacity'), '1')
+    assert.equal(disc('S2')?.getAttribute('fill-opacity'), resting, 'a mark not pointed at went solid')
+    fire(container.querySelector('[data-mark][data-key="S2"]'), 'mouseover')
+    assert.equal(disc('S1')?.getAttribute('fill-opacity'), resting, 'the last mark stayed solid')
+    assert.equal(disc('S2')?.getAttribute('fill-opacity'), '1')
+    // A gap's tint is its own, not a crowded disc's, and pointing leaves it be.
+    fire(container.querySelector('[data-mark][data-key="GAP"]'), 'mouseover')
+    assert.equal(disc('GAP')?.getAttribute('fill-opacity'), '0.14')
   })
 
   it('takes the gaps out with their switch', () => {
@@ -955,5 +1013,48 @@ describe('a collection network on the tab', () => {
     assert.equal(width('seeds', 0, 0), '0%')
     assert.equal(width('lookup', 1, 2), '25%')
     assert.equal(width('clusters', 1, 1), '100%')
+  })
+
+  it('shows what is left of the OpenAlex budget while it runs', async () => {
+    const { parseOpenAlexBudget, recordOpenAlexBudget } = await import('../src/modules/openAlexBudget.core.ts')
+    const container = document.createElement('div')
+    documentBody.append(container)
+    const draw = () =>
+      renderNetworkProgress(document as any, container as any, { kind: 'library', name: 'x' } as any, {
+        step: 'references',
+        done: 3,
+        total: 10,
+      })
+    recordOpenAlexBudget(
+      parseOpenAlexBudget(
+        (name) => ({ 'x-ratelimit-limit-usd': '1', 'x-ratelimit-remaining-usd': '0.91' })[name] ?? null,
+        Date.now(),
+      ),
+    )
+    draw()
+    assert.ok(container.querySelector('[data-role="budget"]'), 'no budget line under the bar')
+  })
+
+  it('moves within a group of citing works, page by page, and says how far it got', () => {
+    const container = document.createElement('div')
+    documentBody.append(container)
+    const render = (pages?: number, found?: number) => {
+      renderNetworkProgress(document as any, container as any, { kind: 'library', name: 'x' } as any, {
+        step: 'citing',
+        done: 0,
+        total: 3,
+        ...(pages === undefined ? {} : { pages, found }),
+      })
+      return {
+        width: Number.parseFloat((container.querySelector('[data-progress] > div') as any)?.style.width),
+        text: container.textContent ?? '',
+      }
+    }
+    const before = render()
+    const later = render(6, 540)
+    assert.ok(later.width > before.width, `${later.width} is not past ${before.width}`)
+    assert.ok(later.text.includes('network-step-pages'), 'the page caption is not shown')
+    // Never onto the next group however many pages come in.
+    assert.ok(render(500, 50_000).width < render(undefined).width + (100 / 6 / 3) * 1.0001)
   })
 })

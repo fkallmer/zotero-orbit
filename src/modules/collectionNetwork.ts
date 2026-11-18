@@ -214,6 +214,8 @@ function isCachedNetwork(value: unknown, seedIds: ReadonlySet<OpenAlexId>): valu
     net.version === 1 &&
     Array.isArray(net.seeds) &&
     Array.isArray(net.works) &&
+    typeof net.clusterOf === 'object' &&
+    net.clusterOf !== null &&
     net.seeds.length === seedIds.size &&
     net.seeds.every((seed) => seedIds.has(seed.openAlexId))
   )
@@ -257,9 +259,14 @@ export async function buildCollectionNetwork(
   context: { itemsInScope?: number; capped?: boolean } = {},
 ): Promise<CollectionNetwork> {
   const { signal, onProgress } = options
-  const progress = (step: NetworkStep, done: number, total: number): void => {
+  const progress = (
+    step: NetworkStep,
+    done: number,
+    total: number,
+    detail: { pages?: number; found?: number } = {},
+  ): void => {
     try {
-      onProgress?.({ step, done, total })
+      onProgress?.({ step, done, total, ...detail })
     } catch (err) {
       debugLog('Citation debug - Network progress callback failed:', err)
     }
@@ -386,9 +393,18 @@ export async function buildCollectionNetwork(
       debugLog(`Citation debug - Network: using cached analysis ${cacheKey}`)
       const itemOf = new Map(seeds.map((seed) => [seed.openAlexId, seed.itemID]))
       const matcher = await getLibraryMatcher(scope.libraryID)
+      // Named again rather than trusted: the names are cheap to work out, and
+      // a network cached by an older version keeps its older names otherwise.
+      const topicOf = new Map(cached.seeds.map((seed) => [seed.openAlexId, seed.primaryTopic]))
+      const clusters = labelClusters(
+        new Map(Object.entries(cached.clusterOf)),
+        (id) => topicOf.get(id) ?? null,
+        clusterFallback,
+      )
       return rematch(
         {
           ...fromCacheEntry(cached),
+          clusters,
           scope,
           seeds: cached.seeds.map((seed) => ({ ...seed, itemID: itemOf.get(seed.openAlexId) ?? seed.itemID })),
           coverage: {
@@ -438,6 +454,7 @@ export async function buildCollectionNetwork(
           const page = normalizeNetworkWorks(json)
           fetched.push(...page)
           cursor = page.length === 0 ? null : pageMeta(json).nextCursor
+          progress('citing', index, groups.length, { pages, found: fetched.length })
         }
         if (cursor !== null) citingTruncated = true
       } catch (err) {

@@ -10,6 +10,8 @@
 
 import { mailtoSuffix, openAlexContact } from './openAlexClient.core.ts'
 
+import type { PrimaryTopic, TopicRef } from './collectionTypes.ts'
+
 const API_ROOT = 'https://api.openalex.org'
 
 /** OpenAlex serves at most this many works per page. */
@@ -111,7 +113,7 @@ export interface OpenAlexWork {
   referenceCount: number | null
   authors: string[]
   referencedWorks: string[]
-  primaryTopic: { id: string; name: string } | null
+  primaryTopic: PrimaryTopic | null
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -126,11 +128,25 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 }
 
-function normalizeTopic(raw: unknown): { id: string; name: string } | null {
+function normalizeTopicRef(raw: unknown): TopicRef | null {
   const topic = asRecord(raw)
   const id = asNonEmptyString(topic?.id)
   const name = asNonEmptyString(topic?.display_name)
   return id && name ? { id: bareOpenAlexId(id), name } : null
+}
+
+/**
+ * The primary topic with its subfield and field, which `primary_topic` carries
+ * whole. A missing rung is left out rather than set to undefined, so the cached
+ * JSON and a cache written before it look alike.
+ */
+function normalizeTopic(raw: unknown): PrimaryTopic | null {
+  const topic = normalizeTopicRef(raw)
+  if (!topic) return null
+  const record = asRecord(raw)
+  const subfield = normalizeTopicRef(record?.subfield)
+  const field = normalizeTopicRef(record?.field)
+  return { ...topic, ...(subfield && { subfield }), ...(field && { field }) }
 }
 
 /**

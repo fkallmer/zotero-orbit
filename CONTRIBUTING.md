@@ -97,4 +97,9 @@ explains how to capture it with a headless browser.
 1. Set `"version"` in `package.json` by hand.
 2. `yarn release:build` (builds with `ORBIT_NO_BUMP=1` and lints).
 3. Add the release to `CHANGELOG.md`, commit, tag `vX.Y.Z`, push, and attach
-   `.scaffold/build/orbit.xpi` and `update.json` to the GitHub release.
+   `.scaffold/build/orbit.xpi` to the GitHub release.
+4. Replace `update.json` on the **Update channel** release (tag `release`),
+   which is where every installed copy looks for updates:
+   `gh release upload release .scaffold/build/update.json --clobber`.
+   Without this step Zotero never offers the new version. The file's hash
+   must match the attached `.xpi`, so upload both from the same build.

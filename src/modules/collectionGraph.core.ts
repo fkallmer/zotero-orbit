@@ -10,6 +10,8 @@
  * marks directly. Pure; the tab calls it again on every toggle.
  */
 
+import { rankGaps } from './collectionNetwork.core'
+
 import type { CollectionNetwork, Gap, NetworkScope, NetworkWork, OpenAlexId } from './collectionTypes'
 import type { GraphLink, GraphNode } from './graphModel.core'
 
@@ -240,6 +242,34 @@ export function hiddenBySelection(
 ): Set<number | null> {
   if (selected.size === 0) return new Set()
   return new Set(all.filter((cluster) => !selected.has(cluster)))
+}
+
+/**
+ * The network as the selected clusters see it: their items only, the works
+ * those items cite or are cited by, each work's items narrowed to them, and
+ * the gaps ranked again on that. So the gaps list and the numbered marks
+ * answer "what is this topic missing", not the whole collection's question.
+ * Nothing selected is the whole network, unchanged.
+ */
+export function focusNetwork(net: CollectionNetwork, selected: ReadonlySet<number | null>): CollectionNetwork {
+  if (selected.size === 0) return net
+  const seeds = net.seeds.filter((seed) => selected.has(clusterOfSeed(net, seed.openAlexId)))
+  const visible = new Set(seeds.map((seed) => seed.openAlexId))
+  const works = net.works.flatMap((work) => {
+    const kept = work.seeds.filter((id) => visible.has(id))
+    return kept.length === 0 ? [] : [{ ...work, seeds: kept }]
+  })
+  const { gaps, probable } = rankGaps(works)
+  const onScreen = new Set([...visible, ...works.map((work) => work.openAlexId)])
+  return {
+    ...net,
+    seeds,
+    works,
+    gaps,
+    probable,
+    coupling: net.coupling.filter((edge) => visible.has(edge.a) && visible.has(edge.b)),
+    citations: net.citations.filter((edge) => onScreen.has(edge.from) && onScreen.has(edge.to)),
+  }
 }
 
 /** Whether a cluster shows under a selection. */

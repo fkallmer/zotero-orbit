@@ -108,6 +108,13 @@ export interface S2CoreDeps {
   log: (msg: string) => void
   /** Optional sink for the data beyond the count. See the success path. */
   onDetails?: (identifier: string, details: S2Details) => void
+  /**
+   * Optional sink for rate-limit waits, so a progress window can say why it
+   * stopped moving. Called with the monotonic time the next request may leave
+   * while a 429 is holding requests back, and with `null` once a response
+   * shows the quota is healthy again. Observational only: it changes no timing.
+   */
+  onRateLimitWait?: (untilMonotonicMs: number | null) => void
   config?: Partial<S2CoreConfig>
 }
 
@@ -329,7 +336,12 @@ export class SemanticScholarClientCore {
       if (this.isCancelled(callerSignal)) return { ok: false, result: { kind: 'aborted' } }
       if (!this.keyedEligible(ctx)) return { ok: false, result: { kind: 'ineligible', reason: 'key_disabled' } }
       const now = this.deps.monotonicNow()
-      if (this.circuitUntil(identity) > now) return { ok: false, result: { kind: 'transient', cause: 'circuit' } }
+      if (this.circuitUntil(identity) > now) {
+        // A long Retry-After on a 429: lookups fail fast until it passes.
+        const quotaCircuit = this.quotaFor(identity).circuitUntil
+        if (quotaCircuit > now) this.reportRateLimitWait(quotaCircuit)
+        return { ok: false, result: { kind: 'transient', cause: 'circuit' } }
+      }
 
       const spacing = this.deps.getSpacingMs(ctx.mode === 'keyed' ? 'keyed' : 'anonymous')
       const q = this.quotaFor(identity)
@@ -339,6 +351,8 @@ export class SemanticScholarClientCore {
         this.service.backoffUntil,
       )
       if (target > now) {
+        // The quota's last word was a 429, so this wait is the rate limit's doing.
+        if (q.failures > 0) this.reportRateLimitWait(target)
         try {
           await this.deps.sleep(target - now, waitSignal)
         } catch {
@@ -382,7 +396,18 @@ export class SemanticScholarClientCore {
 
   private recordHealthy(identity: string): void {
     this.service.failures = 0
-    this.quotaFor(identity).failures = 0
+    const q = this.quotaFor(identity)
+    const wasLimited = q.failures > 0
+    q.failures = 0
+    if (wasLimited) this.reportRateLimitWait(null)
+  }
+
+  private reportRateLimitWait(untilMonotonicMs: number | null): void {
+    try {
+      this.deps.onRateLimitWait?.(untilMonotonicMs)
+    } catch {
+      // A display sink must never break a lookup.
+    }
   }
 
   private isCircuitOpen(target: QuotaState, now: number): boolean {

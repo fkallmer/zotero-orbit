@@ -52,11 +52,19 @@ import {
   toLookupDoi,
   WORK_FULL_SELECT,
 } from './openAlexClient.core'
-import { getSemanticScholarClient, isSemanticScholarAvailable } from './semanticScholarClient'
+import { noteWait, noticeKey, pickNotice, pruneWaits, SEMANTIC_SCHOLAR_SOURCE } from './rateLimitNotice.core'
+import {
+  getSemanticScholarClient,
+  isSemanticScholarAvailable,
+  isSemanticScholarKeySet,
+  setSemanticScholarRateLimitListener,
+} from './semanticScholarClient'
 
 import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
 import type { ScholarlyRecord } from './openAlexClient.core'
+import type { RateLimitNotice, WaitBoard } from './rateLimitNotice.core'
+import type { ProgressWindowHelper } from 'zotero-plugin-toolkit'
 
 // Semantic Scholar uses its own scheduler and has no entry in this millisecond table.
 const DEFAULT_RATE_LIMITS: Record<string, number> = {
@@ -69,6 +77,18 @@ const DEFAULT_RATE_LIMITS: Record<string, number> = {
 }
 
 const MAX_RATE_LIMIT_MULTIPLIER = 10
+
+/** What the citation column's data provider serialises for each row. */
+interface CitationCellData {
+  counts: string[]
+  databases: string[]
+  /** No count at all: the sources that reported the work missing, by key. */
+  notFound?: string[]
+  /** No count at all, and nothing to look it up by. */
+  noIdentifier?: boolean
+  /** Still waiting in the update queue: the cell shows "…", the counts so far dimmed. */
+  pending?: boolean
+}
 
 /** Engage budget pacing only below this share of a provider's allowance. */
 const BUDGET_PACING_THRESHOLD = 0.2
@@ -185,6 +205,77 @@ function lookupFetch(url: string, init?: RequestInit): Promise<Response> {
 /** Process-wide item-notifier registration. */
 let notifierID: string | null = null
 
+function monotonicNow(): number {
+  return performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
+}
+
+// Rate-limit visibility. The schedulers report their waits here; the progress
+// windows read them back once a second. See `rateLimitNotice.core`.
+let rateLimitWaits: WaitBoard = {}
+
+function noteRateLimitWait(source: string, untilMonotonicMs: number | null): void {
+  const now = monotonicNow()
+  rateLimitWaits = noteWait(pruneWaits(rateLimitWaits, now), source, now, untilMonotonicMs)
+}
+
+// Semantic Scholar runs its own scheduler, so its waits arrive by listener.
+setSemanticScholarRateLimitListener((untilMonotonicMs) => noteRateLimitWait(SEMANTIC_SCHOLAR_SOURCE, untilMonotonicMs))
+
+function currentRateLimitNotice(): RateLimitNotice | null {
+  const now = monotonicNow()
+  rateLimitWaits = pruneWaits(rateLimitWaits, now)
+  if (Object.keys(rateLimitWaits).length === 0) return null
+  return pickNotice(rateLimitWaits, now, isSemanticScholarKeySet())
+}
+
+/**
+ * The progress line, with the rate-limit notice appended while a source is
+ * making the queue wait. Without one, the line said "Item 12 of 400" for half a
+ * minute at a time and the update looked hung.
+ */
+function withRateLimitNotice(progressText: string): string {
+  const notice = currentRateLimitNotice()
+  if (notice === null) return progressText
+  const wait = getString('rate-limit-wait-duration', { args: { amount: notice.amount, unit: notice.unit } })
+  const args = { progress: progressText, wait, source: getOperationName(notice.source) }
+  switch (notice.id) {
+    case 'rate-limit-waiting-semanticscholar-no-key':
+      return getString('rate-limit-waiting-semanticscholar-no-key', { args })
+    case 'rate-limit-waiting-semanticscholar':
+      return getString('rate-limit-waiting-semanticscholar', { args })
+    case 'rate-limit-waiting':
+      return getString('rate-limit-waiting', { args })
+  }
+}
+
+/** The part of a toolkit progress window the rate-limit notice redraws. */
+export interface ProgressLineWindow {
+  changeLine: (options: { text?: string; progress?: number }) => unknown
+  show: () => unknown
+}
+
+/**
+ * Call `redraw` whenever the rate-limit notice would read differently -- each
+ * second of a countdown, and once more when the wait ends -- so a queue that is
+ * blocked inside a lookup still shows why. With `everyTickWhileWaiting`, also
+ * on every tick while a notice is up, for a window that must be kept open by
+ * showing it again. Returns the disposer.
+ */
+function watchRateLimitNotice(redraw: () => void, everyTickWhileWaiting = false): () => void {
+  let lastKey = noticeKey(currentRateLimitNotice())
+  const timer = setInterval(() => {
+    const key = noticeKey(currentRateLimitNotice())
+    if (key === lastKey && !(everyTickWhileWaiting && key !== '')) return
+    lastKey = key
+    try {
+      redraw()
+    } catch (e) {
+      ztoolkit.log('Failed to update the rate-limit notice', e)
+    }
+  }, 1000)
+  return () => clearInterval(timer)
+}
+
 // Adaptive rate limiting state
 class RateLimitManager {
   private static multipliers: Record<string, number> = {}
@@ -224,11 +315,13 @@ class RateLimitManager {
     // Some providers document a minimum pause after a 429 that the multiplier
     // alone would not reach. Push the next departure out to satisfy it.
     const minPause = MIN_BACKOFF_AFTER_429_MS[database]
+    const now = monotonicNow()
     if (minPause !== undefined) {
-      const now = performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
       const current = this.nextAvailable[database] ?? now
       this.nextAvailable[database] = Math.max(current, now + minPause)
     }
+    // For display only: when the next request may leave, as far as we know now.
+    noteRateLimitWait(database, Math.max(this.nextAvailable[database] ?? now, now + this.getDelay(database)))
 
     ztoolkit.log(`Rate limit detected for ${database}: increasing multiplier to ${newMultiplier.toFixed(1)}x`)
   }
@@ -259,9 +352,10 @@ class RateLimitManager {
 
     if (remaining <= 0) {
       // Budget spent. Nothing to do but wait out the window.
-      const now = performance ? performance.now() : Temporal.Now.instant().epochMilliseconds
+      const now = monotonicNow()
       const current = this.nextAvailable[database] ?? now
       this.nextAvailable[database] = Math.max(current, now + resetSeconds * 1000)
+      noteRateLimitWait(database, this.nextAvailable[database])
       ztoolkit.log(`Budget exhausted for ${database}: pausing ${resetSeconds}s until reset`)
       return
     }
@@ -303,6 +397,8 @@ class RateLimitManager {
   }
 
   static handleSuccess(database: string): void {
+    // A request got through, so whatever wait was announced is over.
+    if (rateLimitWaits[database] !== undefined) noteRateLimitWait(database, null)
     const currentMultiplier = this.multipliers[database] || 1
     if (currentMultiplier > 1) {
       // Gradually decrease multiplier on success
@@ -340,8 +436,30 @@ class RateLimitManager {
 class IgnoredItemsManager {
   private static memoryCache = new Map<number, { databases: string[] }>() // Session-only cache for no_identifier
 
+  /** The last parse, keyed on the raw preference: the column asks once per row. */
+  private static parsed: { raw: string; entries: IgnoreEntries } | null = null
+
   private static loadPersistentData(): IgnoreEntries {
-    return parseIgnoreStore(getPref('ignoredItems')).entries
+    const raw = String(getPref('ignoredItems') ?? '')
+    if (this.parsed?.raw !== raw) this.parsed = { raw, entries: parseIgnoreStore(raw).entries }
+    // A copy: callers edit what they get and save it back.
+    return structuredClone(this.parsed.entries)
+  }
+
+  /**
+   * Why an item has no count, as far as Orbit knows: the sources that
+   * reported it missing, and whether it had no identifier to look up with.
+   * Read-only and cheap enough for the column's paint path.
+   */
+  static missingFor(itemId: number, databases: readonly string[]): { notFound: string[]; noIdentifier: boolean } {
+    const raw = String(getPref('ignoredItems') ?? '')
+    if (this.parsed?.raw !== raw) this.parsed = { raw, entries: parseIgnoreStore(raw).entries }
+    const itemKey = itemId.toString()
+    const entries = this.parsed.entries
+    return {
+      notFound: databases.filter((database) => entries[database]?.[itemKey] !== undefined),
+      noIdentifier: databases.some((database) => this.memoryCache.get(itemId)?.databases.includes(database)),
+    }
   }
 
   private static savePersistentData(entries: IgnoreEntries): void {
@@ -1182,7 +1300,8 @@ class DBInterface {
       }
 
       debugLog(
-        `Citation debug - INSPIRE citation count: ${count} (via ${identifier.type} ${identifier.id} from ${identifier.source})`,
+        `Citation debug - INSPIRE citation count: ${count} ` +
+          `(via ${identifier.type} ${identifier.id} from ${identifier.source})`,
       )
       RateLimitManager.handleSuccess('inspire')
       return { count, status: 'success' }
@@ -1289,7 +1408,8 @@ class DBInterface {
       }
 
       debugLog(
-        `Citation debug - OpenAlex citation count: ${count} (via ${identifier.type} ${identifier.id} from ${identifier.source})`,
+        `Citation debug - OpenAlex citation count: ${count} ` +
+          `(via ${identifier.type} ${identifier.id} from ${identifier.source})`,
       )
       RateLimitManager.handleSuccess(OPENALEX_DATABASE)
       return { count, status: 'success' }
@@ -1471,11 +1591,41 @@ const notifierCallback = {
 }
 
 // Progress window tracking
-let progressWindow: any
+let progressWindow: ProgressWindowHelper | null = null
 let currentIndex = -1
 let totalItems = 0
 let itemsToUpdate: Zotero.Item[] = []
 let updatedCount = 0
+/**
+ * Items the running queue has not reached yet, marked "…" in the column.
+ *
+ * Cheap to show: the columns are redrawn once when the queue starts and once
+ * when it ends. In between, an item whose count is written redraws its own
+ * row (Zotero does that for any saved item), dropping its mark; one whose
+ * lookup changed nothing keeps the mark until the end.
+ */
+const pendingItemIDs = new Set<number>()
+
+function clearPending(): void {
+  if (pendingItemIDs.size === 0) return
+  pendingItemIDs.clear()
+  refreshItemsTree()
+}
+let stopManualRateLimitWatch: (() => void) | null = null
+
+/** The manual progress line: the item counter, plus any rate-limit notice. */
+function manualProgressText(): string {
+  const base =
+    currentIndex < 0
+      ? getString('progress-getting-citation-tallies')
+      : getString('progress-item-counter', { args: { current: currentIndex + 1, total: totalItems } })
+  return withRateLimitNotice(base)
+}
+
+function stopManualRateLimitNotice(): void {
+  stopManualRateLimitWatch?.()
+  stopManualRateLimitWatch = null
+}
 
 /** Close the manual update progress window and drop queue state (shutdown path). */
 function cancelManualUpdate() {
@@ -1486,6 +1636,7 @@ function cancelManualUpdate() {
  * Reset the state of the citation count update process
  */
 function resetState() {
+  stopManualRateLimitNotice()
   if (progressWindow) {
     progressWindow.close()
     progressWindow = null
@@ -1494,6 +1645,7 @@ function resetState() {
   totalItems = 0
   itemsToUpdate = []
   updatedCount = 0
+  clearPending()
 }
 
 /**
@@ -1532,6 +1684,8 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
   resetState()
   totalItems = regularItems.length
   itemsToUpdate = regularItems
+  for (const item of regularItems) pendingItemIDs.add(item.id)
+  refreshItemsTree()
 
   if (!silent) {
     // Create progress window
@@ -1542,6 +1696,13 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
       type: 'default',
       progress: 0,
     })
+    // Showing it again also restarts the window's close timer, so a long wait
+    // does not leave the user with no window and no explanation.
+    stopManualRateLimitWatch = watchRateLimitNotice(() => {
+      const win = progressWindow as ProgressLineWindow | null
+      win?.changeLine({ text: manualProgressText() })
+      win?.show()
+    }, true)
   }
 
   void runUpdateQueue(operations, silent)
@@ -1569,21 +1730,26 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
     if (!silent && progressWindow) {
       const percent = Math.round((currentIndex / totalItems) * 100)
       progressWindow.changeLine({
-        text: getString('progress-item-counter', { args: { current: currentIndex + 1, total: totalItems } }),
+        text: manualProgressText(),
         progress: percent,
       })
       progressWindow.show()
     }
 
+    const item = itemsToUpdate[currentIndex]
     try {
+      // Dropped before the save, so the redraw the save triggers shows the new count.
+      pendingItemIDs.delete(item.id)
       // Manual updates bypass the ignored-item cache.
-      if (await updateItem(itemsToUpdate[currentIndex], operations, false)) updatedCount++
+      if (await updateItem(item, operations, false)) updatedCount++
     } catch (e) {
       if (isErrorNamed(e, 'AbortError')) break
       ztoolkit.log('Error updating citation count for item', e)
     }
   }
+  clearPending()
 
+  stopManualRateLimitNotice()
   if (progressWindow) {
     progressWindow.close()
     progressWindow = null
@@ -1763,20 +1929,29 @@ class UIRegistrar {
         // on every call, and fetched the parent item from the database for
         // attachments and notes -- all purely diagnostic.
         const result = Core.getCitationCountForColumn(item)
-        // Return JSON string that renderCell will parse
-        return result ? JSON.stringify(result) : ''
+        if (pendingItemIDs.has(item.id)) {
+          // Last key, so sorting by the column still orders by the counts.
+          return JSON.stringify({ counts: [], databases: [], ...result, pending: true })
+        }
+        if (result) return JSON.stringify(result)
+        // No count: say why, when a lookup has said. Only regular items are looked up.
+        if (!item.isRegularItem()) return ''
+        const databases = Helpers.getDatabaseArray(undefined)
+        const missing = IgnoredItemsManager.missingFor(item.id, databases)
+        if (missing.notFound.length === 0 && !missing.noIdentifier) return ''
+        return JSON.stringify({ counts: [], databases: [], ...missing })
       },
       // iconPath: 'chrome://zotero/skin/citations.png',
-      renderCell(index, data: any, column, isFirstColumn, doc) {
+      renderCell(index, data: unknown, column, isFirstColumn, doc) {
         const span = doc.createElement('span')
         span.className = `cell ${column.className}`
         span.style.textAlign = 'center'
 
         // Parse JSON data if it's a string
-        let parsedData: { counts: string[]; databases: string[] } | null = null
+        let parsedData: CitationCellData | null = null
         if (data && typeof data === 'string') {
           try {
-            parsedData = JSON.parse(data)
+            parsedData = JSON.parse(data) as CitationCellData
           } catch (e) {
             // Display as text if JSON parsing fails
             span.innerText = data
@@ -1788,7 +1963,7 @@ class UIRegistrar {
         }
 
         // Create colored spans for each count
-        const dataToUse = parsedData || data
+        const dataToUse = parsedData || (data as CitationCellData)
         const useColors = getPref('useColors') === 'color' && dataToUse.databases.length > 1
 
         dataToUse.counts.forEach((count: string, idx: number) => {
@@ -1809,11 +1984,38 @@ class UIRegistrar {
           span.appendChild(countSpan)
         })
 
+        if (dataToUse.counts.length === 0 && !dataToUse.pending) {
+          // Looked up and not found, or nothing to look up with: a dash, not a blank.
+          const dash = doc.createElement('span')
+          dash.innerText = '–'
+          dash.style.opacity = '0.45'
+          span.appendChild(dash)
+          span.title = dataToUse.noIdentifier
+            ? getString('column-no-identifier')
+            : getString('column-not-found', {
+                args: { sources: (dataToUse.notFound ?? []).map((db) => getOperationName(db)).join(', ') },
+              })
+          return span
+        }
+
+        if (dataToUse.pending) {
+          // The counts so far, dimmed, and "…": this row is still to come.
+          for (const child of Array.from(span.children) as HTMLElement[]) child.style.opacity = '0.45'
+          const dots = doc.createElement('span')
+          dots.innerText = dataToUse.counts.length > 0 ? ' …' : '…'
+          dots.style.opacity = '0.6'
+          span.appendChild(dots)
+          span.title = getString('column-pending')
+          return span
+        }
+
         // Add tooltip with database names
         const tooltip = dataToUse.databases
           .map((db: string, idx: number) => {
             const displayName = getOperationName(db)
-            return getString('tooltip-citation-tallies', { args: { displayName, count: dataToUse.counts[idx] } })
+            return getString('tooltip-citation-tallies', {
+              args: { displayName, count: dataToUse.counts[idx] },
+            })
           })
           .join(', ')
         span.title = tooltip
@@ -1957,4 +2159,6 @@ export {
   cancelMonthlyCleanup,
   cancelManualUpdate,
   setPostCountFollowUp,
+  watchRateLimitNotice,
+  withRateLimitNotice,
 }
