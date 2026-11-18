@@ -34,6 +34,17 @@ auto-update-connection-retry = Connection issue, retrying... ({ $current }/{ $ma
 auto-update-stopped = Auto update stopped: { $error }
 auto-update-completed = Auto update completed: { $updated }/{ $total } items updated
 
+# Appended to a progress line while a citation source makes Orbit wait after
+# telling it to slow down (HTTP 429). $progress is the line it is appended to,
+# $wait is rate-limit-wait-duration, $source a database display name.
+rate-limit-wait-duration = { $unit ->
+    [minutes] { $amount } min
+   *[seconds] { $amount } s
+  }
+rate-limit-waiting = { $progress } — { $source } is rate-limiting Orbit, waiting { $wait }.
+rate-limit-waiting-semanticscholar = { $progress } — Semantic Scholar is rate-limiting Orbit, waiting { $wait }.
+rate-limit-waiting-semanticscholar-no-key = { $progress } — Semantic Scholar is rate-limiting Orbit, waiting { $wait }. A free API key (Settings → Orbit) raises the limit.
+
 # Database display names
 database-crossref = Crossref
 database-googlescholar = Google Scholar

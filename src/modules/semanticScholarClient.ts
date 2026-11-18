@@ -103,6 +103,9 @@ class SemanticScholarClient {
       onDetails: (identifier, details) => {
         writeCache(s2DetailsCacheKey(identifier), details)
       },
+      // Read through the module-level listener, so whoever shows progress can
+      // subscribe without this module importing it back.
+      onRateLimitWait: (untilMonotonicMs) => rateLimitWaitListener?.(untilMonotonicMs),
       userAgent: USER_AGENT,
       monotonicNow,
       nowEpochMs: () => Temporal.Now.instant().epochMilliseconds,
@@ -327,6 +330,22 @@ class SemanticScholarClient {
 
 let instance: SemanticScholarClient | null = null
 let stopped = false
+let rateLimitWaitListener: ((untilMonotonicMs: number | null) => void) | null = null
+
+/**
+ * Hear about Semantic Scholar rate-limit waits; see `S2CoreDeps.onRateLimitWait`.
+ * Times are `performance.now()` readings. Pass `null` to stop listening.
+ */
+export function setSemanticScholarRateLimitListener(
+  listener: ((untilMonotonicMs: number | null) => void) | null,
+): void {
+  rateLimitWaitListener = listener
+}
+
+/** Whether a usable Semantic Scholar key is stored -- the one lookups would send. */
+export function isSemanticScholarKeySet(): boolean {
+  return effectiveKey(normalizeApiKey(getPref(PREF_KEY))) !== ''
+}
 
 /**
  * The one capability gate for Semantic Scholar features. The bootstrap bridge
