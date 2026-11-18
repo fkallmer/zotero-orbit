@@ -9,6 +9,9 @@ import {
   CLUSTER_PALETTE,
   FITTED,
   GAP_TIERS,
+  NETWORK_COVERAGE,
+  NETWORK_MIN_SCALE,
+  networkMarkScale,
   networkRadius,
   hueFor,
   placeLabels,
@@ -455,5 +458,104 @@ describe('ranked gaps', () => {
 
   it('leaves an unranked gap as before', () => {
     assert.match(gapAt(null), /fill="none" stroke="[^"]+" stroke-width="2" pointer-events="all"/)
+  })
+})
+
+describe('crowded networks', () => {
+  /** `count` seeds spread over two decades and three orders of citations. */
+  const seeds = (count: number): GraphNode[] => {
+    const random = prng(count)
+    return Array.from({ length: count }, (_, i) =>
+      node({
+        key: `s${i}`,
+        role: 'seed',
+        year: 2000 + Math.floor(random() * 25),
+        citedByCount: Math.round(10 ** (2 + random() * 3)),
+        referenceCount: Math.round(10 ** (random() * 3)),
+        itemID: i + 1,
+        cluster: i % 3,
+      }),
+    )
+  }
+  const wide: LayoutOptions = { ...network, width: 1020, height: 600 }
+
+  it('leaves a plot its marks cover sparsely alone', () => {
+    assert.equal(networkMarkScale([10, 10, 10], 100_000), 1)
+    assert.equal(networkMarkScale([], 100_000), 1)
+    assert.equal(networkMarkScale([10], 0), 1)
+  })
+
+  it('shrinks a crowded plot until its marks cover the allowance, never below the floor', () => {
+    const radii = Array.from({ length: 50 }, () => 20)
+    const area = 100_000
+    const scale = networkMarkScale(radii, area)
+    assert.ok(scale < 1 && scale > NETWORK_MIN_SCALE)
+    const covered = radii.reduce((sum, r) => sum + Math.PI * (r * scale) ** 2, 0) / area
+    assert.ok(Math.abs(covered - NETWORK_COVERAGE) < 1e-9)
+    assert.equal(
+      networkMarkScale(
+        Array.from({ length: 5000 }, () => 20),
+        area,
+      ),
+      NETWORK_MIN_SCALE,
+    )
+  })
+
+  it('keeps a small collection at the sizes it always had', () => {
+    const layout = buildGraphLayout(seeds(12), wide)
+    assert.ok(layout)
+    assert.equal(layout.markScale, 1)
+    for (const mark of layout.nodes) assert.equal(mark.radius, networkRadius(mark.referenceCount))
+    const svg = renderGraphSvg(layout, clustered)
+    assert.doesNotMatch(svg, /fill-opacity/)
+    assert.match(markOf(svg, 's0'), /stroke="#ffffff" stroke-width="2" /)
+  })
+
+  it('shrinks a large collection in proportion, so sizes still differ as much', () => {
+    const layout = buildGraphLayout(seeds(300), wide)
+    assert.ok(layout)
+    const scale = layout.markScale ?? 1
+    assert.ok(scale < 1)
+    for (const mark of layout.nodes) {
+      const full = networkRadius(mark.referenceCount)
+      assert.ok(Math.abs(mark.radius - Math.max(full * scale, 3)) < 1e-9, `${mark.key} not shrunk by the share`)
+    }
+  })
+
+  it('lets a crowded field show through and thins its rings', () => {
+    const layout = buildGraphLayout(seeds(300), wide)
+    assert.ok(layout)
+    const mark = markOf(renderGraphSvg(layout, clustered), 's0')
+    const opacity = Number(/fill-opacity="([\d.]+)"/.exec(mark)?.[1])
+    assert.ok(opacity >= 0.7 && opacity < 1, `fill-opacity ${opacity}`)
+    const ring = Number(/stroke="#ffffff" stroke-width="([\d.]+)"/.exec(mark)?.[1])
+    assert.ok(ring >= 1.2 && ring < 2, `ring ${ring}`)
+  })
+
+  it('keeps a numbered gap large enough for its digit', () => {
+    const gap = node({ key: 'G', year: 2010, citedByCount: 500, referenceCount: 3, hollow: true, gapRank: 1 })
+    const layout = buildGraphLayout([...seeds(300), gap], wide)
+    assert.ok(layout)
+    // Shrunk in proportion it would be smaller than its digit allows.
+    assert.ok(networkRadius(3) * (layout.markScale ?? 1) < 8)
+    assert.equal(layout.nodes.find((mark) => mark.key === 'G')?.radius, 8)
+    // The floor never lifts a mark above its own size.
+    const tiny = node({ key: 'T', year: 2010, citedByCount: 500, referenceCount: 0, hollow: true, gapRank: 2 })
+    const withTiny = buildGraphLayout([...seeds(300), tiny], wide)
+    assert.equal(withTiny?.nodes.find((mark) => mark.key === 'T')?.radius, networkRadius(0))
+  })
+
+  it('paints larger marks first and the ranked gaps last', () => {
+    const gaps = [1, 15, 200, null].map((rank, i) =>
+      node({ key: `g${i}`, year: 2010, citedByCount: 500, hollow: true, gapRank: rank }),
+    )
+    const layout = buildGraphLayout([...gaps, ...seeds(40)], network)
+    assert.ok(layout)
+    const keys = layout.nodes.map((mark) => mark.key)
+    // Plain gaps under the collection, ranked ones over it, the first ten on top.
+    assert.deepEqual(keys.slice(0, 2).sort(), ['g2', 'g3'])
+    assert.deepEqual(keys.slice(-2), ['g1', 'g0'])
+    const discs = layout.nodes.filter((mark) => mark.role === 'seed').map((mark) => mark.radius)
+    for (let i = 1; i < discs.length; i++) assert.ok(discs[i] <= discs[i - 1], 'a smaller disc painted under a larger')
   })
 })

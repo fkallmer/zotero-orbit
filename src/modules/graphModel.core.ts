@@ -129,6 +129,12 @@ export interface GraphLayout {
    * placeLabels on every zoom. Null or absent is every role.
    */
   labelRoles?: readonly GraphRole[] | null
+  /**
+   * How far a crowded network's marks were shrunk, 1 for not at all. Set only
+   * in network mode; the renderer thins strokes and lets fills show through
+   * by the same measure.
+   */
+  markScale?: number
 }
 
 export interface LayoutOptions {
@@ -314,6 +320,66 @@ function radiusFor(referenceCount: number | null, role: GraphRole, mode: GraphMo
   // meant to make one mark findable would only make the field a carpet.
   if (mode === 'network') return networkRadius(referenceCount)
   return role === 'seed' ? Math.max(radius, 16) : radius
+}
+
+/**
+ * How much of the plot a network's marks may cover before they shrink.
+ *
+ * The sum of their areas over the plot's, overlaps counted twice. A twenty-
+ * paper collection with its hundred-odd gaps sits near a quarter and keeps its
+ * sizes; three hundred papers with theirs cover the plot more than once over,
+ * and that is the solid blob in the middle.
+ */
+export const NETWORK_COVERAGE = 0.35
+
+/** The least a crowded network's marks shrink to, as a share of their size. */
+export const NETWORK_MIN_SCALE = 0.5
+
+/**
+ * The factor a network's radii are multiplied by so its marks cover no more
+ * than {@link NETWORK_COVERAGE} of the plot.
+ *
+ * Proportional, not a ceiling: every mark shrinks by the same share, so a
+ * review still stands out from a letter by as much as it did -- a hard cap
+ * made every mark the same size, which is what the logarithm replaced. The
+ * square root because area goes with the square of the radius. Clamped at
+ * {@link NETWORK_MIN_SCALE} so a huge collection does not collapse to dots;
+ * zooming in is how one reads a field that dense.
+ */
+export function networkMarkScale(radii: readonly number[], plotArea: number): number {
+  if (!(plotArea > 0)) return 1
+  const covered = radii.reduce((sum, r) => sum + Math.PI * r * r, 0) / plotArea
+  if (covered <= NETWORK_COVERAGE) return 1
+  return Math.max(NETWORK_MIN_SCALE, Math.sqrt(NETWORK_COVERAGE / covered))
+}
+
+/**
+ * One mark's radius once its network has been shrunk by `scale`.
+ *
+ * A floor for the ten numbered gaps, so their digit still fits inside the
+ * ring, and a smaller one for the rest so nothing becomes a speck. Neither
+ * floor lifts a mark above its unshrunk size.
+ */
+function scaledRadius(radius: number, scale: number, node: GraphNode): number {
+  if (scale >= 1) return radius
+  const floor = gapTier(node) === 'numbered' ? 8 : 3
+  return Math.max(radius * scale, Math.min(radius, floor))
+}
+
+/**
+ * The order a network's marks are painted in: plain gaps at the bottom, the
+ * collection over them, the ranked gaps on top; within each, larger first.
+ *
+ * Larger first so a small mark is never buried under a big neighbour -- the
+ * big one still shows round it. The ranked gaps last because they are what
+ * the reader is asked to look at, and as rings they hide little of what lies
+ * beneath.
+ */
+function networkPaintRank(node: PlacedNode): number {
+  const tier = gapTier(node)
+  if (tier === 'numbered') return 3
+  if (tier === 'coloured') return 2
+  return node.hollow ? 0 : 1
 }
 
 /**
@@ -793,10 +859,22 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
     label: null,
   }))
 
+  // A crowded network shrinks before anything is placed round its marks, so
+  // the labels and the arrow gaps are measured against the size drawn.
+  const markScale =
+    mode === 'network'
+      ? networkMarkScale(
+          placed.map((node) => node.radius),
+          plotWidth * plotHeight,
+        )
+      : 1
+  if (markScale < 1) for (const node of placed) node.radius = scaledRadius(node.radius, markScale, node)
+
   assignLabels(placed, width, height, { labelRoles, mode })
 
+  if (mode === 'network') placed.sort((a, b) => networkPaintRank(a) - networkPaintRank(b) || b.radius - a.radius)
   // The seed last so it paints over its neighbours rather than under them.
-  placed.sort((a, b) => Number(a.role === 'seed') - Number(b.role === 'seed'))
+  else placed.sort((a, b) => Number(a.role === 'seed') - Number(b.role === 'seed'))
 
   const xTicks: AxisTick[] = xAxis.ticks.map((tick) => ({
     value: tick.value,
@@ -814,7 +892,20 @@ export function buildGraphLayout(nodes: readonly GraphNode[], options: LayoutOpt
   const present = new Set(placed.map((node) => node.key))
   const links = (options.links ?? []).filter((link) => present.has(link.from) && present.has(link.to))
 
-  return { nodes: placed, xTicks, yTicks, width, height, xMetric, yMetric, dropped, links, mode, labelRoles }
+  return {
+    nodes: placed,
+    xTicks,
+    yTicks,
+    width,
+    height,
+    xMetric,
+    yMetric,
+    dropped,
+    links,
+    mode,
+    labelRoles,
+    ...(mode === 'network' ? { markScale } : {}),
+  }
 }
 
 /**
@@ -1126,6 +1217,19 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
     })
     .join('')
 
+  /**
+   * How crowded the network is, 0 for not at all and 1 at the most its marks
+   * shrink. A crowded field's discs let their neighbours show through and
+   * wear thinner rings, so an overlap reads as two marks rather than one
+   * shape; an uncrowded one is drawn exactly as before.
+   */
+  const crowding = Math.min(1, Math.max(0, (1 - (layout.markScale ?? 1)) / (1 - NETWORK_MIN_SCALE)))
+  const discOpacity = crowding > 0 ? ` fill-opacity="${(1 - 0.3 * crowding).toFixed(2)}"` : ''
+  // Number(toFixed) so an uncrowded plot writes "2" and "1.6", as it always has.
+  const ringWidth = String(Number((2 - 0.8 * crowding).toFixed(2)))
+  const collarGap = 2.6 - crowding
+  const collarWidth = String(Number((1.6 - 0.6 * crowding).toFixed(2)))
+
   const marks = layout.nodes
     .map((node) => {
       const fill = hueFor(node, theme)
@@ -1148,10 +1252,10 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
       const collar =
         node.itemID === null
           ? ''
-          : `<circle r="${(node.radius + 2.6).toFixed(1)}" fill="none" stroke="${theme.muted}" ` +
+          : `<circle r="${(node.radius + collarGap).toFixed(1)}" fill="none" stroke="${theme.muted}" ` +
             // Dashed when the match rests on a title rather than an id: filed,
             // probably, and worth checking before trusting.
-            `stroke-width="1.6" ${node.match === 'probable' ? 'stroke-dasharray="2 2" ' : ''}` +
+            `stroke-width="${collarWidth}" ${node.match === 'probable' ? 'stroke-dasharray="2 2" ' : ''}` +
             `opacity="0.85" pointer-events="none"/>`
 
       // The geometry sits at the origin and the group carries the position, so
@@ -1166,7 +1270,8 @@ export function renderGraphSvg(layout: GraphLayout, theme: GraphTheme, text?: Gr
         // the pointer, or a ring would be clickable only along its edge.
         (node.hollow
           ? hollowCircle(node, fill)
-          : `<circle r="${node.radius.toFixed(1)}" fill="${fill}" stroke="${theme.surface}" stroke-width="2" `) +
+          : `<circle r="${node.radius.toFixed(1)}" fill="${fill}"${discOpacity} stroke="${theme.surface}" ` +
+            `stroke-width="${ringWidth}" `) +
         `data-key="${escapeXml(node.key)}" data-doi="${escapeXml(node.doi ?? '')}" ` +
         `data-item="${node.itemID ?? ''}" ` +
         // No <title>: the native tooltip would put the same title in a box at
