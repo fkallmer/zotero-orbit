@@ -317,7 +317,8 @@ function idsConflict(ours: readonly string[], theirs: readonly string[]): boolea
   return false
 }
 
-function shareAuthor(ours: readonly MatchAuthor[], theirs: readonly MatchAuthor[]): boolean {
+/** True when some author with an initial agrees on surname and initial. */
+export function shareAuthor(ours: readonly MatchAuthor[], theirs: readonly MatchAuthor[]): boolean {
   return ours.some((a) => a.initial !== null && theirs.some((b) => b.initial === a.initial && b.surname === a.surname))
 }
 

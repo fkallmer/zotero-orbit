@@ -1,0 +1,560 @@
+{
+  "results": [
+    {
+      "id": "https://openalex.org/W1565680857",
+      "doi": null,
+      "display_name": "Electromagnetic fields and energy",
+      "publication_year": 1989,
+      "cited_by_count": 850,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "H. A. Haus"
+          }
+        },
+        {
+          "author": {
+            "display_name": "James R. Melcher"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W43468092",
+      "doi": "https://doi.org/10.1007/978-0-387-68351-5_2",
+      "display_name": "Electromagnetic Fields and Energy",
+      "publication_year": 2008,
+      "cited_by_count": 36,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Olav Solgaard"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2117962825",
+      "doi": "https://doi.org/10.1109/aps.1990.115447",
+      "display_name": "Experimental demonstrations for teaching electromagnetic fields and energy",
+      "publication_year": 1990,
+      "cited_by_count": 6,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Markus Zahn"
+          }
+        },
+        {
+          "author": {
+            "display_name": "James R. Melcher"
+          }
+        },
+        {
+          "author": {
+            "display_name": "H. A. Haus"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2980080548",
+      "doi": null,
+      "display_name": "Lectures on Electromagnetic Fields, Waves, Energy & Their Applications:",
+      "publication_year": 2017,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Umana Thompson Itaketo"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2031677778",
+      "doi": "https://doi.org/10.1016/j.aop.2011.04.006",
+      "display_name": "Algebraic structure of general electromagnetic fields and energy flow",
+      "publication_year": 2011,
+      "cited_by_count": 4,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Shahen Hacyan"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2054237766",
+      "doi": "https://doi.org/10.1007/s11356-012-1266-5",
+      "display_name": "Effects of chronic exposure to radiofrequency electromagnetic fields on energy balance in developing rats",
+      "publication_year": 2012,
+      "cited_by_count": 44,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Amandine Pelletier"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stéphane Delanaud"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Pauline Décima"
+          }
+        },
+        {
+          "author": {
+            "display_name": "György Thuróczy"
+          }
+        },
+        {
+          "author": {
+            "display_name": "René de Sèze"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Matteo Cerri"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Véronique Bach"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Jean‐Pierre Libert"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Nathalie Loos"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2089532767",
+      "doi": "https://doi.org/10.1007/s10714-012-1362-3",
+      "display_name": "Effects of electromagnetic field on energy density inhomogeneity in self-gravitating fluids",
+      "publication_year": 2012,
+      "cited_by_count": 23,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "M. Sharif"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Neelum Bashir"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4283753436",
+      "doi": "https://doi.org/10.23919/ipec-himeji2022-ecce53331.2022.9807221",
+      "display_name": "Electromagnetic Field and Energy Flux in Wireless Power Transfer System",
+      "publication_year": 2022,
+      "cited_by_count": 2,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Itsuki Masuda"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Manabu Ishitobi"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1577635987",
+      "doi": "https://doi.org/10.48550/arxiv.0802.4034",
+      "display_name": "Using Animated Textures to Visualize Electromagnetic Fields and Energy Flow",
+      "publication_year": 2008,
+      "cited_by_count": 2,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "J. W. Belcher"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Carolann Koleci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2403008283",
+      "doi": null,
+      "display_name": "[Effect of UHF electromagnetic fields on energy metabolism in animal tissues].",
+      "publication_year": 1972,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "L I Mishchenko"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4285160826",
+      "doi": "https://doi.org/10.1109/tdei.2022.3188588",
+      "display_name": "Dielectric Properties of Polymer Films in Strong Electromagnetic Field for Energy Storage Capacitor",
+      "publication_year": 2022,
+      "cited_by_count": 19,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Haoliang Liu"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Boxue X. Du"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Meng Xiao"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Zhaoyu Ran"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Yanwei Ma"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3098916034",
+      "doi": null,
+      "display_name": "2 Effects of Electromagnetic Field on Energy Density Inhomogeneity in Self-Gravitating Fluids",
+      "publication_year": null,
+      "cited_by_count": 16,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Muhammad Sharif"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Neelum Bashir"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1982061739",
+      "doi": "https://doi.org/10.2528/pier98120202",
+      "display_name": "Nature of Electromagnetic Field and Energy Behavior in a Plane Resonator with Moving Boundary",
+      "publication_year": 1999,
+      "cited_by_count": 4,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Lakhdar Gaffour"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4393063119",
+      "doi": "https://doi.org/10.1016/j.jfoodeng.2024.112056",
+      "display_name": "Effect of electric and electromagnetic fields on energy consumption, texture, and microstructure of dried black garlic",
+      "publication_year": 2024,
+      "cited_by_count": 13,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Klaudia Masztalerz"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Krzysztof Lech"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Tomasz Dróżdź"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Adam Figiel"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Anubhav Pratap-Singh"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2376136978",
+      "doi": null,
+      "display_name": "The Simulative Analysis of Electromagnetic Field and Energy Distribution Existing in 3mm Quasioptical Resonator",
+      "publication_year": 2001,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Yang Kai"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2012048005",
+      "doi": "https://doi.org/10.1109/euma.1971.331580",
+      "display_name": "Electromagnetic Fields and Energy Flow Lines in Waveguide Bifurcations with Arbitrary Passive Terminations",
+      "publication_year": 1971,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "A. Schrott"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4312591818",
+      "doi": "https://doi.org/10.1109/ess57819.2022.9969348",
+      "display_name": "The Propagation of Electromagnetic Fields of Energy Facilities Modeling in the Context of Energy Saving and Public Safety",
+      "publication_year": 2022,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Valentyn Glyva"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Larysa Levchenko"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Наталія Миколаївна Аушева"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Oksana Tykhenko"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W160240280",
+      "doi": null,
+      "display_name": "[Effect of 900Mhz electromagnetic fields on energy metabolism in postnatal rat cerebral cortical neurons].",
+      "publication_year": 2005,
+      "cited_by_count": 5,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Qiang Wang"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Zhaojin Cao"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Xuetao Bai"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3030612325",
+      "doi": null,
+      "display_name": "Electromagnetic Fields and Energy Extraction From Boosted Rotating Black Hole Immersed in Magnetic Field",
+      "publication_year": 2018,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Bobomurat J. Ahmedov"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W61492352",
+      "doi": null,
+      "display_name": "[Effect of 900MHz electromagnetic fields on energy metabolism of cerebral cortical neurons in postnatal rat].",
+      "publication_year": 2004,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Qiang Wang"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Zhaojin Cao"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Xuetao Bai"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2416543012",
+      "doi": "https://doi.org/10.15407/ujpe61.05.0413",
+      "display_name": "About a Three-Dimensional Quantum Vacuum as the Ultimate Origin of Gravity, Electromagnetic Field, Dark Energy ... and Quantum Behavior",
+      "publication_year": 2016,
+      "cited_by_count": 24,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Davide Fiscaletti"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Amrit Šorli"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3044172509",
+      "doi": "https://doi.org/10.3233/jae-190133",
+      "display_name": "Lightning return stroke electromagnetic field and energy at close distance by using 3D FDTD simulation",
+      "publication_year": 2021,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Ziheng Zhang"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Yangmeng Tian"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Caixia Wang"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Xin Wang"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Yang Tian"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4407393046",
+      "doi": "https://doi.org/10.1186/s12906-025-04792-3",
+      "display_name": "Pulsed electromagnetic fields modulate energy metabolism during wound healing process: an in vitro model study",
+      "publication_year": 2025,
+      "cited_by_count": 9,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Feng Liao"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Yamei Li"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Zhou Zhang"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Qian Yu"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Huifang Liu"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2792574215",
+      "doi": "https://doi.org/10.17073/0368-0797-2018-2-96-101",
+      "display_name": "INVESTIGATION OF THE INFLUENCE OF ELECTROMAGNETIC FIELD AND ENERGY-MECHANICAL PROCESSING ON THE PRODUCTION OF METALLIC COBALT NANOPOWDER BY HYDROGEN REDUCTION",
+      "publication_year": 2018,
+      "cited_by_count": 7,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Van Minh Nguyen"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Yu. V. Konyukhov"
+          }
+        },
+        {
+          "author": {
+            "display_name": "D. I. Ryzhonkov"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4317987316",
+      "doi": "https://doi.org/10.5281/zenodo.7566269",
+      "display_name": "EXPERIMENTAL DETERMINATION OF THE DIELECTRIC PROPERTIES OF FRUITS (USING ULTRA-HIGH FREQUENCY (UHF) ELECTROMAGNETIC FIELD (EMM) ENERGY)",
+      "publication_year": 2023,
+      "cited_by_count": 12,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "A.О.Uzaydullaev"
+          }
+        }
+      ]
+    }
+  ],
+  "group_by": []
+}

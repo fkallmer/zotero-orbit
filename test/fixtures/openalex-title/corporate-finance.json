@@ -1,0 +1,485 @@
+{
+  "results": [
+    {
+      "id": "https://openalex.org/W4237698691",
+      "doi": "https://doi.org/10.2307/2327568",
+      "display_name": "Principles of Corporate Finance.",
+      "publication_year": 1981,
+      "cited_by_count": 3794,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard C. Stapleton"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1551134357",
+      "doi": "https://doi.org/10.1016/0378-4266(82)90040-1",
+      "display_name": "Principles of corporate finance",
+      "publication_year": 1982,
+      "cited_by_count": 1021,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "James A. Miles"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4254313700",
+      "doi": "https://doi.org/10.2307/1053500",
+      "display_name": "Principles of Corporate Finance",
+      "publication_year": 1940,
+      "cited_by_count": 320,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "William A. Carter"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Milo Kimball"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1487598553",
+      "doi": "https://doi.org/10.1093/acprof:oso/9780199671342.001.0001",
+      "display_name": "Principles of Corporate Finance Law",
+      "publication_year": 2014,
+      "cited_by_count": 176,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Eilís Ferran"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Look Chan Ho"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3147784825",
+      "doi": "https://doi.org/10.1093/oso/9780198854074.001.0001",
+      "display_name": "Principles of Corporate Finance Law",
+      "publication_year": 2023,
+      "cited_by_count": 61,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Eilís Ferran"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Elizabeth Howell"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Felix Steffek"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W55269014",
+      "doi": null,
+      "display_name": "Principles of corporate finance / Richard A. Brealey, Stewart C. Myers",
+      "publication_year": 1991,
+      "cited_by_count": 209,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W614358632",
+      "doi": null,
+      "display_name": "Principles of corporate finance: Global edition (10th edition)",
+      "publication_year": 2011,
+      "cited_by_count": 103,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Frank Allen"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2579606748",
+      "doi": null,
+      "display_name": "Principles of Corporate Finance - 4/E",
+      "publication_year": 2002,
+      "cited_by_count": 17,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W13211175",
+      "doi": null,
+      "display_name": "Principles of Corporate Finance with Cdrom",
+      "publication_year": 2000,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3109189962",
+      "doi": null,
+      "display_name": "Principles of corporate finance law",
+      "publication_year": 2012,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Ben She"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W7136653814",
+      "doi": "https://doi.org/10.2308/tar-7122516",
+      "display_name": "Principles of Corporate Finance (Book).",
+      "publication_year": 1942,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Homer V. Cherrington"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W7217812374",
+      "doi": null,
+      "display_name": "Basic principles of corporate finance",
+      "publication_year": 2023,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Maurizio Dallocchio"
+          }
+        },
+        {
+          "author": {
+            "display_name": "SALVI A."
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W620336045",
+      "doi": null,
+      "display_name": "Solutions manual for use with principles of corporate finance",
+      "publication_year": 2006,
+      "cited_by_count": 28,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Franklin Allen"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1585696921",
+      "doi": null,
+      "display_name": "Study guide for use with Principles of corporate finance, sixth edition",
+      "publication_year": 2000,
+      "cited_by_count": 70,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W612332744",
+      "doi": null,
+      "display_name": "Study guide for Principles of corporate finance",
+      "publication_year": 2011,
+      "cited_by_count": 4,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Franklin Allen"
+          }
+        },
+        {
+          "author": {
+            "display_name": "V. Sivarama Krishnan"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1561896206",
+      "doi": null,
+      "display_name": "Solutions manual for principles of corporate finance",
+      "publication_year": 2014,
+      "cited_by_count": 3,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Franklin Allen"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Bruce Swensen"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W2509705784",
+      "doi": "https://doi.org/10.1086/255652",
+      "display_name": "Principles of Corporate Finance. Milo Kimball",
+      "publication_year": 1940,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "J. E. Kirshman"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3080837129",
+      "doi": null,
+      "display_name": "EBOOK : Principles of Corporate Finance, 12th Edition",
+      "publication_year": 2017,
+      "cited_by_count": 3,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Franklin Allen"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1567502892",
+      "doi": null,
+      "display_name": "Solutions Manual to accompany Principles of Corporate Finance",
+      "publication_year": 2013,
+      "cited_by_count": 2,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Franklin Allen"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3212453405",
+      "doi": null,
+      "display_name": "Study Guide For Use With Principles Of Corporate Finance",
+      "publication_year": 2000,
+      "cited_by_count": 2,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart C. Myers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Franklin Allen"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3216151529",
+      "doi": null,
+      "display_name": "Study Guide for Use With Principles of Corporate Finance",
+      "publication_year": 2000,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "V. Sivarama Krishnan"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W87601851",
+      "doi": null,
+      "display_name": "Principles of corporate finance / Richard A. Brealey, Stewart Myers",
+      "publication_year": 1985,
+      "cited_by_count": 6,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Richard A. Brealey"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4396683208",
+      "doi": "https://doi.org/10.69492/cbar.v17i0.610",
+      "display_name": "Developing Faith Integration in a Principles of Corporate Finance Course",
+      "publication_year": 2022,
+      "cited_by_count": 4,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Lonnie Leeper"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W1592891609",
+      "doi": null,
+      "display_name": "Study guide to accompany Brealey and Myers Principles of corporate finance",
+      "publication_year": 1984,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Charles A. D'Ambrosio"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stewart D. Hodges"
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3150353995",
+      "doi": null,
+      "display_name": "Study Guide to Accompany Brealey and Myers Principles of Corporate Finance",
+      "publication_year": 1988,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "D'Ambrosio"
+          }
+        }
+      ]
+    }
+  ],
+  "group_by": []
+}
