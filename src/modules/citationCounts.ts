@@ -2,11 +2,14 @@ import { version } from '../../package.json'
 import { fetchWithDeadline } from '../utils/abort'
 import { describeError, isErrorNamed } from '../utils/errors'
 import {
-  CITATION_KEY_PATTERN,
+  CITATION_LINE_ANCHOR,
   escapeRegExp,
   formatCitationLine,
   insertBeforeMatch,
+  readOpenAlexLine,
   stripCitationLines,
+  withOpenAlexLine,
+  withoutOpenAlexLine,
 } from '../utils/extraField'
 import { classifyHttpStatus, classifyThrown, parseCitationCount } from '../utils/httpOutcome'
 import {
@@ -45,17 +48,27 @@ import {
   titleSimilarity,
 } from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
+import { itemKeys } from './libraryMatch.core'
 import { parseOpenAlexBudget, recordOpenAlexBudget } from './openAlexBudget.core'
 import {
+  buildWorkByIdUrl,
   buildWorkUrl,
   normalizeWork,
   OPENALEX_DATABASE,
   openAlexAuthHeaders,
   openAlexContact,
+  openAlexIdRecordCacheKey,
   openAlexRecordCacheKey,
   toLookupDoi,
   WORK_FULL_SELECT,
 } from './openAlexClient.core'
+import {
+  buildTitleSearchUrl,
+  canBeTheWork,
+  itemTypeHasEditions,
+  normalizeTitleSearch,
+  pickTitleMatch,
+} from './openAlexTitleMatch.core'
 import { noteWait, noticeKey, pickNotice, pruneWaits, SEMANTIC_SCHOLAR_SOURCE } from './rateLimitNotice.core'
 import {
   getSemanticScholarClient,
@@ -93,6 +106,8 @@ interface CitationCellData {
   noIdentifier?: boolean
   /** Still waiting in the update queue: the cell shows "…", the counts so far dimmed. */
   pending?: boolean
+  /** The OpenAlex count belongs to a work found by title, possibly another edition. */
+  openAlexByTitle?: boolean
 }
 
 /** Engage budget pacing only below this share of a provider's allowance. */
@@ -956,6 +971,34 @@ class Helpers {
   }
 
   /**
+   * The OpenAlex work an earlier title match stored in Extra, for an item with
+   * no DOI or arXiv id. A DOI always wins, so this is null whenever there is one.
+   */
+  /** A DOI from a `DOI:` line in Extra, for items whose type has no DOI field. */
+  static getExtraDoi(item: Zotero.Item): string | null {
+    const key = itemKeys({ extra: item.getField('extra') || '' }).find((candidate) => candidate.startsWith('doi:'))
+    return key ? key.slice(4) : null
+  }
+
+  static getStoredOpenAlexId(item: Zotero.Item): string | null {
+    if (this.getAllItemIdentifiers(item).length > 0) return null
+    const line = readOpenAlexLine(item.getField('extra'))
+    return line?.kind === 'id' ? line.id : null
+  }
+
+  /**
+   * Whether OpenAlex can be asked about an item that has no DOI or arXiv id:
+   * by the work id an earlier title match stored, or by a new title search.
+   * `OpenAlex: none` in Extra turns both off.
+   */
+  static canAskOpenAlexWithoutIdentifier(item: Zotero.Item): boolean {
+    if (this.getExtraDoi(item) !== null) return true
+    const line = readOpenAlexLine(item.getField('extra'))
+    if (line) return line.kind === 'id'
+    return buildTitleSearchUrl(item.getField('title') || '') !== null
+  }
+
+  /**
    * Get DOI or arXiv ID from item
    * @param item Zotero item
    * @returns Object with type and id, or null if neither found
@@ -1003,7 +1046,17 @@ class Core {
    * @param tag Citation source tag
    * @param count Citation count number
    */
-  static async setCitationCount(item: Zotero.Item, data: CountArray) {
+  /**
+   * @param openAlexId A work found by title, written as an `OpenAlex:` line in
+   *   the same save, so the search does not run again; null removes a line
+   *   that pointed at the wrong work.
+   */
+  static async setCitationCount(
+    item: Zotero.Item,
+    data: CountArray,
+    openAlexId?: string | null,
+    dropTitles: string[] = [],
+  ) {
     let extra = item.getField('extra')
     if (!extra) {
       extra = ''
@@ -1014,7 +1067,9 @@ class Core {
 
     const extras = extra.split('\n')
 
-    const dbTitles: string[] = data.map((d) => d.title.trim())
+    // Sources whose stored count is to go without a new one, such as an
+    // OpenAlex match the user rejected.
+    const dbTitles: string[] = [...data.map((d) => d.title.trim()), ...dropTitles.map((title) => title.trim())]
 
     const { kept: filteredExtras, removed } = stripCitationLines(extras, dbTitles)
     for (const line of removed) {
@@ -1029,12 +1084,18 @@ class Core {
       const newEntry = formatCitationLine(title, count, date)
 
       // Insert as low as possible but before the BBT citation key
-      insertBeforeMatch(filteredExtras, CITATION_KEY_PATTERN, newEntry)
+      insertBeforeMatch(filteredExtras, CITATION_LINE_ANCHOR, newEntry)
       debugLog('Citation debug - Added new entry:', newEntry)
     }
 
     // Join and set
-    const newExtra = filteredExtras.join('\n')
+    const withLine =
+      openAlexId === null
+        ? withoutOpenAlexLine(filteredExtras)
+        : openAlexId
+          ? withOpenAlexLine(filteredExtras, openAlexId)
+          : filteredExtras
+    const newExtra = withLine.join('\n')
     item.setField('extra', newExtra)
     await item.saveTx()
     debugLog('Citation debug - New Extra field:', newExtra)
@@ -1351,10 +1412,13 @@ class DBInterface {
    * @returns LookupResult with count and status
    */
   static async getOpenAlexCountEnhanced(item: Zotero.Item): Promise<LookupResult> {
-    const identifiers = Helpers.getAllItemIdentifiers(item)
+    let identifiers = Helpers.getAllItemIdentifiers(item)
     if (identifiers.length === 0) {
-      debugLog('Citation debug - No DOI or arXiv ID found for item:', item.id)
-      return { count: -1, status: 'no_identifier', message: 'No DOI or arXiv ID found' }
+      // A `DOI:` line in Extra, where Zotero puts it for types without a DOI
+      // field, is a DOI all the same: no need to search the title.
+      const extraDoi = Helpers.getExtraDoi(item)
+      if (extraDoi === null) return this.getOpenAlexCountWithoutIdentifier(item)
+      identifiers = [{ type: 'doi', id: extraDoi, source: 'extra' }]
     }
 
     // Status precedence mirrors INSPIRE: a transient failure anywhere outranks
@@ -1437,6 +1501,140 @@ class DBInterface {
       return { count: -1, status: 'api_error', message: 'OpenAlex rejected every identifier' }
     }
     return { count: 0, status: 'not_found', message: 'No valid identifiers found in OpenAlex' }
+  }
+
+  /**
+   * OpenAlex for an item with no DOI or arXiv id.
+   *
+   * A work id stored in Extra by an earlier match is used as it is. Otherwise
+   * the work is searched for by title and author (see `openAlexTitleMatch.core`),
+   * and a find is handed back as `foundOpenAlexId` so it is written to Extra
+   * with the counts and the search does not run again: a title search costs
+   * OpenAlex ten times a DOI lookup.
+   */
+  static async getOpenAlexCountWithoutIdentifier(item: Zotero.Item): Promise<LookupResult> {
+    const line = readOpenAlexLine(item.getField('extra'))
+    if (line?.kind === 'none') {
+      // A rejected match: the count it brought goes too.
+      return {
+        count: -1,
+        status: 'no_identifier',
+        message: 'OpenAlex match turned off in Extra',
+        dropStoredCount: true,
+      }
+    }
+    // A stored work that turns out to be a review or erratum of the item (as
+    // earlier builds could store) is dropped and the title searched again.
+    let staleLine = false
+    if (line?.kind === 'id') {
+      const byId = await this.getOpenAlexCountById(line.id)
+      if (byId !== 'not-the-work') return byId
+      staleLine = true
+    }
+
+    // A PMID is an identifier the network can use; a title search could pick
+    // a different work than it does.
+    if (itemKeys({ extra: item.getField('extra') || '' }).some((key) => key.startsWith('pmid:'))) {
+      return { count: -1, status: 'no_identifier', message: 'Only a PMID, which the count path does not look up' }
+    }
+
+    // A title search costs ten times a DOI lookup, so a stored "not found" is
+    // honoured even in a run the user started, until its retry is due.
+    if (!staleLine && IgnoredItemsManager.isIgnored(item.id, OPENALEX_DATABASE, true)) {
+      return { count: 0, status: 'not_found', message: 'Searched by title before; retry not due yet' }
+    }
+
+    const title = item.getField('title') || ''
+    const url = buildTitleSearchUrl(title, openAlexContact())
+    if (url === null) {
+      debugLog('Citation debug - No DOI and no title specific enough for an OpenAlex search:', item.id)
+      return { count: -1, status: 'no_identifier', message: 'No DOI, and the title is too short to search for' }
+    }
+
+    const fetched = await this.requestOpenAlex(url, 'title search')
+    if (!fetched.ok) return fetched.result
+
+    const year = Number.parseInt(item.getField('year'), 10)
+    const match = pickTitleMatch(
+      {
+        title,
+        year: Number.isNaN(year) ? null : year,
+        creators: (item.getCreators() || []).map((creator) => ({
+          lastName: creator.lastName ?? '',
+          firstName: creator.firstName ?? '',
+        })),
+        allowOtherEditions: itemTypeHasEditions(Zotero.ItemTypes.getName(item.itemTypeID)),
+      },
+      normalizeTitleSearch(fetched.body),
+    )
+    if (!match || match.work.citedByCount === null) {
+      debugLog(`Citation debug - OpenAlex title search found no work with this title and author: ${item.id}`)
+      const result: LookupResult = {
+        count: 0,
+        status: 'not_found',
+        message: 'No OpenAlex work with this title and author',
+      }
+      // The wrong work's line and count go, rather than staying on the item.
+      return staleLine ? { ...result, dropStoredCount: true, clearOpenAlexLine: true } : result
+    }
+
+    debugLog(
+      `Citation debug - OpenAlex work found by title: ${match.work.id} (${match.work.year ?? 'no year'}` +
+        `${match.sameEdition ? '' : ', another edition'}) with ${match.work.citedByCount} citations`,
+    )
+    RateLimitManager.handleSuccess(OPENALEX_DATABASE)
+    return { count: match.work.citedByCount, status: 'success', foundOpenAlexId: match.work.id }
+  }
+
+  /** OpenAlex for a work whose id an earlier title match stored in Extra. */
+  static async getOpenAlexCountById(openAlexId: string): Promise<LookupResult | 'not-the-work'> {
+    const fetched = await this.requestOpenAlex(buildWorkByIdUrl(openAlexId, WORK_FULL_SELECT), openAlexId)
+    if (!fetched.ok) return fetched.result
+    const type = (fetched.body as Record<string, unknown> | null)?.type
+    if (!canBeTheWork(typeof type === 'string' ? type : null)) {
+      debugLog(
+        `Citation debug - Stored OpenAlex work ${openAlexId} is a ${String(type)}, not the item; searching again`,
+      )
+      return 'not-the-work'
+    }
+    const record = normalizeWork(fetched.body)
+    if (record) writeCache(openAlexIdRecordCacheKey(openAlexId), record)
+    const count = parseCitationCount((fetched.body as Record<string, unknown> | null)?.cited_by_count)
+    if (count === null) return { count: -1, status: 'transient_error', message: 'No usable cited_by_count' }
+    debugLog(`Citation debug - OpenAlex citation count: ${count} (via stored id ${openAlexId})`)
+    RateLimitManager.handleSuccess(OPENALEX_DATABASE)
+    return { count, status: 'success' }
+  }
+
+  /** One paced OpenAlex request, classified the way the DOI path classifies it. */
+  private static async requestOpenAlex(
+    url: string,
+    label: string,
+  ): Promise<{ ok: true; body: unknown } | { ok: false; result: LookupResult }> {
+    await RateLimitManager.waitForRateLimit(OPENALEX_DATABASE)
+    let response: Response
+    try {
+      response = await lookupFetch(url, { headers: { ...requestHeaders(), ...openAlexAuthHeaders() } })
+    } catch (err) {
+      debugLog(`Citation debug - OpenAlex request failed (${label}): ${describeError(err)}`)
+      return { ok: false, result: { count: -1, status: classifyThrown(), message: 'Network request failed' } }
+    }
+    RateLimitManager.noteBudget(OPENALEX_DATABASE, response)
+    if (!response.ok) {
+      const status = classifyHttpStatus(response.status)
+      if (status === 'rate_limited') RateLimitManager.handleRateLimit(OPENALEX_DATABASE)
+      debugLog(`Citation debug - OpenAlex HTTP ${response.status} (${label}, ${status})`)
+      return {
+        ok: false,
+        result: { count: status === 'not_found' ? 0 : -1, status, message: `HTTP ${response.status}` },
+      }
+    }
+    try {
+      return { ok: true, body: await response.json() }
+    } catch (err) {
+      debugLog(`Citation debug - OpenAlex body parse failed (${label}): ${describeError(err)}`)
+      return { ok: false, result: { count: -1, status: 'transient_error', message: 'Malformed response body' } }
+    }
   }
 
   /**
@@ -1966,6 +2164,9 @@ async function updateItem(
     }
 
     const data: CountArray = []
+    // A work id to write, or null to remove a wrong one.
+    let foundOpenAlexId: string | null | undefined
+    const dropped: string[] = []
     for (const operation of databases) {
       if (isAutoUpdate && IgnoredItemsManager.isIgnored(item.id, operation, true)) {
         debugLog(`Citation debug - Skipping ${operation} for item ${item.id} (marked as ignored)`)
@@ -1990,6 +2191,7 @@ async function updateItem(
 
       if (result.status === 'success' && result.count >= 0) {
         data.push({ title: getOperationName(operation), count: result.count })
+        if (result.foundOpenAlexId) foundOpenAlexId = result.foundOpenAlexId
         guardIgnoreBookkeeping(operation, item.id, () => IgnoredItemsManager.clearIgnoredItem(item.id, operation))
       } else {
         // Only an authoritative not-found is persistent; a missing identifier is
@@ -2003,15 +2205,18 @@ async function updateItem(
             IgnoredItemsManager.markAsIgnored(item.id, operation, 'not_found', true)
           }
         })
+        if (result.dropStoredCount) dropped.push(getOperationName(operation))
+        if (result.clearOpenAlexLine) foundOpenAlexId = null
         debugLog(`Citation debug - ${operation} for item ${item.id}: ${result.status} (${result.message ?? ''})`)
       }
     }
 
     if (!addon.data.alive) return false
     if (data.length > 0) {
-      await Core.setCitationCount(item, data)
+      await Core.setCitationCount(item, data, foundOpenAlexId, dropped)
       return true
     }
+    if (dropped.length > 0) await Core.setCitationCount(item, [], foundOpenAlexId, dropped)
   } catch (e) {
     if (isErrorNamed(e, 'AbortError')) throw e
     ztoolkit.log(`Error updating citation count for item ${item.id}\n${describeError(e)}`)
@@ -2123,7 +2328,15 @@ class UIRegistrar {
         // and silent. It previously logged `Object.keys(item)` and the item type
         // on every call, and fetched the parent item from the database for
         // attachments and notes -- all purely diagnostic.
-        const result = Core.getCitationCountForColumn(item)
+        const counted = Core.getCitationCountForColumn(item)
+        // Only for a row that shows an OpenAlex count, so the extra parsing
+        // stays off every other row.
+        const result =
+          counted?.databases.includes(OPENALEX_DATABASE) &&
+          readOpenAlexLine(item.getField('extra'))?.kind === 'id' &&
+          Helpers.getAllItemIdentifiers(item).length === 0
+            ? { ...counted, openAlexByTitle: true }
+            : counted
         if (pendingItemIDs.has(item.id)) {
           // Last key, so sorting by the column still orders by the counts.
           return JSON.stringify({ counts: [], databases: [], ...result, pending: true })
@@ -2208,9 +2421,11 @@ class UIRegistrar {
         const tooltip = dataToUse.databases
           .map((db: string, idx: number) => {
             const displayName = getOperationName(db)
-            return getString('tooltip-citation-tallies', {
-              args: { displayName, count: dataToUse.counts[idx] },
-            })
+            const key =
+              db === OPENALEX_DATABASE && dataToUse.openAlexByTitle
+                ? 'tooltip-openalex-by-title'
+                : 'tooltip-citation-tallies'
+            return getString(key, { args: { displayName, count: dataToUse.counts[idx] } })
           })
           .join(', ')
         span.title = tooltip

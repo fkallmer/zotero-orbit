@@ -9,6 +9,15 @@ export interface LookupResult {
   count: number
   status: LookupStatus
   message?: string
+  /**
+   * An OpenAlex work found by title for an item with no identifier, to be
+   * written to Extra with the counts so the search runs only once.
+   */
+  foundOpenAlexId?: string
+  /** A stored `OpenAlex:` line turned out to be wrong and should be removed. */
+  clearOpenAlexLine?: boolean
+  /** The stored count from this source is wrong and should be removed. */
+  dropStoredCount?: boolean
 }
 
 export interface ItemIdentifier {

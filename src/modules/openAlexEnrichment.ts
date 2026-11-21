@@ -19,6 +19,7 @@ import { lookupFetch, RateLimitManager, requestHeaders } from './citationCounts'
 import {
   buildCitingWorksUrl,
   buildSourceUrl,
+  buildWorkByIdUrl,
   buildWorksByDoiUrl,
   buildWorksByIdUrl,
   buildWorkUrl,
@@ -28,6 +29,7 @@ import {
   normalizeWorkLinks,
   OPENALEX_DATABASE,
   openAlexAuthHeaders,
+  openAlexIdRecordCacheKey,
   openAlexRecordCacheKey,
   REFERENCE_CHUNK,
   toLookupDoi,
@@ -117,8 +119,21 @@ async function fetchJson(url: string): Promise<unknown> {
  */
 export async function fetchScholarlyRecord(
   identifiers: readonly ItemIdentifier[],
-  options: { force?: boolean } = {},
+  options: { force?: boolean; openAlexId?: string | null } = {},
 ): Promise<ScholarlyRecord | null> {
+  // An item with no identifier may still have a work an earlier title match
+  // stored in Extra. A DOI wins whenever there is one.
+  if (identifiers.length === 0 && options.openAlexId) {
+    const key = openAlexIdRecordCacheKey(options.openAlexId)
+    if (options.force) dropCache(key)
+    else {
+      const cached = readCache<ScholarlyRecord>(key)
+      if (cached) return cached
+    }
+    const record = normalizeWork(await fetchJson(buildWorkByIdUrl(options.openAlexId, WORK_FULL_SELECT)))
+    if (record) writeCache(key, record)
+    return record
+  }
   for (const identifier of identifiers) {
     const lookupDoi = toLookupDoi(identifier)
     const key = openAlexRecordCacheKey(lookupDoi)

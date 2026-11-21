@@ -594,9 +594,11 @@ export function renderInto(doc: Document, body: HTMLElement, item: Zotero.Item, 
 
 async function loadData(item: Zotero.Item, force: boolean): Promise<PaneData> {
   const identifiers = Helpers.getAllItemIdentifiers(item)
-  if (identifiers.length === 0) return emptyPaneData()
+  // Without an identifier, a work an earlier title match stored in Extra.
+  const openAlexId = Helpers.getStoredOpenAlexId(item)
+  if (identifiers.length === 0 && openAlexId === null) return emptyPaneData()
 
-  const record = await fetchScholarlyRecord(identifiers, { force })
+  const record = await fetchScholarlyRecord(identifiers, { force, openAlexId })
   const journal = record?.sourceId ? await fetchJournalMetrics(record.sourceId, { force }) : null
 
   // Written by the count path on its own lookup, so the pane pays nothing for

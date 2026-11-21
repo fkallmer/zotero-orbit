@@ -4,6 +4,28 @@ All notable changes to Orbit. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) as far as a 0.x plugin can.
 
+## [0.3.3] — 2026-11-21
+
+### Added
+
+- **OpenAlex finds items without a DOI by title.** Books, reports and older
+  papers with no DOI or arXiv id are searched in OpenAlex by title and author.
+  The title must be the same and an author must agree on surname and initial.
+  Papers must also agree on the year; books and chapters may match another
+  edition, since OpenAlex often holds only an older one, and the tooltip says
+  when a count came from a title match. The work found is stored in Extra as
+  `OpenAlex: W…` (Cita's format), so the search runs once, and from then on
+  the item pane, the graph and the collection analysis use it too.
+  `OpenAlex: none` turns the search off for an item and removes the count it
+  brought. A title search costs OpenAlex ten times a DOI lookup, so an item
+  with no match is searched again only when its retry is due. Reviews,
+  errata, editorials and similar records never count as the work: a review of
+  a textbook carries its title and authors, and OpenAlex may credit it with
+  the book's citations. Measured on one library: 9 of 32 items without an
+  identifier found, all checked by hand; on 55 items with a DOI, the title
+  search picked the DOI's own work in 54 cases, and the one miss, a reprint of
+  a paper, is excluded by the year rule for papers.
+
 ## [0.3.2] — 2026-11-21
 
 ### Fixed
@@ -176,6 +198,7 @@ First release under the Orbit name, forked from
 - A citation graph tab for one paper: what it cites and what cites it, with
   selectable axes and the citations among its neighbours.
 
+[0.3.3]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fkallmer/zotero-orbit/compare/v0.2.22...v0.3.0

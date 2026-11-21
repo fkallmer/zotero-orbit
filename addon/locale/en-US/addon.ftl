@@ -59,6 +59,7 @@ semantic-scholar-unavailable = Semantic Scholar isn't available and has been tur
 # Column and tooltip
 column-citations = Citations
 tooltip-citation-tallies = { $displayName }: { $count }
+tooltip-openalex-by-title = { $displayName }: { $count } (work found by title; may be another edition)
 column-pending = Waiting to be updated
 column-not-found = No citation count: not found at { $sources }
 column-no-identifier = No citation count: no DOI or other identifier to look it up by

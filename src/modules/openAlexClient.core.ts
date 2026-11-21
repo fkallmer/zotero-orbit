@@ -302,6 +302,24 @@ function encodePath(id: string): string {
   return id.split('/').map(encodeURIComponent).join('/')
 }
 
+/**
+ * Cache address for a work found by OpenAlex id rather than DOI: an item with
+ * no DOI whose work was found by title. Kept apart from the DOI keys, so the
+ * two can never collide.
+ */
+export function openAlexIdRecordCacheKey(openAlexId: string): string {
+  return `work:openalex:${openAlexId.replace(/^https?:\/\/openalex\.org\//i, '').toLowerCase()}`
+}
+
+/** One work by its OpenAlex id (`W…`). */
+export function buildWorkByIdUrl(openAlexId: string, select: string): string {
+  const bare = openAlexId.replace(/^https?:\/\/openalex\.org\//i, '')
+  return (
+    `${API_ROOT}/works/${encodeURIComponent(bare)}` +
+    `?select=${encodeURIComponent(select)}${mailtoSuffix(activeContact)}`
+  )
+}
+
 export function buildWorkUrl(lookupDoi: string, select: string): string {
   return (
     `${API_ROOT}/works/doi:${encodePath(lookupDoi)}` +

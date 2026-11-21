@@ -1,0 +1,85 @@
+{
+  "results": [
+    {
+      "id": "https://openalex.org/W4299099953",
+      "doi": "https://doi.org/10.6028/nist.ir.5058",
+      "display_name": "Noncontact measurement of the exit temperature of sheet metal in an operating rolling mill",
+      "publication_year": 1998,
+      "cited_by_count": 1,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Arnold Kahn"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Louis C. Phillips"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Stephen R. Schaps"
+          }
+        },
+        {
+          "author": {
+            "display_name": "G. A. Alers"
+          }
+        }
+      ],
+      "type": "report"
+    },
+    {
+      "id": "https://openalex.org/W4298946189",
+      "doi": "https://doi.org/10.6028/nist.ir.5058r04/98",
+      "display_name": "Noncontact measurement of the exit temperature of sheet metal in an operating rolling mill",
+      "publication_year": 1998,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Stephen R. Schaps"
+          }
+        },
+        {
+          "author": {
+            "display_name": "G. A. Alers"
+          }
+        }
+      ],
+      "type": "report"
+    },
+    {
+      "id": "https://openalex.org/W2070451825",
+      "doi": "https://doi.org/10.1117/12.259197",
+      "display_name": "Noncontact measurement of the exit temperature of sheet metal in an operating rolling mill",
+      "publication_year": 1996,
+      "cited_by_count": 0,
+      "authorships": [
+        {
+          "author": {
+            "display_name": "Stephen R. Schaps"
+          }
+        },
+        {
+          "author": {
+            "display_name": "G. A. Alers"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Arnold H. Kahn"
+          }
+        },
+        {
+          "author": {
+            "display_name": "Louis C. Phillips"
+          }
+        }
+      ],
+      "type": "conference-paper"
+    }
+  ],
+  "group_by": []
+}

@@ -78,6 +78,20 @@ page. Left unsolved, Scholar is skipped for the rest of that update. Automatic
 updates never open a window, and a blocked search is never stored as "not
 found".
 
+An item with no DOI or arXiv id is looked up in OpenAlex by title. A work
+counts only if its title is the same and an author agrees on surname and
+initial; for papers the year must agree too, while for books and chapters
+another edition is accepted, since OpenAlex often holds only that. The work
+found is written to Extra as `OpenAlex: W…`, the format Cita and Zotero's own
+OpenAlex translator use, and from then on the item pane, the graph and the
+collection analysis use it as well. The tooltip says when an OpenAlex count
+came from a title match. Edit the line to point at the right work, or write
+`OpenAlex: none` to stop the search for that item. Field-weighted impact stays
+empty for these items. A title search costs ten times a DOI lookup against
+OpenAlex's daily budget, so a work found is never searched for again, and an
+item with no match is searched again only when its retry is due, even in an
+update you start yourself.
+
 A second, sortable column shows OpenAlex's field-weighted citation impact — how
 a paper compares to others of its field, year and type, where 1.0 is average.
 Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675
@@ -250,8 +264,9 @@ reload button refetches.
 Orbit sends only what a lookup needs, and only to the source that answers it:
 
 - **Identifiers** (DOI, arXiv ID, PMID) of the items you look up, to the
-  sources you enabled. Titles and authors are sent only to Google Scholar,
-  which has no other way to search.
+  sources you enabled. Titles and authors go to Google Scholar, which has no
+  other way to search, and titles to OpenAlex for items with no identifier,
+  if OpenAlex is enabled.
 - **Your contact address**, if you set one, to Crossref and OpenAlex.
 - **Your API keys**, each only to its own service, in a request header — never
   in a URL, so they do not appear in debug logs. Zotero stores them
