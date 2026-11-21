@@ -1,6 +1,6 @@
 import { version } from '../../package.json'
 import { fetchWithDeadline } from '../utils/abort'
-import { isErrorNamed } from '../utils/errors'
+import { describeError, isErrorNamed } from '../utils/errors'
 import {
   CITATION_KEY_PATTERN,
   escapeRegExp,
@@ -1744,7 +1744,7 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
       if (await updateItem(item, operations, false)) updatedCount++
     } catch (e) {
       if (isErrorNamed(e, 'AbortError')) break
-      ztoolkit.log('Error updating citation count for item', e)
+      ztoolkit.log(`Error updating citation count for item ${item.id}\n${describeError(e)}`)
     }
   }
   clearPending()
@@ -1801,44 +1801,37 @@ async function updateItem(
         continue
       }
 
-      let result: LookupResult
-      let displayName = ''
-      if (operation === 'crossref') {
-        result = await DBInterface.getCrossrefCountEnhanced(item)
-        displayName = getOperationName(operation)
-      } else if (operation === OPENALEX_DATABASE) {
-        result = await DBInterface.getOpenAlexCountEnhanced(item)
-        displayName = getOperationName(operation)
-      } else if (operation === GOOGLE_SCHOLAR_DATABASE) {
-        // Automatic runs never surface a CAPTCHA window unprompted.
-        result = await DBInterface.getGoogleScholarCountEnhanced(item, !isAutoUpdate)
-        displayName = getOperationName(operation)
-      } else if (operation === 'inspire') {
-        result = await DBInterface.getInspireCountEnhanced(item)
-        displayName = getOperationName(operation)
-      } else if (operation === 'semanticscholar') {
-        result = await DBInterface.getSemanticScholarCountEnhanced(item)
-        displayName = getOperationName(operation)
-      } else {
+      // Each database is isolated. One lookup that throws used to escape the
+      // whole loop, so the counts already fetched from the others were dropped
+      // and the item kept no count at all.
+      let result: LookupResult | null
+      try {
+        result = await lookupCount(item, operation, isAutoUpdate)
+      } catch (e) {
+        if (isErrorNamed(e, 'AbortError')) throw e
+        ztoolkit.log(`Citation lookup failed: ${operation} for item ${item.id}\n${describeError(e)}`)
         continue
       }
+      if (result === null) continue
 
       // Once the plugin is shut down, don't write to the ignore cache or the item.
       if (!addon.data.alive) return false
 
       if (result.status === 'success' && result.count >= 0) {
-        IgnoredItemsManager.clearIgnoredItem(item.id, operation)
-        data.push({ title: displayName, count: result.count })
+        data.push({ title: getOperationName(operation), count: result.count })
+        guardIgnoreBookkeeping(operation, item.id, () => IgnoredItemsManager.clearIgnoredItem(item.id, operation))
       } else {
         // Only an authoritative not-found is persistent; a missing identifier is
         // cached for the session. Provider failures record nothing -- see
         // `getIgnorePolicy`.
         const policy = getIgnorePolicy(result.status, isAutoUpdate)
-        if (policy === 'session') {
-          IgnoredItemsManager.markAsIgnored(item.id, operation, 'no_identifier', false)
-        } else if (policy === 'persistent') {
-          IgnoredItemsManager.markAsIgnored(item.id, operation, 'not_found', true)
-        }
+        guardIgnoreBookkeeping(operation, item.id, () => {
+          if (policy === 'session') {
+            IgnoredItemsManager.markAsIgnored(item.id, operation, 'no_identifier', false)
+          } else if (policy === 'persistent') {
+            IgnoredItemsManager.markAsIgnored(item.id, operation, 'not_found', true)
+          }
+        })
         debugLog(`Citation debug - ${operation} for item ${item.id}: ${result.status} (${result.message ?? ''})`)
       }
     }
@@ -1850,9 +1843,40 @@ async function updateItem(
     }
   } catch (e) {
     if (isErrorNamed(e, 'AbortError')) throw e
-    ztoolkit.log('Error updating citation count for item', e)
+    ztoolkit.log(`Error updating citation count for item ${item.id}\n${describeError(e)}`)
   }
   return false
+}
+
+/** Ask one database for an item's count, or null for a database this build doesn't know. */
+function lookupCount(item: Zotero.Item, operation: string, isAutoUpdate: boolean): Promise<LookupResult> | null {
+  switch (operation) {
+    case 'crossref':
+      return DBInterface.getCrossrefCountEnhanced(item)
+    case OPENALEX_DATABASE:
+      return DBInterface.getOpenAlexCountEnhanced(item)
+    case GOOGLE_SCHOLAR_DATABASE:
+      // Automatic runs never surface a CAPTCHA window unprompted.
+      return DBInterface.getGoogleScholarCountEnhanced(item, !isAutoUpdate)
+    case 'inspire':
+      return DBInterface.getInspireCountEnhanced(item)
+    case 'semanticscholar':
+      return DBInterface.getSemanticScholarCountEnhanced(item)
+    default:
+      return null
+  }
+}
+
+/**
+ * Run ignore-cache bookkeeping without letting it cost the item its counts.
+ * The cache is a pref holding JSON; a failure there is logged and skipped.
+ */
+function guardIgnoreBookkeeping(operation: string, itemId: number, update: () => void): void {
+  try {
+    update()
+  } catch (e) {
+    ztoolkit.log(`Ignore-cache update failed: ${operation} for item ${itemId}\n${describeError(e)}`)
+  }
 }
 
 class BasicRegistrar {

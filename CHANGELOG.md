@@ -4,6 +4,18 @@ All notable changes to Orbit. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) as far as a 0.x plugin can.
 
+## [Unreleased]
+
+### Fixed
+
+- **One failing database no longer costs an item all its counts.** Each
+  database is now looked up on its own. Before, an error in one lookup (for
+  example Semantic Scholar) threw away the counts already fetched from the
+  others, so an item could end with no count at all and the run reported
+  "updated 0 items".
+- **Lookup errors are logged with their message and stack.** They were logged
+  as `{}`, which hid the cause.
+
 ## [0.3.1] — 2026-11-18
 
 ### Changed

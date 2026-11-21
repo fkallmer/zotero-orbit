@@ -28,3 +28,25 @@ export function getErrorMessage(error: unknown): string {
     return 'Unknown error'
   }
 }
+
+/**
+ * A readable one-off description of a thrown value, for logs.
+ *
+ * `ztoolkit.log` serialises an Error as `{}`, because its fields are not own
+ * enumerable properties, so the failure that dropped a count was invisible.
+ */
+export function describeError(error: unknown): string {
+  const name = getErrorName(error)
+  const message = getErrorMessage(error)
+  let stack: string | undefined
+  if (typeof error === 'object' && error !== null) {
+    try {
+      const value = (error as { readonly stack?: unknown }).stack
+      if (typeof value === 'string' && value.trim() !== '') stack = value.trim()
+    } catch {
+      stack = undefined
+    }
+  }
+  const head = name && name !== '' ? `${name}: ${message}` : message
+  return stack ? `${head}\n${stack}` : head
+}
