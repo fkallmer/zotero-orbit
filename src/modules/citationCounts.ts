@@ -17,6 +17,7 @@ import {
   stripArxivVersion,
 } from '../utils/identifiers'
 import {
+  cloneIgnoreEntries,
   IGNORE_STORE_VERSION,
   parseIgnoreStore,
   serializeIgnoreStore,
@@ -31,11 +32,14 @@ import { readCache, writeCache } from '../utils/recordCache'
 import { effectiveDatabases, semanticScholarUnavailableResult } from './citationTypes'
 import { notifySemanticScholarUnavailable } from './degradedNotice'
 import { readFwci, recordFwci } from './fwciTracker'
+import { loadScholarInBackground, solveScholarInViewer } from './googleScholarBrowser'
 import {
   buildScholarUrl,
+  challengeNeedsPerson,
+  classifyScholarPage,
   extractResultTitle,
   GOOGLE_SCHOLAR_DATABASE,
-  hasRecaptcha,
+  isScholarChallenge,
   parseScholarCount,
   TITLE_MATCH_THRESHOLD,
   titleSimilarity,
@@ -443,7 +447,7 @@ class IgnoredItemsManager {
     const raw = String(getPref('ignoredItems') ?? '')
     if (this.parsed?.raw !== raw) this.parsed = { raw, entries: parseIgnoreStore(raw).entries }
     // A copy: callers edit what they get and save it back.
-    return structuredClone(this.parsed.entries)
+    return cloneIgnoreEntries(this.parsed.entries)
   }
 
   /**
@@ -460,6 +464,16 @@ class IgnoredItemsManager {
       notFound: databases.filter((database) => entries[database]?.[itemKey] !== undefined),
       noIdentifier: databases.some((database) => this.memoryCache.get(itemId)?.databases.includes(database)),
     }
+  }
+
+  /** Forget every stored "not found" from one database. Returns how many were dropped. */
+  static dropDatabase(database: string): number {
+    const data = this.loadPersistentData()
+    const dropped = Object.keys(data[database] ?? {}).length
+    if (dropped === 0) return 0
+    delete data[database]
+    this.savePersistentData(data)
+    return dropped
   }
 
   private static savePersistentData(entries: IgnoreEntries): void {
@@ -1474,79 +1488,24 @@ class DBInterface {
     await RateLimitManager.waitForRateLimit(GOOGLE_SCHOLAR_DATABASE)
     debugLog('Citation debug - Fetching from Google Scholar:', url)
 
-    let html: string
-    try {
-      const response = await Zotero.HTTP.request('GET', url, {
-        responseType: 'text',
-        timeout: REQUEST_TIMEOUT_MS,
-      })
-      html = (response as { responseText?: string }).responseText ?? ''
-    } catch (err) {
-      // Zotero.HTTP throws on non-2xx, carrying the status on the error.
-      const status = (err as { status?: number })?.status
-      if (typeof status === 'number') {
-        const classified = classifyHttpStatus(status)
-        if (classified === 'rate_limited') RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
-        debugLog(`Citation debug - Google Scholar HTTP ${status} (${classified})`)
-        return { count: -1, status: classified, message: `HTTP ${status}` }
+    const fetched = await fetchScholarPage(url)
+    if (fetched.kind === 'failed') return fetched.result
+    let page = fetched.page
+
+    if (classifyScholarPage(page.html, page.url) === 'challenge') {
+      // Google wants a check passed first. That says nothing about the item.
+      // Only a run a person started tries to get past it; an automatic run
+      // backs off instead of opening browsers unprompted.
+      debugLog(`Citation debug - Google Scholar asked for verification (${page.url})`)
+      const passed = interactive ? await passScholarChallenge(url, page.html) : null
+      if (!passed) {
+        RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
+        return { count: -1, status: 'rate_limited', message: 'Google Scholar is asking for verification' }
       }
-      debugLog('Citation debug - Google Scholar request failed:', err)
-      return { count: -1, status: classifyThrown(), message: 'Network request failed' }
+      page = passed
     }
 
-    if (hasRecaptcha(html)) {
-      // Scholar is not rate limiting us on a timer; it wants a human. Backing
-      // off and retrying spends the next request for nothing, so the run stops
-      // here and -- when a person is actually present -- the page is opened so
-      // the challenge can be solved.
-      RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
-      debugLog('Citation debug - Google Scholar returned a CAPTCHA')
-      if (interactive) {
-        try {
-          Zotero.openInViewer(url)
-        } catch (err) {
-          debugLog('Citation debug - Could not open the CAPTCHA page:', err)
-        }
-      }
-      return { count: -1, status: 'rate_limited', message: 'Google Scholar is asking for a CAPTCHA' }
-    }
-
-    const count = parseScholarCount(html)
-    if (count === null) {
-      // No result block: the search matched nothing. That is a statement about
-      // this title, not a transport failure, so it is allowed to persist.
-      debugLog('Citation debug - No Google Scholar result for item:', item.id)
-      return { count: 0, status: 'not_found', message: 'No matching Google Scholar result' }
-    }
-
-    // Scholar always answers with *something*. Without checking what came back,
-    // an unrelated paper's count gets written to this item and nothing ever
-    // flags it. Three near-identical textbook titles in one library returned
-    // 626, 2 and 0 citations; at most one of those was right.
-    const searchedTitle = parseMarkup(rawTitle)
-    const resultTitle = extractResultTitle(html)
-    if (!resultTitle) {
-      debugLog('Citation debug - Google Scholar result carries no readable title')
-      return { count: 0, status: 'not_found', message: 'Google Scholar result had no readable title' }
-    }
-    const similarity = titleSimilarity(searchedTitle, resultTitle)
-    if (similarity < TITLE_MATCH_THRESHOLD) {
-      debugLog(
-        `Citation debug - Google Scholar hit rejected (${similarity.toFixed(2)} < ${TITLE_MATCH_THRESHOLD}): ` +
-          `wanted "${searchedTitle}", got "${resultTitle}"`,
-      )
-      // Authoritative for this title: the top hit is not this work, and
-      // repeating the same query will not change that.
-      return {
-        count: 0,
-        status: 'not_found',
-        message: `Google Scholar returned a different work ("${resultTitle}")`,
-      }
-    }
-
-    debugLog(`Citation debug - Google Scholar citation count: ${count} (title match ${similarity.toFixed(2)})`)
-    RateLimitManager.handleSuccess(GOOGLE_SCHOLAR_DATABASE)
-    return { count, status: 'success' }
+    return readScholarCount(page, parseMarkup(rawTitle))
   }
 
   /**
@@ -1562,6 +1521,152 @@ class DBInterface {
     const identifiers = Helpers.getAllItemIdentifiers(item)
     return getSemanticScholarClient().lookupCitationCount(identifiers)
   }
+}
+
+/** A page Scholar answered with, and where it finally came from. */
+interface ScholarPage {
+  html: string
+  url: string
+}
+
+/**
+ * Fetch a Scholar search with Zotero's HTTP stack.
+ *
+ * A challenge sent with an error status (Google's "unusual traffic" page comes
+ * as 429) is returned as a page, so the caller can treat it like any other
+ * challenge rather than as a bare rate limit.
+ */
+async function fetchScholarPage(
+  url: string,
+): Promise<{ kind: 'page'; page: ScholarPage } | { kind: 'failed'; result: LookupResult }> {
+  try {
+    const response = (await Zotero.HTTP.request('GET', url, {
+      responseType: 'text',
+      timeout: REQUEST_TIMEOUT_MS,
+      // Orbit paces Scholar itself. Zotero's own 429 retries waited up to
+      // minutes per item, and every retry only fed Google's bot detection.
+      errorDelayMax: 0,
+    })) as { responseText?: unknown; responseURL?: string }
+    const html = typeof response.responseText === 'string' ? response.responseText : ''
+    return { kind: 'page', page: { html, url: response.responseURL || url } }
+  } catch (err) {
+    // Zotero.HTTP throws on non-2xx, carrying the status and the request.
+    const status = (err as { status?: number })?.status
+    if (typeof status !== 'number') {
+      debugLog('Citation debug - Google Scholar request failed:', err)
+      return { kind: 'failed', result: { count: -1, status: classifyThrown(), message: 'Network request failed' } }
+    }
+    const xhr = (err as { xmlhttp?: { responseText?: unknown; responseURL?: string } })?.xmlhttp
+    const body = typeof xhr?.responseText === 'string' ? xhr.responseText : ''
+    const finalURL = xhr?.responseURL || url
+    if (body && isScholarChallenge(body, finalURL)) {
+      return { kind: 'page', page: { html: body, url: finalURL } }
+    }
+    const classified = classifyHttpStatus(status)
+    if (classified === 'rate_limited') RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
+    debugLog(`Citation debug - Google Scholar HTTP ${status} (${classified})`)
+    return { kind: 'failed', result: { count: -1, status: classified, message: `HTTP ${status}` } }
+  }
+}
+
+/** A page that answers the search: results, or Scholar saying there are none. */
+function isScholarAnswer(page: ScholarPage): boolean {
+  const kind = classifyScholarPage(page.html, page.url)
+  return kind === 'results' || kind === 'no_results'
+}
+
+/**
+ * Get past a Scholar challenge with a browser. A JavaScript interstitial is
+ * tried in a hidden browser first; a real CAPTCHA opens in Zotero's viewer for
+ * the person who started the run. Null if neither produced the results.
+ */
+async function passScholarChallenge(url: string, challengeHtml: string): Promise<ScholarPage | null> {
+  if (!challengeNeedsPerson(challengeHtml)) {
+    const background = await loadScholarInBackground(url, isScholarAnswer)
+    if (background?.kind === 'page') {
+      debugLog('Citation debug - Google Scholar verification passed in the background')
+      return background.page
+    }
+    if (background?.kind !== 'needs_person') return null
+  }
+  debugLog('Citation debug - Google Scholar needs a CAPTCHA solved; opening it')
+  try {
+    return await solveScholarInViewer(url, isScholarAnswer)
+  } catch (err) {
+    debugLog('Citation debug - Could not open the CAPTCHA page:', err)
+    return null
+  }
+}
+
+/**
+ * Turn a Scholar page into a lookup result.
+ *
+ * "Not found" needs evidence: Scholar's own no-results notice, or a top hit
+ * that is a different work. Any page that is neither a result nor that notice
+ * is a transient failure. Before, every unrecognised page counted as "not
+ * found", so Google's interstitial stored that verdict for every item it met.
+ */
+function readScholarCount(page: ScholarPage, searchedTitle: string): LookupResult {
+  const kind = classifyScholarPage(page.html, page.url)
+  if (kind === 'challenge') {
+    RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
+    return { count: -1, status: 'rate_limited', message: 'Google Scholar is asking for verification' }
+  }
+  if (kind === 'no_results') {
+    debugLog('Citation debug - Google Scholar found no result for this title')
+    return { count: 0, status: 'not_found', message: 'No matching Google Scholar result' }
+  }
+  const count = kind === 'results' ? parseScholarCount(page.html) : null
+  if (count === null) {
+    debugLog(`Citation debug - Unrecognised Google Scholar page (${page.url})`)
+    return { count: -1, status: 'transient_error', message: 'Unrecognised Google Scholar page' }
+  }
+
+  // Scholar always answers with *something*. Without checking what came back,
+  // an unrelated paper's count gets written to this item and nothing ever
+  // flags it. Three near-identical textbook titles in one library returned
+  // 626, 2 and 0 citations; at most one of those was right.
+  const resultTitle = extractResultTitle(page.html)
+  if (!resultTitle) {
+    debugLog('Citation debug - Google Scholar result carries no readable title')
+    return { count: -1, status: 'transient_error', message: 'Google Scholar result had no readable title' }
+  }
+  const similarity = titleSimilarity(searchedTitle, resultTitle)
+  if (similarity < TITLE_MATCH_THRESHOLD) {
+    debugLog(
+      `Citation debug - Google Scholar hit rejected (${similarity.toFixed(2)} < ${TITLE_MATCH_THRESHOLD}): ` +
+        `wanted "${searchedTitle}", got "${resultTitle}"`,
+    )
+    // Authoritative for this title: the top hit is not this work, and
+    // repeating the same query will not change that.
+    return { count: 0, status: 'not_found', message: `Google Scholar returned a different work ("${resultTitle}")` }
+  }
+
+  debugLog(`Citation debug - Google Scholar citation count: ${count} (title match ${similarity.toFixed(2)})`)
+  RateLimitManager.handleSuccess(GOOGLE_SCHOLAR_DATABASE)
+  return { count, status: 'success' }
+}
+
+/**
+ * Drop the Google Scholar "not found" verdicts once per install.
+ *
+ * From November 2026 Google answered Scholar searches with a JavaScript
+ * interstitial, which Orbit read as "no result" and stored for every item it
+ * met, so automatic runs went on skipping them for months. The verdicts cannot
+ * be told apart from genuine ones, so all of Scholar's go; a genuinely missing
+ * item costs one more search.
+ */
+export function resetScholarIgnoresOnce(): void {
+  if (getPref('scholarIgnoresReset')) return
+  try {
+    const dropped = IgnoredItemsManager.dropDatabase(GOOGLE_SCHOLAR_DATABASE)
+    Zotero.debug(`Orbit: dropped ${dropped} stored Google Scholar "not found" verdicts`)
+  } catch (err) {
+    // Left for the next start rather than marked done.
+    Zotero.debug(`Orbit: could not reset Google Scholar verdicts: ${describeError(err)}`)
+    return
+  }
+  setPref('scholarIgnoresReset', true)
 }
 
 // Notifier callback to detect newly added items

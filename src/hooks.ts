@@ -6,6 +6,7 @@ import {
   cancelMonthlyCleanup,
   installCountStyle,
   removeCountStyle,
+  resetScholarIgnoresOnce,
   scheduleMonthlyCleanup,
   setPostCountFollowUp,
   UIRegistrar,
@@ -54,6 +55,7 @@ async function onStartup() {
   // Before anything reads a preference: the plugin was installed under a
   // different name, and its settings and cache are still filed under it.
   await adoptLegacyState()
+  resetScholarIgnoresOnce()
 
   // Before the first request, so the polite-pool address is the user's own from
   // the outset rather than from whenever they next open the preferences.

@@ -334,6 +334,14 @@ and its citation count, and the distinction between a page carrying a result
 but no count, which means zero, and a page carrying no result at all, which
 means unknown.
 
+`src/modules/googleScholarBrowser.ts` and the challenge detection in
+`googleScholarClient.core.ts` follow the fix papatistos proposed for that
+project in
+[pull request #73](https://github.com/justinribeiro/zotero-google-scholar-citation-count/pull/73),
+also MPL-2.0: when Google puts a JavaScript check or a CAPTCHA in front of
+Scholar, the search is loaded in Zotero's hidden browser, or for a CAPTCHA in
+its viewer, and read from there.
+
 ### Also
 
 - [networkanalysis-ts](https://github.com/neesjanvaneck/networkanalysis-ts) by
@@ -352,6 +360,7 @@ means unknown.
 
 ## License
 
-GNU Affero General Public License v3.0, with one exception:
-`src/modules/googleScholarClient.core.ts` is under the Mozilla Public License
+GNU Affero General Public License v3.0, with two exceptions:
+`src/modules/googleScholarClient.core.ts` and
+`src/modules/googleScholarBrowser.ts` are under the Mozilla Public License
 2.0. See [`LICENSE`](LICENSE) and [`LICENSE-MPL-2.0`](LICENSE-MPL-2.0).

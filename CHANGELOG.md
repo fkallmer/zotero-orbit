@@ -8,13 +8,33 @@ All notable changes to Orbit. The format follows
 
 ### Fixed
 
+- **Counts are saved again.** 0.3.1 read its list of items to skip with a
+  function Zotero does not provide (`structuredClone`). Every lookup that
+  touched the list failed, and with it the counts fetched for that item, so
+  updates reported "updated 0 items".
 - **One failing database no longer costs an item all its counts.** Each
-  database is now looked up on its own. Before, an error in one lookup (for
-  example Semantic Scholar) threw away the counts already fetched from the
-  others, so an item could end with no count at all and the run reported
-  "updated 0 items".
+  database is now looked up on its own. Before, an error in one lookup threw
+  away the counts already fetched from the others.
 - **Lookup errors are logged with their message and stack.** They were logged
   as `{}`, which hid the cause.
+- **Google Scholar no longer stores "not found" when Google blocks it.** Since
+  early November Google answers Scholar searches with a JavaScript check
+  ("Verifying...") or, on busy networks, a CAPTCHA. Orbit read the check as
+  "no result" and stored that for every item it met. Now "not found" needs
+  Scholar's own no-results notice or a top hit that is a different work;
+  anything else is a temporary failure. The Scholar "not found" verdicts stored
+  so far are dropped once, on the first start of this version.
+- **Google Scholar waits less.** Zotero retried a blocked Scholar request on its
+  own for up to several minutes per item. Orbit now handles the back-off
+  itself.
+
+### Added
+
+- **Getting past Google's check.** In an update you start yourself, a
+  JavaScript check is passed in a hidden browser, and a CAPTCHA opens in
+  Zotero's viewer; once solved, the count is read from that page. Automatic
+  updates do neither and back off instead. Follows a fix proposed for Justin
+  Ribeiro's Google Scholar plugin (MPL-2.0).
 
 ## [0.3.1] — 2026-11-18
 

@@ -101,6 +101,10 @@ const baseConfig = zotero({
           { name: 'document', message: 'Use `Zotero.getMainWindow().document` instead.' },
           { name: 'ZoteroPane', message: 'Use `Zotero.getActiveZoteroPane()` instead.' },
           'Zotero_Tabs',
+          {
+            name: 'structuredClone',
+            message: 'Not defined in the scope Zotero loads the bundle into; copy the data explicitly.',
+          },
         ],
         '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
         ...srcRelaxations,

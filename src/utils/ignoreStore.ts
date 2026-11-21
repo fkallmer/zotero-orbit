@@ -25,6 +25,25 @@ export interface IgnoreRecord {
 /** database -> item id -> record. */
 export type IgnoreEntries = Record<string, Record<string, IgnoreRecord>>
 
+/**
+ * A deep copy of the entries, for callers that edit and save them back.
+ *
+ * Written out by hand because `structuredClone` does not exist in the scope
+ * Zotero loads the plugin bundle into. Using it made every ignore-cache read
+ * throw in 0.3.1, which took the item's freshly fetched counts down with it.
+ */
+export function cloneIgnoreEntries(entries: IgnoreEntries): IgnoreEntries {
+  const copy: IgnoreEntries = {}
+  for (const [database, items] of Object.entries(entries)) {
+    const itemsCopy: Record<string, IgnoreRecord> = {}
+    for (const [itemKey, record] of Object.entries(items)) {
+      itemsCopy[itemKey] = { count: record.count, lastChecked: record.lastChecked }
+    }
+    copy[database] = itemsCopy
+  }
+  return copy
+}
+
 export interface IgnoreStore {
   version: number
   entries: IgnoreEntries
