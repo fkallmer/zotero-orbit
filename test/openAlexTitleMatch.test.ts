@@ -34,6 +34,7 @@ describe('pickTitleMatch on recorded searches', () => {
       {
         title: 'Electromagnetic fields and energy',
         year: 1989,
+        allowOtherEditions: true,
         creators: [
           { lastName: 'Haus', firstName: 'Hermann A.' },
           { lastName: 'Melcher', firstName: 'James R.' },
@@ -51,6 +52,7 @@ describe('pickTitleMatch on recorded searches', () => {
       {
         title: 'Principles of corporate finance',
         year: 2023,
+        allowOtherEditions: true,
         creators: [
           { lastName: 'Brealey', firstName: 'Richard A.' },
           { lastName: 'Myers', firstName: 'Stewart C.' },
@@ -68,6 +70,7 @@ describe('pickTitleMatch on recorded searches', () => {
       {
         title: 'Noncontact Measurement of the Exit Temperature of Sheet Metal in an Operating Rolling Mill',
         year: 1998,
+        allowOtherEditions: false,
         creators: [
           { lastName: 'Kahn', firstName: 'Arnold H.' },
           { lastName: 'Schaps', firstName: 'Stephen R.' },
@@ -94,6 +97,7 @@ describe('pickTitleMatch guards', () => {
   const query = {
     title: 'Electromagnetic fields and energy',
     year: 1989,
+    allowOtherEditions: true,
     creators: [{ lastName: 'Haus', firstName: 'Hermann' }],
   }
 
@@ -121,6 +125,20 @@ describe('pickTitleMatch guards', () => {
       work({ id: 'W12', year: 1990, citedByCount: 50 }),
     ]
     assert.equal(pickTitleMatch(query, editions)?.work.id, 'W12')
+  })
+
+  it('does not let a paper stand in for itself from another year', () => {
+    // Real case: the 1988 paper's OpenAlex title is garbled, and a 1990 reprint
+    // by the same author with the same title carries 2 citations, not 65.
+    const paper = { ...query, title: 'A benchmark problem for computation of dZ in eddy-current NDE', year: 1988 }
+    const reprint = work({ title: paper.title, year: 1990 })
+    assert.equal(pickTitleMatch({ ...paper, allowOtherEditions: false }, [reprint]), null)
+    assert.equal(pickTitleMatch({ ...paper, allowOtherEditions: true }, [reprint])?.sameEdition, false)
+  })
+
+  it('lets a paper through when OpenAlex has no year for it', () => {
+    const match = pickTitleMatch({ ...query, allowOtherEditions: false }, [work({ year: null })])
+    assert.equal(match?.sameEdition, false)
   })
 
   it('without a year on the item, takes the most cited edition', () => {

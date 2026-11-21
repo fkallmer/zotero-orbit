@@ -8,10 +8,14 @@
  * - the normalized titles are exactly equal, and long enough to mean
  *   something (`titleKey`: three words, twenty characters);
  * - at least one author agrees on surname and first initial;
- * - no year rule. Textbooks are the main case, and OpenAlex often holds only
- *   another edition of them (the 14th edition on the shelf, the 1st in
+ * - for books and book chapters, no year rule. OpenAlex often holds only
+ *   another edition of a textbook (the 14th edition on the shelf, the 1st in
  *   OpenAlex). Such a match is taken, and flagged as another edition, so the
  *   caller can say so.
+ * - for everything else, the years agree within one when both are known. A
+ *   paper has no editions; a same-titled work by the same author in another
+ *   year is a reprint or a summary with its own count. Measured on a library,
+ *   that was the one wrong pick in 55, and this rule removes it.
  *
  * When several works pass, they are taken to be editions of one book, and the
  * one closest in year wins, then the most cited.
@@ -57,6 +61,13 @@ export interface TitleQuery {
   year: number | null
   /** Zotero creators as last name and first name. */
   creators: readonly { lastName: string; firstName: string }[]
+  /** Whether another edition may stand in: true for books and book chapters. */
+  allowOtherEditions: boolean
+}
+
+/** Zotero item types whose works come in editions. */
+export function itemTypeHasEditions(itemType: string): boolean {
+  return itemType === 'book' || itemType === 'bookSection'
 }
 
 /** One OpenAlex search result, reduced to what matching and the caller need. */
@@ -129,7 +140,9 @@ export function pickTitleMatch(query: TitleQuery, candidates: readonly TitleCand
   const survivors = candidates.filter((work) => {
     if (titleKey(work.title) !== key) return false
     const theirs = work.authors.map(parseAuthor).filter((author): author is MatchAuthor => author !== null)
-    return shareAuthor(ours, theirs)
+    if (!shareAuthor(ours, theirs)) return false
+    if (query.allowOtherEditions || query.year === null || work.year === null) return true
+    return Math.abs(work.year - query.year) <= 1
   })
   if (survivors.length === 0) return null
 
