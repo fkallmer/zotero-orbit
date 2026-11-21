@@ -6,9 +6,13 @@ import { describe, it } from 'node:test'
 import {
   challengeNeedsPerson,
   classifyScholarPage,
+  extractResultTitle,
   isSameScholarSearch,
   isScholarChallenge,
   isScholarNoResultsPage,
+  parseScholarCount,
+  TITLE_MATCH_THRESHOLD,
+  titleSimilarity,
 } from '../src/modules/googleScholarClient.core.ts'
 
 const fixtures = join(import.meta.dirname, 'fixtures', 'scholar')
@@ -87,5 +91,27 @@ describe('isSameScholarSearch', () => {
     assert.equal(isSameScholarSearch(SGSYNC_URL, SEARCH), false)
     assert.equal(isSameScholarSearch(SEARCH.replace('scholar.google.com', 'scholar.google.de'), SEARCH), false)
     assert.equal(isSameScholarSearch('not a url', SEARCH), false)
+  })
+})
+
+describe('a real results page (citation-only hit, captured in Zotero)', () => {
+  const page = readFileSync(join(fixtures, 'results-citation-only.html'), 'utf8')
+
+  it('is read as results, not as a challenge or "no result"', () => {
+    assert.equal(classifyScholarPage(page, `${SEARCH}&ntpr=&sgst=REDACTED`), 'results')
+  })
+
+  it('has no citation count, which reads as zero', () => {
+    assert.equal(parseScholarCount(page), 0)
+  })
+
+  it('strips every leading marker from the result title', () => {
+    assert.equal(extractResultTitle(page), 'Mathematik für Ingenieure und Naturwissenschaftler')
+  })
+
+  it('is rejected for a volume whose subtitle the hit lacks', () => {
+    const wanted =
+      'Mathematik für Ingenieure und Naturwissenschaftler Band 3: Vektoranalysis, Wahrscheinlichkeitsrechnung, Mathematische Statistik, Fehler- und Ausgleichsrechnung'
+    assert.ok(titleSimilarity(wanted, extractResultTitle(page) ?? '') < TITLE_MATCH_THRESHOLD)
   })
 })

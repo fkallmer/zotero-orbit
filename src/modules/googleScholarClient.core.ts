@@ -229,7 +229,8 @@ export function extractResultTitle(html: string): string | null {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
-    .replace(/^\s*\[[A-Z]+\]\s*/, '')
+    // Scholar can stack several markers, as in `[CITATION][C]`.
+    .replace(/^\s*(?:\[[A-Z]+\]\s*)+/, '')
   const cleaned = text.replace(/\s+/g, ' ').trim()
   return cleaned || null
 }
