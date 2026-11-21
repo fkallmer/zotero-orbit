@@ -121,6 +121,87 @@ export function hasRecaptcha(html: string): boolean {
   return html.includes('google.com/recaptcha/api.js?onload')
 }
 
+/**
+ * Did Google put a check between us and the results?
+ *
+ * Three forms are known. The classic reCAPTCHA page (often sent as HTTP 429
+ * with "unusual traffic"), the same challenge on `/sorry/`, and since November
+ * 2026 a JavaScript interstitial on `google.com/sgsync` titled "Verifying...".
+ * None of them says anything about the item, so none may be read as "no
+ * result". The detection follows the fix proposed for
+ * zotero-google-scholar-citation-count (justinribeiro#73, MPL-2.0).
+ *
+ * @param responseURL The URL the response finally came from, after redirects.
+ */
+export function isScholarChallenge(html: string, responseURL = ''): boolean {
+  if (hasRecaptcha(html)) return true
+  try {
+    const url = new URL(responseURL)
+    const host = url.hostname.toLowerCase()
+    if ((host === 'google.com' || host.endsWith('.google.com')) && /^\/(sgsync|sorry)(\/|$)/.test(url.pathname)) {
+      return true
+    }
+  } catch {
+    // Not a URL; fall through to the page itself.
+  }
+  return /<title[^>]*>\s*Verifying(?:\.{3}|\u2026)?\s*<\/title>/i.test(html) || /id=["']captcha-form["']/i.test(html)
+}
+
+/**
+ * Does the challenge need a person, rather than only a browser that runs
+ * JavaScript? A script include alone is not a request for input.
+ */
+export function challengeNeedsPerson(html: string): boolean {
+  return (
+    /id=["']captcha-form["']/i.test(html) ||
+    /<form[^>]+action=["'][^"']*\/sorry\//i.test(html) ||
+    /class=["'][^"']*\bg-recaptcha\b/i.test(html)
+  )
+}
+
+/**
+ * Is this Scholar's own answer that the search matched nothing?
+ *
+ * Only that answer may be stored as "not found". Before, any page without a
+ * result block counted, so the sgsync interstitial wrote "not found" for every
+ * item it met. Both a results container and the notice are required: if
+ * Scholar changes either, the page reads as unknown, which costs a retry
+ * rather than a wrong verdict.
+ */
+export function isScholarNoResultsPage(html: string): boolean {
+  const isResultsPage = /id=["']gs_res_ccl(?:_mid)?["']/.test(html) || /id=["']gs_ab_md["']/.test(html)
+  return isResultsPage && /did not match any articles/i.test(html)
+}
+
+/** What kind of page Scholar answered with. */
+export type ScholarPageKind = 'challenge' | 'results' | 'no_results' | 'unknown'
+
+export function classifyScholarPage(html: string, responseURL = ''): ScholarPageKind {
+  if (isScholarChallenge(html, responseURL)) return 'challenge'
+  if (hasCitationResults(html) || html.includes('class="gs_rt"')) return 'results'
+  if (isScholarNoResultsPage(html)) return 'no_results'
+  return 'unknown'
+}
+
+/**
+ * Is `pageURL` the results page for the search `requestedURL` asked for?
+ * Scholar adds parameters on the way back (`ntpr=`), so only the origin, the
+ * path and the query term are compared.
+ */
+export function isSameScholarSearch(pageURL: string, requestedURL: string): boolean {
+  try {
+    const page = new URL(pageURL)
+    const requested = new URL(requestedURL)
+    return (
+      page.origin === requested.origin &&
+      page.pathname === '/scholar' &&
+      page.searchParams.get('q') === requested.searchParams.get('q')
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Does the page carry a result block at all? */
 export function hasCitationResults(html: string): boolean {
   return (
@@ -148,7 +229,8 @@ export function extractResultTitle(html: string): string | null {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
-    .replace(/^\s*\[[A-Z]+\]\s*/, '')
+    // Scholar can stack several markers, as in `[CITATION][C]`.
+    .replace(/^\s*(?:\[[A-Z]+\]\s*)+/, '')
   const cleaned = text.replace(/\s+/g, ' ').trim()
   return cleaned || null
 }

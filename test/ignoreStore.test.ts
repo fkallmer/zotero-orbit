@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
+  cloneIgnoreEntries,
   IGNORE_STORE_VERSION,
   emptyIgnoreStore,
   getIgnoreRecord,
@@ -87,4 +88,16 @@ test('malformed individual records are dropped, valid siblings kept', () => {
 test('databases left with no valid records are omitted entirely', () => {
   const raw = JSON.stringify({ version: IGNORE_STORE_VERSION, entries: { crossref: { '1': { count: 'x' } } } })
   assert.deepEqual(parseIgnoreStore(raw).entries, {})
+})
+
+test('cloneIgnoreEntries copies deeply, so editing the copy leaves the original alone', () => {
+  const original: Record<string, Record<string, { count: number; lastChecked: string }>> = {
+    crossref: { '12': { count: 1, lastChecked: '2026-11-18T10:00:00Z' } },
+  }
+  const copy = cloneIgnoreEntries(original)
+  assert.deepEqual(copy, original)
+  copy.crossref['12'].count = 5
+  delete copy.crossref['12']
+  copy.openalex = {}
+  assert.deepEqual(original, { crossref: { '12': { count: 1, lastChecked: '2026-11-18T10:00:00Z' } } })
 })

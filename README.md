@@ -71,6 +71,13 @@ count at all shows `–` once a lookup has come back empty; its tooltip names th
 sources that reported the work missing, or says it had no DOI or other
 identifier to look it up by.
 
+Google sometimes puts a check in front of Scholar. In an update you start
+yourself, Orbit passes a JavaScript check in a hidden browser and opens a
+CAPTCHA in Zotero's viewer; once you solve it, the count is read from that
+page. Left unsolved, Scholar is skipped for the rest of that update. Automatic
+updates never open a window, and a blocked search is never stored as "not
+found".
+
 A second, sortable column shows OpenAlex's field-weighted citation impact — how
 a paper compares to others of its field, year and type, where 1.0 is average.
 Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675
@@ -334,6 +341,14 @@ and its citation count, and the distinction between a page carrying a result
 but no count, which means zero, and a page carrying no result at all, which
 means unknown.
 
+`src/modules/googleScholarBrowser.ts` and the challenge detection in
+`googleScholarClient.core.ts` follow the fix papatistos proposed for that
+project in
+[pull request #73](https://github.com/justinribeiro/zotero-google-scholar-citation-count/pull/73),
+also MPL-2.0: when Google puts a JavaScript check or a CAPTCHA in front of
+Scholar, the search is loaded in Zotero's hidden browser, or for a CAPTCHA in
+its viewer, and read from there.
+
 ### Also
 
 - [networkanalysis-ts](https://github.com/neesjanvaneck/networkanalysis-ts) by
@@ -352,6 +367,7 @@ means unknown.
 
 ## License
 
-GNU Affero General Public License v3.0, with one exception:
-`src/modules/googleScholarClient.core.ts` is under the Mozilla Public License
+GNU Affero General Public License v3.0, with two exceptions:
+`src/modules/googleScholarClient.core.ts` and
+`src/modules/googleScholarBrowser.ts` are under the Mozilla Public License
 2.0. See [`LICENSE`](LICENSE) and [`LICENSE-MPL-2.0`](LICENSE-MPL-2.0).

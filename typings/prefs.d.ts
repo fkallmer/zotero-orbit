@@ -33,6 +33,7 @@ declare namespace _ZoteroTypes {
       "graphNetworkCiting": boolean;
       "graphShowGaps": boolean;
       "adoptedLegacyState": boolean;
+      "scholarIgnoresReset": boolean;
     };
   }
 }

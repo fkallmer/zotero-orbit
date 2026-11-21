@@ -17,3 +17,6 @@ logs
 ### Scaffold-generated; the generator is authoritative (see private .prettierignore).
 typings/i10n.d.ts
 typings/prefs.d.ts
+
+### Captured pages kept as Google served them; the tests depend on the markup.
+test/fixtures/scholar/

@@ -40,3 +40,7 @@ pref('graphShowGaps', true)
 // Set once the settings and cache from the Citation Tally name have been
 // taken over. See utils/adoptLegacyState.
 pref('adoptedLegacyState', false)
+
+// Set once the Google Scholar "not found" verdicts recorded while Google's
+// interstitial was misread have been dropped. See resetScholarIgnoresOnce.
+pref('scholarIgnoresReset', false)

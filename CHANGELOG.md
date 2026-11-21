@@ -4,6 +4,40 @@ All notable changes to Orbit. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) as far as a 0.x plugin can.
 
+## [0.3.2] — 2026-11-21
+
+### Fixed
+
+- **Counts are saved again.** 0.3.1 read its list of items to skip with a
+  function Zotero does not provide (`structuredClone`). Every lookup that
+  touched the list failed, and with it the counts fetched for that item, so
+  updates reported "updated 0 items".
+- **One failing database no longer costs an item all its counts.** Each
+  database is now looked up on its own. Before, an error in one lookup threw
+  away the counts already fetched from the others.
+- **Lookup errors are logged with their message and stack.** They were logged
+  as `{}`, which hid the cause.
+- **Google Scholar no longer stores "not found" when Google blocks it.** Google
+  now puts a check in front of Scholar searches: a JavaScript page
+  ("Verifying...") or, as seen from a university network, an "unusual traffic"
+  CAPTCHA. Any page Orbit did not recognise counted as "no result" and was
+  stored. Now "not found" needs Scholar's own no-results notice or a top hit
+  that is a different work; anything else is a temporary failure. The Scholar
+  "not found" verdicts stored so far are dropped once, on the first start of
+  this version.
+- **Google Scholar waits less.** Zotero retried a blocked Scholar request on its
+  own for up to several minutes per item. Orbit now handles the back-off
+  itself.
+
+### Added
+
+- **Getting past Google's check.** In an update you start yourself, a
+  JavaScript check is passed in a hidden browser, and a CAPTCHA opens in
+  Zotero's viewer; once solved, the count is read from that page. If it is not
+  solved, Scholar is skipped for the rest of that update. Automatic updates
+  and lookups for newly added items never open a window and back off instead.
+  Follows a fix proposed for Justin Ribeiro's Google Scholar plugin (MPL-2.0).
+
 ## [0.3.1] — 2026-11-18
 
 ### Changed
@@ -142,6 +176,7 @@ First release under the Orbit name, forked from
 - A citation graph tab for one paper: what it cites and what cites it, with
   selectable axes and the citations among its neighbours.
 
+[0.3.2]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/fkallmer/zotero-orbit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fkallmer/zotero-orbit/compare/v0.2.22...v0.3.0
 [0.2.22]: https://github.com/fkallmer/zotero-orbit/releases/tag/v0.2.22

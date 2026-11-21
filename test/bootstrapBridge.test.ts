@@ -333,3 +333,13 @@ test('a rejecting shutdown hook still destructs the chrome handle', async () => 
   await assert.rejects(harness.shutdown('ADDON_DISABLE'), /teardown failure/)
   assert.equal(harness.counters.destruct, 1)
 })
+
+test('static invariant: src never uses structuredClone, which the bundle scope lacks', () => {
+  const srcRoot = join(repoRoot, 'src')
+  const entries = readdirSync(srcRoot, { recursive: true, withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
+    const content = readFileSync(join(entry.parentPath, entry.name), 'utf8')
+    assert.ok(!/structuredClone\s*\(/.test(content), `structuredClone call in ${entry.parentPath}/${entry.name}`)
+  }
+})
