@@ -14,6 +14,8 @@ export interface LookupResult {
    * written to Extra with the counts so the search runs only once.
    */
   foundOpenAlexId?: string
+  /** The stored count from this source is wrong and should be removed. */
+  dropStoredCount?: boolean
 }
 
 export interface ItemIdentifier {

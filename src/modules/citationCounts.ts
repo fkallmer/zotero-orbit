@@ -47,6 +47,7 @@ import {
   titleSimilarity,
 } from './googleScholarClient.core'
 import { getIgnorePolicy } from './ignorePolicy'
+import { itemKeys } from './libraryMatch.core'
 import { parseOpenAlexBudget, recordOpenAlexBudget } from './openAlexBudget.core'
 import {
   buildWorkByIdUrl,
@@ -971,6 +972,12 @@ class Helpers {
    * The OpenAlex work an earlier title match stored in Extra, for an item with
    * no DOI or arXiv id. A DOI always wins, so this is null whenever there is one.
    */
+  /** A DOI from a `DOI:` line in Extra, for items whose type has no DOI field. */
+  static getExtraDoi(item: Zotero.Item): string | null {
+    const key = itemKeys({ extra: item.getField('extra') || '' }).find((candidate) => candidate.startsWith('doi:'))
+    return key ? key.slice(4) : null
+  }
+
   static getStoredOpenAlexId(item: Zotero.Item): string | null {
     if (this.getAllItemIdentifiers(item).length > 0) return null
     const line = readOpenAlexLine(item.getField('extra'))
@@ -983,6 +990,7 @@ class Helpers {
    * `OpenAlex: none` in Extra turns both off.
    */
   static canAskOpenAlexWithoutIdentifier(item: Zotero.Item): boolean {
+    if (this.getExtraDoi(item) !== null) return true
     const line = readOpenAlexLine(item.getField('extra'))
     if (line) return line.kind === 'id'
     return buildTitleSearchUrl(item.getField('title') || '') !== null
@@ -1040,7 +1048,7 @@ class Core {
    * @param openAlexId A work found by title, written as an `OpenAlex:` line in
    *   the same save, so the search does not run again.
    */
-  static async setCitationCount(item: Zotero.Item, data: CountArray, openAlexId?: string) {
+  static async setCitationCount(item: Zotero.Item, data: CountArray, openAlexId?: string, dropTitles: string[] = []) {
     let extra = item.getField('extra')
     if (!extra) {
       extra = ''
@@ -1051,7 +1059,9 @@ class Core {
 
     const extras = extra.split('\n')
 
-    const dbTitles: string[] = data.map((d) => d.title.trim())
+    // Sources whose stored count is to go without a new one, such as an
+    // OpenAlex match the user rejected.
+    const dbTitles: string[] = [...data.map((d) => d.title.trim()), ...dropTitles.map((title) => title.trim())]
 
     const { kept: filteredExtras, removed } = stripCitationLines(extras, dbTitles)
     for (const line of removed) {
@@ -1388,8 +1398,14 @@ class DBInterface {
    * @returns LookupResult with count and status
    */
   static async getOpenAlexCountEnhanced(item: Zotero.Item): Promise<LookupResult> {
-    const identifiers = Helpers.getAllItemIdentifiers(item)
-    if (identifiers.length === 0) return this.getOpenAlexCountWithoutIdentifier(item)
+    let identifiers = Helpers.getAllItemIdentifiers(item)
+    if (identifiers.length === 0) {
+      // A `DOI:` line in Extra, where Zotero puts it for types without a DOI
+      // field, is a DOI all the same: no need to search the title.
+      const extraDoi = Helpers.getExtraDoi(item)
+      if (extraDoi === null) return this.getOpenAlexCountWithoutIdentifier(item)
+      identifiers = [{ type: 'doi', id: extraDoi, source: 'extra' }]
+    }
 
     // Status precedence mirrors INSPIRE: a transient failure anywhere outranks
     // a 404 elsewhere, so an outage is never persisted as "no citations".
@@ -1485,9 +1501,27 @@ class DBInterface {
   static async getOpenAlexCountWithoutIdentifier(item: Zotero.Item): Promise<LookupResult> {
     const line = readOpenAlexLine(item.getField('extra'))
     if (line?.kind === 'none') {
-      return { count: -1, status: 'no_identifier', message: 'OpenAlex match turned off in Extra' }
+      // A rejected match: the count it brought goes too.
+      return {
+        count: -1,
+        status: 'no_identifier',
+        message: 'OpenAlex match turned off in Extra',
+        dropStoredCount: true,
+      }
     }
     if (line?.kind === 'id') return this.getOpenAlexCountById(line.id)
+
+    // A PMID is an identifier the network can use; a title search could pick
+    // a different work than it does.
+    if (itemKeys({ extra: item.getField('extra') || '' }).some((key) => key.startsWith('pmid:'))) {
+      return { count: -1, status: 'no_identifier', message: 'Only a PMID, which the count path does not look up' }
+    }
+
+    // A title search costs ten times a DOI lookup, so a stored "not found" is
+    // honoured even in a run the user started, until its retry is due.
+    if (IgnoredItemsManager.isIgnored(item.id, OPENALEX_DATABASE, true)) {
+      return { count: 0, status: 'not_found', message: 'Searched by title before; retry not due yet' }
+    }
 
     const title = item.getField('title') || ''
     const url = buildTitleSearchUrl(title, openAlexContact())
@@ -2097,6 +2131,7 @@ async function updateItem(
 
     const data: CountArray = []
     let foundOpenAlexId: string | undefined
+    const dropped: string[] = []
     for (const operation of databases) {
       if (isAutoUpdate && IgnoredItemsManager.isIgnored(item.id, operation, true)) {
         debugLog(`Citation debug - Skipping ${operation} for item ${item.id} (marked as ignored)`)
@@ -2135,15 +2170,17 @@ async function updateItem(
             IgnoredItemsManager.markAsIgnored(item.id, operation, 'not_found', true)
           }
         })
+        if (result.dropStoredCount) dropped.push(getOperationName(operation))
         debugLog(`Citation debug - ${operation} for item ${item.id}: ${result.status} (${result.message ?? ''})`)
       }
     }
 
     if (!addon.data.alive) return false
     if (data.length > 0) {
-      await Core.setCitationCount(item, data, foundOpenAlexId)
+      await Core.setCitationCount(item, data, foundOpenAlexId, dropped)
       return true
     }
+    if (dropped.length > 0) await Core.setCitationCount(item, [], undefined, dropped)
   } catch (e) {
     if (isErrorNamed(e, 'AbortError')) throw e
     ztoolkit.log(`Error updating citation count for item ${item.id}\n${describeError(e)}`)

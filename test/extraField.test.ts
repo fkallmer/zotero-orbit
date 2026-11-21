@@ -134,3 +134,13 @@ describe('the OpenAlex line', () => {
     ])
   })
 })
+
+describe('an update next to the OpenAlex line', () => {
+  it('replaces the OpenAlex count and keeps the work id', () => {
+    const lines = ['Citations: 850 (OpenAlex) [2026-11-21]', 'OpenAlex: W1565680857', 'Citation Key: haus1989']
+    assert.deepEqual(stripCitationLines(lines, ['OpenAlex', 'Crossref']).kept, [
+      'OpenAlex: W1565680857',
+      'Citation Key: haus1989',
+    ])
+  })
+})

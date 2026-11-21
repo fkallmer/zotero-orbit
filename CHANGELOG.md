@@ -16,7 +16,9 @@ All notable changes to Orbit. The format follows
   when a count came from a title match. The work found is stored in Extra as
   `OpenAlex: W…` (Cita's format), so the search runs once, and from then on
   the item pane, the graph and the collection analysis use it too.
-  `OpenAlex: none` turns the search off for an item. Measured on one library:
+  `OpenAlex: none` turns the search off for an item and removes the count it
+  brought. A title search costs OpenAlex ten times a DOI lookup, so an item
+  with no match is searched again only when its retry is due. Measured on one library:
   10 of 32 items without an identifier found, and on 55 items with a DOI, the
   title search picked the DOI's own work in 54 cases; the one miss, a reprint
   of a paper, is excluded by the year rule for papers.
