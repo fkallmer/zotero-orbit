@@ -311,4 +311,5 @@ export type FluentMessageId =
   | 'startup-begin'
   | 'startup-finish'
   | 'startup-progress'
-  | 'tooltip-citation-tallies';
+  | 'tooltip-citation-tallies'
+  | 'tooltip-openalex-by-title';

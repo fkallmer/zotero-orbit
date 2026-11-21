@@ -180,7 +180,11 @@ function isCitationDataOutdated(item: Zotero.Item): [boolean, string] {
   // id is still checkable as long as Scholar is among the configured
   // databases -- which is the entire reason it is here.
   const identifier = Helpers.getItemIdentifier(item)
-  if (!identifier && !databases.includes(GOOGLE_SCHOLAR_DATABASE)) {
+  // OpenAlex can also answer for an item without one: by a work id an earlier
+  // title match stored in Extra, or by searching the title.
+  const openAlexWithoutIdentifier =
+    !identifier && databases.includes('openalex') && Helpers.canAskOpenAlexWithoutIdentifier(item)
+  if (!identifier && !databases.includes(GOOGLE_SCHOLAR_DATABASE) && !openAlexWithoutIdentifier) {
     return [false, 'no_identifier']
   }
 
@@ -201,7 +205,7 @@ function isCitationDataOutdated(item: Zotero.Item): [boolean, string] {
       // Needs no identifier at all; the title check happens at lookup time.
       return true
     }
-    if (!identifierType) return false
+    if (!identifierType) return database === 'openalex' && openAlexWithoutIdentifier
     if (database === 'crossref') {
       // Crossref only works with regular DOIs, not arXiv DOIs
       return identifierType === 'doi' && !isArxivDoi

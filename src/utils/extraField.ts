@@ -102,3 +102,35 @@ export function insertBeforeMatch(lines: string[], pattern: RegExp, newItem: str
 
 /** Matches a Better BibTeX citation key line. */
 export const CITATION_KEY_PATTERN = /^Citation Key: \S+/i
+
+/**
+ * The `OpenAlex: W…` line, in the format Cita and Zotero's own OpenAlex
+ * translator use. Orbit writes it when it finds an item's work by title, so the
+ * search runs once, and reads it wherever it needs the work. `OpenAlex: none`
+ * is the user's way of saying a found work was wrong: no search, no match.
+ */
+const OPENALEX_LINE = /^OpenAlex:\s*(.*?)\s*$/i
+
+export type OpenAlexLine = { kind: 'id'; id: string } | { kind: 'none' }
+
+/** The OpenAlex line in Extra, if there is a usable one. */
+export function readOpenAlexLine(extra: string | null | undefined): OpenAlexLine | null {
+  for (const line of (extra ?? '').split('\n')) {
+    const match = OPENALEX_LINE.exec(line.trim())
+    if (!match) continue
+    const value = match[1].replace(/^https?:\/\/openalex\.org\//i, '')
+    if (/^none$/i.test(value)) return { kind: 'none' }
+    if (/^W\d+$/i.test(value)) return { kind: 'id', id: value.toUpperCase() }
+  }
+  return null
+}
+
+/**
+ * Extra with the OpenAlex line set to `id`: an existing line is replaced,
+ * otherwise the line goes above a Better BibTeX citation key, or at the end.
+ */
+export function withOpenAlexLine(lines: readonly string[], id: string): string[] {
+  const next = lines.filter((line) => !OPENALEX_LINE.test(line.trim()))
+  insertBeforeMatch(next, CITATION_KEY_PATTERN, `OpenAlex: ${id}`)
+  return next
+}

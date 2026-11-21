@@ -9,6 +9,11 @@ export interface LookupResult {
   count: number
   status: LookupStatus
   message?: string
+  /**
+   * An OpenAlex work found by title for an item with no identifier, to be
+   * written to Extra with the counts so the search runs only once.
+   */
+  foundOpenAlexId?: string
 }
 
 export interface ItemIdentifier {

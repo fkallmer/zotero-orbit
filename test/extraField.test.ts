@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { describe, it, test } from 'node:test'
 
 import {
   CITATION_KEY_PATTERN,
@@ -7,7 +7,9 @@ import {
   escapeRegExp,
   formatCitationLine,
   insertBeforeMatch,
+  readOpenAlexLine,
   stripCitationLines,
+  withOpenAlexLine,
 } from '../src/utils/extraField.ts'
 
 const TITLES = ['Crossref', 'INSPIRE', 'Semantic Scholar']
@@ -102,4 +104,33 @@ test('escapeRegExp escapes every metacharacter it claims to', () => {
     'a\\.b\\*c\\+d\\?e\\^f\\$g\\{h\\}i\\(j\\)k\\|l\\[m\\]n\\\\o',
   )
   assert.equal(escapeRegExp('plain'), 'plain')
+})
+
+describe('the OpenAlex line', () => {
+  it('reads an id in the format Cita and Zotero write, with or without the URL', () => {
+    assert.deepEqual(readOpenAlexLine('Citations: 3 (Crossref) [2026-01-01]\nOpenAlex: W2029394297'), {
+      kind: 'id',
+      id: 'W2029394297',
+    })
+    assert.deepEqual(readOpenAlexLine('openalex: https://openalex.org/w123'), { kind: 'id', id: 'W123' })
+  })
+
+  it('reads "none" as the user turning the title match off', () => {
+    assert.deepEqual(readOpenAlexLine('OpenAlex: none'), { kind: 'none' })
+  })
+
+  it('ignores anything that is not an id or none', () => {
+    assert.equal(readOpenAlexLine('OpenAlex: maybe later'), null)
+    assert.equal(readOpenAlexLine(''), null)
+    assert.equal(readOpenAlexLine(undefined), null)
+  })
+
+  it('replaces an existing line and keeps the citation key last', () => {
+    const lines = ['Citations: 1 (OpenAlex) [2026-01-01]', 'OpenAlex: W1', 'Citation Key: haus1989']
+    assert.deepEqual(withOpenAlexLine(lines, 'W2'), [
+      'Citations: 1 (OpenAlex) [2026-01-01]',
+      'OpenAlex: W2',
+      'Citation Key: haus1989',
+    ])
+  })
 })
