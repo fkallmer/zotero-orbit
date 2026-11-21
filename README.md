@@ -78,6 +78,18 @@ page. Left unsolved, Scholar is skipped for the rest of that update. Automatic
 updates never open a window, and a blocked search is never stored as "not
 found".
 
+An item with no DOI or arXiv id is looked up in OpenAlex by title. A work
+counts only if its title is the same and an author agrees on surname and
+initial; for papers the year must agree too, while for books and chapters
+another edition is accepted, since OpenAlex often holds only that. The work
+found is written to Extra as `OpenAlex: W…`, the format Cita and Zotero's own
+OpenAlex translator use, and from then on the item pane, the graph and the
+collection analysis use it as well. The tooltip says when an OpenAlex count
+came from a title match. Edit the line to point at the right work, or write
+`OpenAlex: none` to stop the search for that item. Field-weighted impact stays
+empty for these items. A title search costs ten times a DOI lookup against
+OpenAlex's daily budget, so each item is searched once.
+
 A second, sortable column shows OpenAlex's field-weighted citation impact — how
 a paper compares to others of its field, year and type, where 1.0 is average.
 Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675

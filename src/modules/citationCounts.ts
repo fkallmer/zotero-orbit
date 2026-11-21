@@ -968,6 +968,16 @@ class Helpers {
   }
 
   /**
+   * The OpenAlex work an earlier title match stored in Extra, for an item with
+   * no DOI or arXiv id. A DOI always wins, so this is null whenever there is one.
+   */
+  static getStoredOpenAlexId(item: Zotero.Item): string | null {
+    if (this.getAllItemIdentifiers(item).length > 0) return null
+    const line = readOpenAlexLine(item.getField('extra'))
+    return line?.kind === 'id' ? line.id : null
+  }
+
+  /**
    * Whether OpenAlex can be asked about an item that has no DOI or arXiv id:
    * by the work id an earlier title match stored, or by a new title search.
    * `OpenAlex: none` in Extra turns both off.

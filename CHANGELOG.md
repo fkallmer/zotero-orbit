@@ -4,6 +4,23 @@ All notable changes to Orbit. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) as far as a 0.x plugin can.
 
+## [Unreleased]
+
+### Added
+
+- **OpenAlex finds items without a DOI by title.** Books, reports and older
+  papers with no DOI or arXiv id are searched in OpenAlex by title and author.
+  The title must be the same and an author must agree on surname and initial.
+  Papers must also agree on the year; books and chapters may match another
+  edition, since OpenAlex often holds only an older one, and the tooltip says
+  when a count came from a title match. The work found is stored in Extra as
+  `OpenAlex: W…` (Cita's format), so the search runs once, and from then on
+  the item pane, the graph and the collection analysis use it too.
+  `OpenAlex: none` turns the search off for an item. Measured on one library:
+  10 of 32 items without an identifier found, and on 55 items with a DOI, the
+  title search picked the DOI's own work in 54 cases; the one miss, a reprint
+  of a paper, is excluded by the year rule for papers.
+
 ## [0.3.2] — 2026-11-21
 
 ### Fixed

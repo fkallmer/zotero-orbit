@@ -98,6 +98,8 @@ export interface ItemLookupIds {
   /** Lower-cased, most specific first: the item's own DOI before an arXiv DOI. */
   dois: string[]
   pmid: string | null
+  /** For an item with no DOI: the work an earlier title match stored in Extra. */
+  openAlexId: string | null
 }
 
 function field(item: Zotero.Item, name: string): string {
@@ -129,7 +131,13 @@ export function itemLookupIds(item: Zotero.Item): ItemLookupIds {
   // An arXiv DOI after every publisher DOI: the published version is the one
   // OpenAlex counts citations against.
   dois.sort((a, b) => Number(a.startsWith('10.48550/')) - Number(b.startsWith('10.48550/')))
-  return { dois, pmid }
+  let openAlexId: string | null = null
+  try {
+    openAlexId = dois.length === 0 ? Helpers.getStoredOpenAlexId(item) : null
+  } catch (err) {
+    debugLog('Citation debug - Network: could not read the OpenAlex line of item', item.id, err)
+  }
+  return { dois, pmid, openAlexId }
 }
 
 /**
@@ -141,7 +149,12 @@ export function seedCandidates(
 ): { itemID: number; hasIdentifier: boolean; dateAdded: string; item: Zotero.Item }[] {
   return items.map((item) => {
     const ids = itemLookupIds(item)
-    return { itemID: item.id, hasIdentifier: ids.dois.length > 0 || ids.pmid !== null, dateAdded: item.dateAdded, item }
+    return {
+      itemID: item.id,
+      hasIdentifier: ids.dois.length > 0 || ids.pmid !== null || ids.openAlexId !== null,
+      dateAdded: item.dateAdded,
+      item,
+    }
   })
 }
 
@@ -353,6 +366,26 @@ export async function buildCollectionNetwork(
       }
     }
   }
+
+  // Works an earlier title match stored in Extra, for items with neither a
+  // DOI nor a PMID. Matched back by OpenAlex id: a merged work answers under
+  // its new id, and its item is then left unresolved rather than guessed at.
+  const byOpenAlexId = new Map<string, number[]>()
+  for (const item of items) {
+    const id = idsByItem.get(item.id)!.openAlexId
+    if (seedByItem.has(item.id) || id === null) continue
+    const askers = byOpenAlexId.get(id)
+    if (askers) askers.push(item.id)
+    else byOpenAlexId.set(id, [item.id])
+  }
+  for (const batch of chunks([...byOpenAlexId.keys()], BATCH_SIZE)) {
+    const works = normalizeNetworkWorks(await fetchPage(buildWorksListUrl('openalex_id', batch, SEED_SELECT)))
+    for (const work of works) {
+      for (const itemID of byOpenAlexId.get(work.openAlexId) ?? []) {
+        if (!seedByItem.has(itemID)) seedByItem.set(itemID, seedFromWork(itemID, work, null))
+      }
+    }
+  }
   progress('lookup', lookupTotal, lookupTotal)
 
   // Two items can be one work -- duplicates, or a preprint filed twice. The
@@ -366,7 +399,7 @@ export async function buildCollectionNetwork(
       const ids = idsByItem.get(item.id)!
       unresolved.push({
         itemID: item.id,
-        reason: ids.dois.length === 0 && ids.pmid === null ? 'no-identifier' : 'not-found',
+        reason: ids.dois.length === 0 && ids.pmid === null && ids.openAlexId === null ? 'no-identifier' : 'not-found',
       })
       continue
     }

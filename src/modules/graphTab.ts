@@ -515,7 +515,9 @@ export function openGraphTab(seed: GraphSeed): void {
       }
       renderProgress(win.document, container, seed, 0, 'record')
       const start = startingPoint(seed)
-      const nodes = start ? await collectNodes(start.identifiers, start.libraryID, start.title, force, step) : []
+      const nodes = start
+        ? await collectNodes(start.identifiers, start.libraryID, start.title, force, step, start.openAlexId)
+        : []
       if (nodes.length === 0) {
         renderPlaceholder(win.document, container, seed, getString('graph-empty'))
         return
@@ -847,10 +849,12 @@ async function collectNodes(
   fallbackTitle: string,
   force: boolean,
   onStep: (step: LoadStep) => void = () => {},
+  // A work an earlier title match stored in Extra, for an item with no identifier.
+  openAlexId: string | null = null,
 ): Promise<TabNode[]> {
-  if (identifiers.length === 0) return []
+  if (identifiers.length === 0 && openAlexId === null) return []
 
-  const record = await fetchScholarlyRecord(identifiers, { force })
+  const record = await fetchScholarlyRecord(identifiers, { force, openAlexId })
   onStep('record')
   if (!record) return []
 
@@ -2911,12 +2915,13 @@ export function renderGraph(
  */
 function startingPoint(
   seed: Extract<GraphSeed, { kind: 'items' | 'work' }>,
-): { identifiers: ItemIdentifier[]; libraryID: number; title: string } | null {
+): { identifiers: ItemIdentifier[]; libraryID: number; title: string; openAlexId: string | null } | null {
   if (seed.kind === 'work') {
     return {
       identifiers: [{ type: 'doi', id: seed.doi, source: 'Graph' }],
       libraryID: seed.libraryID,
       title: seed.name,
+      openAlexId: null,
     }
   }
   const item = itemsForSeed(seed)[0]
@@ -2925,6 +2930,7 @@ function startingPoint(
     identifiers: Helpers.getAllItemIdentifiers(item),
     libraryID: item.libraryID,
     title: item.getField('title'),
+    openAlexId: Helpers.getStoredOpenAlexId(item),
   }
 }
 
