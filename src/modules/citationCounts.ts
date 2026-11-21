@@ -24,7 +24,7 @@ import {
   shouldRetryIgnoredItem,
 } from '../utils/ignoreStore'
 import { getLocaleID, getString } from '../utils/locale'
-import { debugLog } from '../utils/log'
+import { debugLog, isDebugLoggingEnabled } from '../utils/log'
 import { reserveSlot } from '../utils/pacing'
 import { getPref, setPref } from '../utils/prefs'
 import { readCache, writeCache } from '../utils/recordCache'
@@ -66,6 +66,7 @@ import {
 
 import type { IgnoreEntries, IgnoreRecord } from '../utils/ignoreStore'
 import type { ItemIdentifier, LookupResult, LookupStatus } from './citationTypes'
+import type { ScholarBrowserOptions } from './googleScholarBrowser'
 import type { ScholarlyRecord } from './openAlexClient.core'
 import type { RateLimitNotice, WaitBoard } from './rateLimitNotice.core'
 import type { ProgressWindowHelper } from 'zotero-plugin-toolkit'
@@ -1485,6 +1486,13 @@ class DBInterface {
       return { count: -1, status: 'no_identifier', message: 'No usable title to search with' }
     }
 
+    // A run that already failed to get past Google's check does not knock
+    // again for every remaining item; each try would wait or open a window.
+    const run = scholarRun
+    if (interactive && run.challengeUnpassed) {
+      return { count: -1, status: 'rate_limited', message: 'Google Scholar verification not passed in this run' }
+    }
+
     await RateLimitManager.waitForRateLimit(GOOGLE_SCHOLAR_DATABASE)
     debugLog('Citation debug - Fetching from Google Scholar:', url)
 
@@ -1497,8 +1505,11 @@ class DBInterface {
       // Only a run a person started tries to get past it; an automatic run
       // backs off instead of opening browsers unprompted.
       debugLog(`Citation debug - Google Scholar asked for verification (${page.url})`)
-      const passed = interactive ? await passScholarChallenge(url, page.html) : null
+      const passed = interactive
+        ? await passScholarChallenge(url, page.html, () => !addon.data.alive || run !== scholarRun)
+        : null
       if (!passed) {
+        if (interactive) run.challengeUnpassed = true
         RateLimitManager.handleRateLimit(GOOGLE_SCHOLAR_DATABASE)
         return { count: -1, status: 'rate_limited', message: 'Google Scholar is asking for verification' }
       }
@@ -1522,6 +1533,12 @@ class DBInterface {
     return getSemanticScholarClient().lookupCitationCount(identifiers)
   }
 }
+
+/**
+ * Scholar state for the current manual run. Replaced whenever a run starts or
+ * is cancelled, which also ends a browser wait that belongs to the old run.
+ */
+let scholarRun = { challengeUnpassed: false }
 
 /** A page Scholar answered with, and where it finally came from. */
 interface ScholarPage {
@@ -1580,21 +1597,56 @@ function isScholarAnswer(page: ScholarPage): boolean {
  * tried in a hidden browser first; a real CAPTCHA opens in Zotero's viewer for
  * the person who started the run. Null if neither produced the results.
  */
-async function passScholarChallenge(url: string, challengeHtml: string): Promise<ScholarPage | null> {
+async function passScholarChallenge(
+  url: string,
+  challengeHtml: string,
+  shouldStop: () => boolean,
+): Promise<ScholarPage | null> {
+  const options: ScholarBrowserOptions = {
+    accept: isScholarAnswer,
+    shouldStop,
+    onPage: (page) => {
+      const kind = classifyScholarPage(page.html, page.url)
+      debugLog(`Citation debug - Scholar browser shows ${kind}: ${page.url}`)
+      void saveScholarDebugPage(page, kind)
+    },
+    onGiveUp: (reason, lastPage) =>
+      debugLog(`Citation debug - Scholar browser gave up (${reason}); last page: ${lastPage?.url ?? 'none'}`),
+  }
   if (!challengeNeedsPerson(challengeHtml)) {
-    const background = await loadScholarInBackground(url, isScholarAnswer)
+    const background = await loadScholarInBackground(url, options)
     if (background?.kind === 'page') {
       debugLog('Citation debug - Google Scholar verification passed in the background')
       return background.page
     }
     if (background?.kind !== 'needs_person') return null
   }
+  if (shouldStop()) return null
   debugLog('Citation debug - Google Scholar needs a CAPTCHA solved; opening it')
   try {
-    return await solveScholarInViewer(url, isScholarAnswer)
+    return await solveScholarInViewer(url, options)
   } catch (err) {
-    debugLog('Citation debug - Could not open the CAPTCHA page:', err)
+    debugLog(`Citation debug - Could not open the CAPTCHA page: ${describeError(err)}`)
     return null
+  }
+}
+
+/**
+ * With debug logging on, keep each page a Scholar browser showed, so the
+ * first real interstitials and results pages can become test fixtures. They
+ * go to `orbit-debug` in the Zotero data directory.
+ */
+async function saveScholarDebugPage(page: ScholarPage, kind: string): Promise<void> {
+  if (!isDebugLoggingEnabled()) return
+  try {
+    const dir = PathUtils.join(Zotero.DataDirectory.dir, 'orbit-debug')
+    await IOUtils.makeDirectory(dir, { ignoreExisting: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const file = PathUtils.join(dir, `scholar-${stamp}-${kind}.html`)
+    await IOUtils.writeUTF8(file, `<!-- ${page.url} -->\n${page.html}`)
+    debugLog(`Citation debug - Saved Scholar page to ${file}`)
+  } catch (err) {
+    debugLog(`Citation debug - Could not save Scholar page: ${describeError(err)}`)
   }
 }
 
@@ -1650,9 +1702,9 @@ function readScholarCount(page: ScholarPage, searchedTitle: string): LookupResul
 /**
  * Drop the Google Scholar "not found" verdicts once per install.
  *
- * From November 2026 Google answered Scholar searches with a JavaScript
- * interstitial, which Orbit read as "no result" and stored for every item it
- * met, so automatic runs went on skipping them for months. The verdicts cannot
+ * From November 2026 Google put a check (a JavaScript page or a CAPTCHA) in
+ * front of Scholar searches. Any unrecognised page counted as "no result" and
+ * was stored, so automatic runs went on skipping those items for months. The verdicts cannot
  * be told apart from genuine ones, so all of Scholar's go; a genuinely missing
  * item costs one more search.
  */
@@ -1689,7 +1741,8 @@ const notifierCallback = {
           'New regular items added with IDs:',
           items.map((item) => item.id),
         )
-        updateItems(items)
+        // Nobody asked for this run, so no CAPTCHA window may open from it.
+        updateItems(items, undefined, false, false)
       }
     }
   },
@@ -1750,6 +1803,7 @@ function resetState() {
   totalItems = 0
   itemsToUpdate = []
   updatedCount = 0
+  scholarRun = { challengeUnpassed: false }
   clearPending()
 }
 
@@ -1758,7 +1812,13 @@ function resetState() {
  * @param items Array of Zotero items to update
  * @param operation Citation source to use (e.g., 'crossref')
  */
-function updateItems(items: Zotero.Item[], operations?: string[] | string, silent: boolean = false) {
+function updateItems(
+  items: Zotero.Item[],
+  operations?: string[] | string,
+  silent: boolean = false,
+  // False when nobody asked for this run (items just added): no CAPTCHA window then.
+  interactive: boolean = true,
+) {
   // Filter out non-regular items
   const regularItems = items.filter((item) => item.isRegularItem())
 
@@ -1810,7 +1870,7 @@ function updateItems(items: Zotero.Item[], operations?: string[] | string, silen
     }, true)
   }
 
-  void runUpdateQueue(operations, silent)
+  void runUpdateQueue(operations, silent, interactive)
 }
 
 /**
@@ -1828,7 +1888,11 @@ function setPostCountFollowUp(followUp: ((items: readonly Zotero.Item[]) => void
 }
 
 /** Process manual updates sequentially until the queue completes or is cancelled. */
-async function runUpdateQueue(operations?: string[] | string, silent: boolean = false): Promise<void> {
+async function runUpdateQueue(
+  operations?: string[] | string,
+  silent: boolean = false,
+  interactive: boolean = true,
+): Promise<void> {
   for (currentIndex = 0; currentIndex < totalItems; currentIndex++) {
     if (!addon.data.alive) break
 
@@ -1846,7 +1910,7 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
       // Dropped before the save, so the redraw the save triggers shows the new count.
       pendingItemIDs.delete(item.id)
       // Manual updates bypass the ignored-item cache.
-      if (await updateItem(item, operations, false)) updatedCount++
+      if (await updateItem(item, operations, false, interactive)) updatedCount++
     } catch (e) {
       if (isErrorNamed(e, 'AbortError')) break
       ztoolkit.log(`Error updating citation count for item ${item.id}\n${describeError(e)}`)
@@ -1884,11 +1948,13 @@ async function runUpdateQueue(operations?: string[] | string, silent: boolean = 
  * @param item Zotero item to update
  * @param operation Citation source to use
  * @param isAutoUpdate Whether this is called from auto-update (to respect unlisted cache)
+ * @param interactive Whether a person started this run, so a CAPTCHA may be shown
  */
 async function updateItem(
   item: Zotero.Item,
   operations?: string[] | string,
   isAutoUpdate: boolean = false,
+  interactive: boolean = !isAutoUpdate,
 ): Promise<boolean> {
   try {
     debugLog('Citation debug - Updating item:', item.id, 'title:', item.getField('title'))
@@ -1911,7 +1977,7 @@ async function updateItem(
       // and the item kept no count at all.
       let result: LookupResult | null
       try {
-        result = await lookupCount(item, operation, isAutoUpdate)
+        result = await lookupCount(item, operation, interactive)
       } catch (e) {
         if (isErrorNamed(e, 'AbortError')) throw e
         ztoolkit.log(`Citation lookup failed: ${operation} for item ${item.id}\n${describeError(e)}`)
@@ -1954,15 +2020,15 @@ async function updateItem(
 }
 
 /** Ask one database for an item's count, or null for a database this build doesn't know. */
-function lookupCount(item: Zotero.Item, operation: string, isAutoUpdate: boolean): Promise<LookupResult> | null {
+function lookupCount(item: Zotero.Item, operation: string, interactive: boolean): Promise<LookupResult> | null {
   switch (operation) {
     case 'crossref':
       return DBInterface.getCrossrefCountEnhanced(item)
     case OPENALEX_DATABASE:
       return DBInterface.getOpenAlexCountEnhanced(item)
     case GOOGLE_SCHOLAR_DATABASE:
-      // Automatic runs never surface a CAPTCHA window unprompted.
-      return DBInterface.getGoogleScholarCountEnhanced(item, !isAutoUpdate)
+      // Only a run a person started may show a CAPTCHA window.
+      return DBInterface.getGoogleScholarCountEnhanced(item, interactive)
     case 'inspire':
       return DBInterface.getInspireCountEnhanced(item)
     case 'semanticscholar':

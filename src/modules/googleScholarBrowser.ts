@@ -100,32 +100,54 @@ async function readPage(browser: BrowserLike | null | undefined): Promise<Schola
   }
 }
 
+/** How a caller steers and observes a browser wait. */
+export interface ScholarBrowserOptions {
+  /** Is this page already the answer (results, or Scholar saying there are none)? */
+  accept: (page: ScholarBrowserPage) => boolean
+  /** True once the run was cancelled or the plugin is shutting down. */
+  shouldStop: () => boolean
+  /** Called once for each distinct URL the browser shows, for diagnostics. */
+  onPage?: (page: ScholarBrowserPage) => void
+  /** Called with the last page seen when the wait ends without an answer. */
+  onGiveUp?: (reason: string, lastPage: ScholarBrowserPage | null) => void
+}
+
 /**
- * Poll `browser` until it shows the results for `requestedURL`. `accept`
- * decides whether a page on that URL is already the answer (and not, say, the
- * interstitial still running); `onOther` may end the wait early.
+ * Poll `browser` until it shows the results for `requestedURL`. `stop` may end
+ * the wait early, for a CAPTCHA in the background or a viewer the user closed.
  */
 async function waitForResults(
   browser: () => BrowserLike | null | undefined,
   requestedURL: string,
   deadlineMs: number,
-  accept: (page: ScholarBrowserPage) => boolean,
+  options: ScholarBrowserOptions,
   stop: (page: ScholarBrowserPage | null) => 'needs_person' | 'closed' | null,
 ): Promise<BackgroundOutcome> {
   const deadline = Date.now() + deadlineMs
+  let lastPage: ScholarBrowserPage | null = null
   while (Date.now() < deadline) {
+    if (options.shouldStop()) {
+      options.onGiveUp?.('cancelled', lastPage)
+      return null
+    }
     let page: ScholarBrowserPage | null = null
     try {
       page = await readPage(browser())
     } catch {
       // Navigation can briefly make the document unreadable.
     }
-    if (page && isSameScholarSearch(page.url, requestedURL) && accept(page)) return { kind: 'page', page }
+    if (page && page.url !== lastPage?.url) options.onPage?.(page)
+    if (page) lastPage = page
+    if (page && isSameScholarSearch(page.url, requestedURL) && options.accept(page)) return { kind: 'page', page }
     const verdict = stop(page)
     if (verdict === 'needs_person') return { kind: 'needs_person' }
-    if (verdict === 'closed') return null
+    if (verdict === 'closed') {
+      options.onGiveUp?.('closed', lastPage)
+      return null
+    }
     await sleep(POLL_MS)
   }
+  options.onGiveUp?.('timed out', lastPage)
   return null
 }
 
@@ -136,18 +158,21 @@ async function waitForResults(
  */
 export async function loadScholarInBackground(
   requestedURL: string,
-  accept: (page: ScholarBrowserPage) => boolean,
+  options: ScholarBrowserOptions,
 ): Promise<BackgroundOutcome> {
   const HiddenBrowser = loadHiddenBrowserCtor()
   if (!HiddenBrowser) return null
   const browser = new HiddenBrowser({ allowJavaScript: true })
   try {
-    if (!(await browser.load(requestedURL))) return null
+    if (!(await browser.load(requestedURL))) {
+      options.onGiveUp?.('did not load', null)
+      return null
+    }
     return await waitForResults(
       () => browser,
       requestedURL,
       BACKGROUND_DEADLINE_MS,
-      accept,
+      options,
       (page) => (page && challengeNeedsPerson(page.html) ? 'needs_person' : null),
     )
   } catch (err) {
@@ -161,29 +186,30 @@ export async function loadScholarInBackground(
 /**
  * Open the search in Zotero's viewer so a person can solve the CAPTCHA, and
  * read the results from that same document once they appear. Repeating the
- * request instead can land straight back on the challenge.
+ * request instead can land straight back on the challenge. The window closes
+ * again however the wait ends, unless the user already closed it.
  */
 export async function solveScholarInViewer(
   requestedURL: string,
-  accept: (page: ScholarBrowserPage) => boolean,
+  options: ScholarBrowserOptions,
 ): Promise<ScholarBrowserPage | null> {
   const viewer = Zotero.openInViewer(requestedURL, { allowJavaScript: true }) as unknown as
     (Window & { closed: boolean }) | null | undefined
   if (!viewer) return null
-  const outcome = await waitForResults(
-    () => viewer.document?.querySelector('browser') as unknown as BrowserLike | null,
-    requestedURL,
-    VIEWER_DEADLINE_MS,
-    accept,
-    () => (viewer.closed ? 'closed' : null),
-  )
-  if (outcome?.kind === 'page') {
+  try {
+    const outcome = await waitForResults(
+      () => viewer.document?.querySelector('browser') as unknown as BrowserLike | null,
+      requestedURL,
+      VIEWER_DEADLINE_MS,
+      options,
+      () => (viewer.closed ? 'closed' : null),
+    )
+    return outcome?.kind === 'page' ? outcome.page : null
+  } finally {
     try {
-      viewer.close()
+      if (!viewer.closed) viewer.close()
     } catch {
       // Already gone.
     }
-    return outcome.page
   }
-  return null
 }

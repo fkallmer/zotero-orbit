@@ -144,11 +144,7 @@ export function isScholarChallenge(html: string, responseURL = ''): boolean {
   } catch {
     // Not a URL; fall through to the page itself.
   }
-  return (
-    /<title[^>]*>\s*Verifying(?:\.{3}|\u2026)?\s*<\/title>/i.test(html) ||
-    /id=["']captcha-form["']/i.test(html) ||
-    /class=["'][^"']*\bg-recaptcha\b/i.test(html)
-  )
+  return /<title[^>]*>\s*Verifying(?:\.{3}|\u2026)?\s*<\/title>/i.test(html) || /id=["']captcha-form["']/i.test(html)
 }
 
 /**

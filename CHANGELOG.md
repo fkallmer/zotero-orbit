@@ -17,13 +17,14 @@ All notable changes to Orbit. The format follows
   away the counts already fetched from the others.
 - **Lookup errors are logged with their message and stack.** They were logged
   as `{}`, which hid the cause.
-- **Google Scholar no longer stores "not found" when Google blocks it.** Since
-  early November Google answers Scholar searches with a JavaScript check
-  ("Verifying...") or, on busy networks, a CAPTCHA. Orbit read the check as
-  "no result" and stored that for every item it met. Now "not found" needs
-  Scholar's own no-results notice or a top hit that is a different work;
-  anything else is a temporary failure. The Scholar "not found" verdicts stored
-  so far are dropped once, on the first start of this version.
+- **Google Scholar no longer stores "not found" when Google blocks it.** Google
+  now puts a check in front of Scholar searches: a JavaScript page
+  ("Verifying...") or, as seen from a university network, an "unusual traffic"
+  CAPTCHA. Any page Orbit did not recognise counted as "no result" and was
+  stored. Now "not found" needs Scholar's own no-results notice or a top hit
+  that is a different work; anything else is a temporary failure. The Scholar
+  "not found" verdicts stored so far are dropped once, on the first start of
+  this version.
 - **Google Scholar waits less.** Zotero retried a blocked Scholar request on its
   own for up to several minutes per item. Orbit now handles the back-off
   itself.
@@ -32,9 +33,10 @@ All notable changes to Orbit. The format follows
 
 - **Getting past Google's check.** In an update you start yourself, a
   JavaScript check is passed in a hidden browser, and a CAPTCHA opens in
-  Zotero's viewer; once solved, the count is read from that page. Automatic
-  updates do neither and back off instead. Follows a fix proposed for Justin
-  Ribeiro's Google Scholar plugin (MPL-2.0).
+  Zotero's viewer; once solved, the count is read from that page. If it is not
+  solved, Scholar is skipped for the rest of that update. Automatic updates
+  and lookups for newly added items never open a window and back off instead.
+  Follows a fix proposed for Justin Ribeiro's Google Scholar plugin (MPL-2.0).
 
 ## [0.3.1] — 2026-11-18
 
