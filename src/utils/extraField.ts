@@ -104,6 +104,12 @@ export function insertBeforeMatch(lines: string[], pattern: RegExp, newItem: str
 export const CITATION_KEY_PATTERN = /^Citation Key: \S+/i
 
 /**
+ * Where a new citation line goes: above the `OpenAlex:` line and the citation
+ * key, so an update leaves the order of Extra as it found it.
+ */
+export const CITATION_LINE_ANCHOR = /^(?:Citation Key: \S+|OpenAlex:\s)/i
+
+/**
  * The `OpenAlex: W…` line, in the format Cita and Zotero's own OpenAlex
  * translator use. Orbit writes it when it finds an item's work by title, so the
  * search runs once, and reads it wherever it needs the work. `OpenAlex: none`

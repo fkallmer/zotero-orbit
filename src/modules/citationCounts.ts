@@ -2,7 +2,7 @@ import { version } from '../../package.json'
 import { fetchWithDeadline } from '../utils/abort'
 import { describeError, isErrorNamed } from '../utils/errors'
 import {
-  CITATION_KEY_PATTERN,
+  CITATION_LINE_ANCHOR,
   escapeRegExp,
   formatCitationLine,
   insertBeforeMatch,
@@ -1076,7 +1076,7 @@ class Core {
       const newEntry = formatCitationLine(title, count, date)
 
       // Insert as low as possible but before the BBT citation key
-      insertBeforeMatch(filteredExtras, CITATION_KEY_PATTERN, newEntry)
+      insertBeforeMatch(filteredExtras, CITATION_LINE_ANCHOR, newEntry)
       debugLog('Citation debug - Added new entry:', newEntry)
     }
 

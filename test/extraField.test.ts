@@ -3,6 +3,7 @@ import { describe, it, test } from 'node:test'
 
 import {
   CITATION_KEY_PATTERN,
+  CITATION_LINE_ANCHOR,
   buildCitationLinePatterns,
   escapeRegExp,
   formatCitationLine,
@@ -142,5 +143,13 @@ describe('an update next to the OpenAlex line', () => {
       'OpenAlex: W1565680857',
       'Citation Key: haus1989',
     ])
+  })
+})
+
+describe('the order of Extra across updates', () => {
+  it('puts a new citation line above the OpenAlex line, whatever order it found', () => {
+    const lines = ['OpenAlex: W1', 'Citation Key: haus1989']
+    insertBeforeMatch(lines, CITATION_LINE_ANCHOR, 'Citations: 2 (OpenAlex) [2026-11-21]')
+    assert.deepEqual(lines, ['Citations: 2 (OpenAlex) [2026-11-21]', 'OpenAlex: W1', 'Citation Key: haus1989'])
   })
 })
