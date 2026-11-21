@@ -71,6 +71,13 @@ count at all shows `–` once a lookup has come back empty; its tooltip names th
 sources that reported the work missing, or says it had no DOI or other
 identifier to look it up by.
 
+Google sometimes puts a check in front of Scholar. In an update you start
+yourself, Orbit passes a JavaScript check in a hidden browser and opens a
+CAPTCHA in Zotero's viewer; once you solve it, the count is read from that
+page. Left unsolved, Scholar is skipped for the rest of that update. Automatic
+updates never open a window, and a blocked search is never stored as "not
+found".
+
 A second, sortable column shows OpenAlex's field-weighted citation impact — how
 a paper compares to others of its field, year and type, where 1.0 is average.
 Above, it separates AlexNet from Watson and Crick: 4424 against 55, on 75,675
