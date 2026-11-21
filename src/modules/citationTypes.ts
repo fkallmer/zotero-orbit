@@ -14,6 +14,8 @@ export interface LookupResult {
    * written to Extra with the counts so the search runs only once.
    */
   foundOpenAlexId?: string
+  /** A stored `OpenAlex:` line turned out to be wrong and should be removed. */
+  clearOpenAlexLine?: boolean
   /** The stored count from this source is wrong and should be removed. */
   dropStoredCount?: boolean
 }

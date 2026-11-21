@@ -5,6 +5,7 @@
  * every identifier-based source walks past them. OpenAlex can still hold the
  * work; this finds it by title and keeps the find guarded:
  *
+ * - the work is the work, not a review or erratum of it (`canBeTheWork`);
  * - the normalized titles are exactly equal, and long enough to mean
  *   something (`titleKey`: three words, twenty characters);
  * - at least one author agrees on surname and first initial;
@@ -33,7 +34,32 @@ const API_ROOT = 'https://api.openalex.org'
 export const TITLE_SEARCH_PER_PAGE = 25
 
 /** What a candidate needs for matching, and to be a count and a graph node. */
-export const TITLE_SEARCH_SELECT = 'id,doi,display_name,publication_year,cited_by_count,authorships'
+export const TITLE_SEARCH_SELECT = 'id,doi,display_name,publication_year,cited_by_count,authorships,type'
+
+/**
+ * OpenAlex work types that are about a work rather than the work itself.
+ *
+ * A review of a book carries the book's title and lists its authors, and
+ * OpenAlex may credit it with the book's citations: "Principles of Corporate
+ * Finance" matched a one-page 1981 review in the Journal of Finance with 3794
+ * citations. None of these may stand in for an item.
+ */
+const NOT_THE_WORK = new Set([
+  'book-review',
+  'editorial',
+  'erratum',
+  'letter',
+  'paratext',
+  'peer-review',
+  'reference-entry',
+  'retraction',
+  'supplementary-materials',
+])
+
+/** Whether a work of this OpenAlex type can be the item itself. */
+export function canBeTheWork(type: string | null | undefined): boolean {
+  return !NOT_THE_WORK.has((type ?? '').toLowerCase())
+}
 
 /**
  * The search request. Punctuation goes, since OpenAlex reads `,` and `|` in a
@@ -79,6 +105,8 @@ export interface TitleCandidateWork {
   year: number | null
   citedByCount: number | null
   authors: string[]
+  /** OpenAlex work type (`book`, `article`, `book-review`, …), if given. */
+  type: string | null
 }
 
 export interface TitleMatch {
@@ -117,6 +145,7 @@ export function normalizeTitleSearch(json: unknown): TitleCandidateWork[] {
       year: asYear(entry?.publication_year),
       citedByCount: typeof count === 'number' && Number.isInteger(count) && count >= 0 ? count : null,
       authors,
+      type: asString(entry?.type),
     })
   }
   return works
@@ -138,6 +167,7 @@ export function pickTitleMatch(query: TitleQuery, candidates: readonly TitleCand
   if (ours.length === 0) return null
 
   const survivors = candidates.filter((work) => {
+    if (!canBeTheWork(work.type)) return false
     if (titleKey(work.title) !== key) return false
     const theirs = work.authors.map(parseAuthor).filter((author): author is MatchAuthor => author !== null)
     if (!shareAuthor(ours, theirs)) return false

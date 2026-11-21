@@ -18,10 +18,13 @@ All notable changes to Orbit. The format follows
   the item pane, the graph and the collection analysis use it too.
   `OpenAlex: none` turns the search off for an item and removes the count it
   brought. A title search costs OpenAlex ten times a DOI lookup, so an item
-  with no match is searched again only when its retry is due. Measured on one library:
-  10 of 32 items without an identifier found, and on 55 items with a DOI, the
-  title search picked the DOI's own work in 54 cases; the one miss, a reprint
-  of a paper, is excluded by the year rule for papers.
+  with no match is searched again only when its retry is due. Reviews,
+  errata, editorials and similar records never count as the work: a review of
+  a textbook carries its title and authors, and OpenAlex may credit it with
+  the book's citations. Measured on one library: 9 of 32 items without an
+  identifier found, all checked by hand; on 55 items with a DOI, the title
+  search picked the DOI's own work in 54 cases, and the one miss, a reprint of
+  a paper, is excluded by the year rule for papers.
 
 ## [0.3.2] — 2026-11-21
 

@@ -27,7 +27,8 @@
             "display_name": "G. A. Alers"
           }
         }
-      ]
+      ],
+      "type": "report"
     },
     {
       "id": "https://openalex.org/W4298946189",
@@ -46,7 +47,8 @@
             "display_name": "G. A. Alers"
           }
         }
-      ]
+      ],
+      "type": "report"
     },
     {
       "id": "https://openalex.org/W2070451825",
@@ -75,7 +77,8 @@
             "display_name": "Louis C. Phillips"
           }
         }
-      ]
+      ],
+      "type": "conference-paper"
     }
   ],
   "group_by": []

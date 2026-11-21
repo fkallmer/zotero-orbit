@@ -22,7 +22,8 @@
             "display_name": "Stewart C. Myers"
           }
         }
-      ]
+      ],
+      "type": "book-review"
     },
     {
       "id": "https://openalex.org/W1551134357",
@@ -36,7 +37,8 @@
             "display_name": "James A. Miles"
           }
         }
-      ]
+      ],
+      "type": "book-review"
     },
     {
       "id": "https://openalex.org/W4254313700",
@@ -55,7 +57,8 @@
             "display_name": "Milo Kimball"
           }
         }
-      ]
+      ],
+      "type": "book-review"
     },
     {
       "id": "https://openalex.org/W1487598553",
@@ -74,7 +77,8 @@
             "display_name": "Look Chan Ho"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W3147784825",
@@ -98,7 +102,8 @@
             "display_name": "Felix Steffek"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W55269014",
@@ -112,7 +117,8 @@
             "display_name": "Richard A. Brealey"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W614358632",
@@ -136,7 +142,8 @@
             "display_name": "Frank Allen"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2579606748",
@@ -150,7 +157,8 @@
             "display_name": "Stewart C. Myers"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W13211175",
@@ -169,7 +177,8 @@
             "display_name": "Stewart C. Myers"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W3109189962",
@@ -183,7 +192,8 @@
             "display_name": "Ben She"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W7136653814",
@@ -197,7 +207,8 @@
             "display_name": "Homer V. Cherrington"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W7217812374",
@@ -216,7 +227,8 @@
             "display_name": "SALVI A."
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W620336045",
@@ -240,7 +252,8 @@
             "display_name": "Franklin Allen"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W1585696921",
@@ -259,7 +272,8 @@
             "display_name": "Stewart C. Myers"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W612332744",
@@ -288,7 +302,8 @@
             "display_name": "V. Sivarama Krishnan"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W1561896206",
@@ -317,7 +332,8 @@
             "display_name": "Bruce Swensen"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W2509705784",
@@ -331,7 +347,8 @@
             "display_name": "J. E. Kirshman"
           }
         }
-      ]
+      ],
+      "type": "book-review"
     },
     {
       "id": "https://openalex.org/W3080837129",
@@ -355,7 +372,8 @@
             "display_name": "Franklin Allen"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W1567502892",
@@ -379,7 +397,8 @@
             "display_name": "Franklin Allen"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W3212453405",
@@ -403,7 +422,8 @@
             "display_name": "Franklin Allen"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W3216151529",
@@ -417,7 +437,8 @@
             "display_name": "V. Sivarama Krishnan"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W87601851",
@@ -431,7 +452,8 @@
             "display_name": "Richard A. Brealey"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W4396683208",
@@ -445,7 +467,8 @@
             "display_name": "Lonnie Leeper"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W1592891609",
@@ -464,7 +487,8 @@
             "display_name": "Stewart D. Hodges"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W3150353995",
@@ -478,7 +502,8 @@
             "display_name": "D'Ambrosio"
           }
         }
-      ]
+      ],
+      "type": "book"
     }
   ],
   "group_by": []

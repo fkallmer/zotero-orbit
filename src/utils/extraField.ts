@@ -135,6 +135,11 @@ export function readOpenAlexLine(extra: string | null | undefined): OpenAlexLine
  * Extra with the OpenAlex line set to `id`: an existing line is replaced,
  * otherwise the line goes above a Better BibTeX citation key, or at the end.
  */
+/** Extra without its OpenAlex line. */
+export function withoutOpenAlexLine(lines: readonly string[]): string[] {
+  return lines.filter((line) => !OPENALEX_LINE.test(line.trim()))
+}
+
 export function withOpenAlexLine(lines: readonly string[], id: string): string[] {
   const next = lines.filter((line) => !OPENALEX_LINE.test(line.trim()))
   insertBeforeMatch(next, CITATION_KEY_PATTERN, `OpenAlex: ${id}`)

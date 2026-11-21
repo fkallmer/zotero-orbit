@@ -11,6 +11,7 @@ import {
   readOpenAlexLine,
   stripCitationLines,
   withOpenAlexLine,
+  withoutOpenAlexLine,
 } from '../src/utils/extraField.ts'
 
 const TITLES = ['Crossref', 'INSPIRE', 'Semantic Scholar']
@@ -151,5 +152,14 @@ describe('the order of Extra across updates', () => {
     const lines = ['OpenAlex: W1', 'Citation Key: haus1989']
     insertBeforeMatch(lines, CITATION_LINE_ANCHOR, 'Citations: 2 (OpenAlex) [2026-11-21]')
     assert.deepEqual(lines, ['Citations: 2 (OpenAlex) [2026-11-21]', 'OpenAlex: W1', 'Citation Key: haus1989'])
+  })
+})
+
+describe('removing a wrong OpenAlex line', () => {
+  it('drops the line and keeps everything else', () => {
+    assert.deepEqual(withoutOpenAlexLine(['Citations: 1 (Crossref) [2026-01-01]', 'OpenAlex: W1', 'Citation Key: k']), [
+      'Citations: 1 (Crossref) [2026-01-01]',
+      'Citation Key: k',
+    ])
   })
 })

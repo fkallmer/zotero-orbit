@@ -47,7 +47,11 @@ describe('pickTitleMatch on recorded searches', () => {
     assert.equal(match.sameEdition, true)
   })
 
-  it('takes another edition when that is all OpenAlex holds, and says so', () => {
+  it('does not take a review of the book for the book', () => {
+    // The only same-titled record with Brealey on it is a one-page 1981 review
+    // in the Journal of Finance, credited with 3794 citations.
+    const candidates = fixture('corporate-finance')
+    assert.ok(candidates.some((work) => work.id === 'W4237698691' && work.type === 'book-review'))
     const match = pickTitleMatch(
       {
         title: 'Principles of corporate finance',
@@ -58,11 +62,9 @@ describe('pickTitleMatch on recorded searches', () => {
           { lastName: 'Myers', firstName: 'Stewart C.' },
         ],
       },
-      fixture('corporate-finance'),
+      candidates,
     )
-    assert.ok(match)
-    assert.equal(match.sameEdition, false)
-    assert.ok(match.work.authors.some((name) => /Brealey/i.test(name)))
+    assert.equal(match, null)
   })
 
   it('picks the revision closest in year, then the most cited, among same-titled reports', () => {
@@ -92,6 +94,7 @@ describe('pickTitleMatch guards', () => {
     year: 1989,
     citedByCount: 10,
     authors: ['Hermann A. Haus'],
+    type: 'book',
     ...over,
   })
   const query = {
@@ -141,6 +144,13 @@ describe('pickTitleMatch guards', () => {
     assert.equal(match?.sameEdition, false)
   })
 
+  it('skips reviews, errata and other records about a work', () => {
+    for (const type of ['book-review', 'erratum', 'editorial', 'letter', 'paratext', 'peer-review']) {
+      assert.equal(pickTitleMatch(query, [work({ type })]), null, type)
+    }
+    assert.equal(pickTitleMatch(query, [work({ type: null })])?.work.id, 'W1')
+  })
+
   it('without a year on the item, takes the most cited edition', () => {
     const editions = [work({ id: 'W10', year: 1975, citedByCount: 900 }), work({ id: 'W11', year: 1990 })]
     const match = pickTitleMatch({ ...query, year: null }, editions)
@@ -166,7 +176,7 @@ describe('normalizeTitleSearch', () => {
       ],
     })
     assert.deepEqual(works, [
-      { id: 'W5', doi: '10.1/X', title: 'A title', year: 2001, citedByCount: 3, authors: ['Ann Lee'] },
+      { id: 'W5', doi: '10.1/X', title: 'A title', year: 2001, citedByCount: 3, authors: ['Ann Lee'], type: null },
     ])
   })
 

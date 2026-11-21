@@ -17,7 +17,8 @@
             "display_name": "James R. Melcher"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W43468092",
@@ -31,7 +32,8 @@
             "display_name": "Olav Solgaard"
           }
         }
-      ]
+      ],
+      "type": "book-chapter"
     },
     {
       "id": "https://openalex.org/W2117962825",
@@ -55,7 +57,8 @@
             "display_name": "H. A. Haus"
           }
         }
-      ]
+      ],
+      "type": "conference-paper"
     },
     {
       "id": "https://openalex.org/W2980080548",
@@ -69,7 +72,8 @@
             "display_name": "Umana Thompson Itaketo"
           }
         }
-      ]
+      ],
+      "type": "book"
     },
     {
       "id": "https://openalex.org/W2031677778",
@@ -83,7 +87,8 @@
             "display_name": "Shahen Hacyan"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2054237766",
@@ -137,7 +142,8 @@
             "display_name": "Nathalie Loos"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2089532767",
@@ -156,7 +162,8 @@
             "display_name": "Neelum Bashir"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W4283753436",
@@ -175,7 +182,8 @@
             "display_name": "Manabu Ishitobi"
           }
         }
-      ]
+      ],
+      "type": "conference-paper"
     },
     {
       "id": "https://openalex.org/W1577635987",
@@ -194,7 +202,8 @@
             "display_name": "Carolann Koleci"
           }
         }
-      ]
+      ],
+      "type": "preprint"
     },
     {
       "id": "https://openalex.org/W2403008283",
@@ -208,7 +217,8 @@
             "display_name": "L I Mishchenko"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W4285160826",
@@ -242,7 +252,8 @@
             "display_name": "Yanwei Ma"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W3098916034",
@@ -261,7 +272,8 @@
             "display_name": "Neelum Bashir"
           }
         }
-      ]
+      ],
+      "type": "preprint"
     },
     {
       "id": "https://openalex.org/W1982061739",
@@ -275,7 +287,8 @@
             "display_name": "Lakhdar Gaffour"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W4393063119",
@@ -309,7 +322,8 @@
             "display_name": "Anubhav Pratap-Singh"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2376136978",
@@ -323,7 +337,8 @@
             "display_name": "Yang Kai"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2012048005",
@@ -337,7 +352,8 @@
             "display_name": "A. Schrott"
           }
         }
-      ]
+      ],
+      "type": "conference-paper"
     },
     {
       "id": "https://openalex.org/W4312591818",
@@ -366,7 +382,8 @@
             "display_name": "Oksana Tykhenko"
           }
         }
-      ]
+      ],
+      "type": "conference-paper"
     },
     {
       "id": "https://openalex.org/W160240280",
@@ -390,7 +407,8 @@
             "display_name": "Xuetao Bai"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W3030612325",
@@ -404,7 +422,8 @@
             "display_name": "Bobomurat J. Ahmedov"
           }
         }
-      ]
+      ],
+      "type": "conference-abstract"
     },
     {
       "id": "https://openalex.org/W61492352",
@@ -428,7 +447,8 @@
             "display_name": "Xuetao Bai"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2416543012",
@@ -447,7 +467,8 @@
             "display_name": "Amrit Šorli"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W3044172509",
@@ -481,7 +502,8 @@
             "display_name": "Yang Tian"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W4407393046",
@@ -515,7 +537,8 @@
             "display_name": "Huifang Liu"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W2792574215",
@@ -539,7 +562,8 @@
             "display_name": "D. I. Ryzhonkov"
           }
         }
-      ]
+      ],
+      "type": "article"
     },
     {
       "id": "https://openalex.org/W4317987316",
@@ -553,7 +577,8 @@
             "display_name": "A.О.Uzaydullaev"
           }
         }
-      ]
+      ],
+      "type": "article"
     }
   ],
   "group_by": []

@@ -9,6 +9,7 @@ import {
   readOpenAlexLine,
   stripCitationLines,
   withOpenAlexLine,
+  withoutOpenAlexLine,
 } from '../utils/extraField'
 import { classifyHttpStatus, classifyThrown, parseCitationCount } from '../utils/httpOutcome'
 import {
@@ -63,6 +64,7 @@ import {
 } from './openAlexClient.core'
 import {
   buildTitleSearchUrl,
+  canBeTheWork,
   itemTypeHasEditions,
   normalizeTitleSearch,
   pickTitleMatch,
@@ -1046,9 +1048,15 @@ class Core {
    */
   /**
    * @param openAlexId A work found by title, written as an `OpenAlex:` line in
-   *   the same save, so the search does not run again.
+   *   the same save, so the search does not run again; null removes a line
+   *   that pointed at the wrong work.
    */
-  static async setCitationCount(item: Zotero.Item, data: CountArray, openAlexId?: string, dropTitles: string[] = []) {
+  static async setCitationCount(
+    item: Zotero.Item,
+    data: CountArray,
+    openAlexId?: string | null,
+    dropTitles: string[] = [],
+  ) {
     let extra = item.getField('extra')
     if (!extra) {
       extra = ''
@@ -1081,7 +1089,13 @@ class Core {
     }
 
     // Join and set
-    const newExtra = (openAlexId ? withOpenAlexLine(filteredExtras, openAlexId) : filteredExtras).join('\n')
+    const withLine =
+      openAlexId === null
+        ? withoutOpenAlexLine(filteredExtras)
+        : openAlexId
+          ? withOpenAlexLine(filteredExtras, openAlexId)
+          : filteredExtras
+    const newExtra = withLine.join('\n')
     item.setField('extra', newExtra)
     await item.saveTx()
     debugLog('Citation debug - New Extra field:', newExtra)
@@ -1509,7 +1523,14 @@ class DBInterface {
         dropStoredCount: true,
       }
     }
-    if (line?.kind === 'id') return this.getOpenAlexCountById(line.id)
+    // A stored work that turns out to be a review or erratum of the item (as
+    // earlier builds could store) is dropped and the title searched again.
+    let staleLine = false
+    if (line?.kind === 'id') {
+      const byId = await this.getOpenAlexCountById(line.id)
+      if (byId !== 'not-the-work') return byId
+      staleLine = true
+    }
 
     // A PMID is an identifier the network can use; a title search could pick
     // a different work than it does.
@@ -1519,7 +1540,7 @@ class DBInterface {
 
     // A title search costs ten times a DOI lookup, so a stored "not found" is
     // honoured even in a run the user started, until its retry is due.
-    if (IgnoredItemsManager.isIgnored(item.id, OPENALEX_DATABASE, true)) {
+    if (!staleLine && IgnoredItemsManager.isIgnored(item.id, OPENALEX_DATABASE, true)) {
       return { count: 0, status: 'not_found', message: 'Searched by title before; retry not due yet' }
     }
 
@@ -1548,7 +1569,13 @@ class DBInterface {
     )
     if (!match || match.work.citedByCount === null) {
       debugLog(`Citation debug - OpenAlex title search found no work with this title and author: ${item.id}`)
-      return { count: 0, status: 'not_found', message: 'No OpenAlex work with this title and author' }
+      const result: LookupResult = {
+        count: 0,
+        status: 'not_found',
+        message: 'No OpenAlex work with this title and author',
+      }
+      // The wrong work's line and count go, rather than staying on the item.
+      return staleLine ? { ...result, dropStoredCount: true, clearOpenAlexLine: true } : result
     }
 
     debugLog(
@@ -1560,9 +1587,16 @@ class DBInterface {
   }
 
   /** OpenAlex for a work whose id an earlier title match stored in Extra. */
-  static async getOpenAlexCountById(openAlexId: string): Promise<LookupResult> {
+  static async getOpenAlexCountById(openAlexId: string): Promise<LookupResult | 'not-the-work'> {
     const fetched = await this.requestOpenAlex(buildWorkByIdUrl(openAlexId, WORK_FULL_SELECT), openAlexId)
     if (!fetched.ok) return fetched.result
+    const type = (fetched.body as Record<string, unknown> | null)?.type
+    if (!canBeTheWork(typeof type === 'string' ? type : null)) {
+      debugLog(
+        `Citation debug - Stored OpenAlex work ${openAlexId} is a ${String(type)}, not the item; searching again`,
+      )
+      return 'not-the-work'
+    }
     const record = normalizeWork(fetched.body)
     if (record) writeCache(openAlexIdRecordCacheKey(openAlexId), record)
     const count = parseCitationCount((fetched.body as Record<string, unknown> | null)?.cited_by_count)
@@ -2130,7 +2164,8 @@ async function updateItem(
     }
 
     const data: CountArray = []
-    let foundOpenAlexId: string | undefined
+    // A work id to write, or null to remove a wrong one.
+    let foundOpenAlexId: string | null | undefined
     const dropped: string[] = []
     for (const operation of databases) {
       if (isAutoUpdate && IgnoredItemsManager.isIgnored(item.id, operation, true)) {
@@ -2171,6 +2206,7 @@ async function updateItem(
           }
         })
         if (result.dropStoredCount) dropped.push(getOperationName(operation))
+        if (result.clearOpenAlexLine) foundOpenAlexId = null
         debugLog(`Citation debug - ${operation} for item ${item.id}: ${result.status} (${result.message ?? ''})`)
       }
     }
@@ -2180,7 +2216,7 @@ async function updateItem(
       await Core.setCitationCount(item, data, foundOpenAlexId, dropped)
       return true
     }
-    if (dropped.length > 0) await Core.setCitationCount(item, [], undefined, dropped)
+    if (dropped.length > 0) await Core.setCitationCount(item, [], foundOpenAlexId, dropped)
   } catch (e) {
     if (isErrorNamed(e, 'AbortError')) throw e
     ztoolkit.log(`Error updating citation count for item ${item.id}\n${describeError(e)}`)
