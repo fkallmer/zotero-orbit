@@ -3091,7 +3091,7 @@ __metadata:
     typescript: "npm:^6.0.3"
     typescript-eslint: "npm:^8.72.2"
     zotero-plugin-scaffold: "npm:^0.9.4"
-    zotero-plugin-toolkit: "npm:5.2.0"
+    zotero-plugin-toolkit: "npm:6.0.0"
     zotero-types: "npm:4.1.3"
   languageName: unknown
   linkType: soft
@@ -3122,10 +3122,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zotero-plugin-toolkit@npm:5.2.0":
-  version: 5.2.0
-  resolution: "zotero-plugin-toolkit@npm:5.2.0"
-  checksum: 10c0/092059d94745bd47fb323707e5f08d191ca88ecd50b6e2798e8eb25ae8d21f5aabb19e31a62bbae099a9a747d3753c0227424502adde00beed621fc8a9d9ea9a
+"zotero-plugin-toolkit@npm:6.0.0":
+  version: 6.0.0
+  resolution: "zotero-plugin-toolkit@npm:6.0.0"
+  checksum: 10c0/c7db8e95ca70276809d6cf8b79f097f649f2ab641a0df897e5dc6526247f7c8f568f3d7ff89dcaad2b87f09b4fbb1e8c817b98beac819b702ec649be0924d4ce
   languageName: node
   linkType: hard
 
