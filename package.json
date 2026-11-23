@@ -45,7 +45,7 @@
     "zotero-plugin-toolkit": "5.2.0"
   },
   "devDependencies": {
-    "@stylistic/eslint-plugin": "^5.10.0",
+    "@stylistic/eslint-plugin": "^6.0.1",
     "@types/node": "^26.6.6",
     "@typescript-eslint/utils": "^8.72.2",
     "@zotero-plugin/eslint-config": "^0.6.10",
